@@ -308,14 +308,46 @@ function displayPredictions(predictions) {
     });
 }
 
+// Add robust statistical functions
+function calculateQuartiles(values) {
+    if (!values || values.length === 0) return { q1: 0, median: 0, q3: 0 };
+    
+    // Sort values and remove NaN/null
+    const sorted = values.filter(v => v !== null && v !== undefined && !isNaN(v)).sort((a, b) => a - b);
+    if (sorted.length === 0) return { q1: 0, median: 0, q3: 0 };
+    
+    const len = sorted.length;
+    
+    // Calculate median
+    let median;
+    if (len % 2 === 0) {
+        median = (sorted[len / 2 - 1] + sorted[len / 2]) / 2;
+    } else {
+        median = sorted[Math.floor(len / 2)];
+    }
+    
+    // Calculate Q1 (25th percentile)
+    const q1Index = Math.floor(len * 0.25);
+    const q1 = sorted[q1Index];
+    
+    // Calculate Q3 (75th percentile)
+    const q3Index = Math.floor(len * 0.75);
+    const q3 = sorted[q3Index];
+    
+    return { q1, median, q3 };
+}
+
+function formatQuartileRange(quartiles) {
+    return `${quartiles.median.toFixed(1)}% (${quartiles.q1.toFixed(1)}-${quartiles.q3.toFixed(1)})`;
+}
+
 function displayModelPerformance(predictions) {
     const container = document.getElementById('modelPerformance');
     container.innerHTML = '';
     
     // Calculate aggregate metrics from all individual predictions across categories
     let allPredictions = [];
-    let totalConfidence = 0;
-    let totalCategories = predictions.length;
+    let categoryConfidences = [];  // For category-level median calculation
     
     predictions.forEach(categoryData => {
         if (categoryData.predictions && Array.isArray(categoryData.predictions)) {
@@ -323,23 +355,26 @@ function displayModelPerformance(predictions) {
             
             // Use the first prediction's confidence as category confidence
             if (categoryData.predictions[0]) {
-                totalConfidence += categoryData.predictions[0].confidence_score || 0;
+                categoryConfidences.push(categoryData.predictions[0].confidence_score || 0);
             }
         }
     });
     
-    const avgConfidence = totalCategories > 0 ? totalConfidence / totalCategories : 0;
+    // Calculate robust statistics using median and quartiles
+    const categoryQuartiles = calculateQuartiles(categoryConfidences);
     const totalPredictions = allPredictions.length;
     
     // Calculate model diversity
     const modelTypes = new Set(allPredictions.map(p => p.model_used || 'Unknown'));
-    const avgModelConfidence = allPredictions.length > 0 ? 
-        allPredictions.reduce((sum, p) => sum + (p.confidence_score || 0), 0) / allPredictions.length : 0;
+    
+    // Calculate overall confidence quartiles from all predictions
+    const allConfidences = allPredictions.map(p => p.confidence_score || 0);
+    const overallQuartiles = calculateQuartiles(allConfidences);
     
     const metrics = [
         {
-            title: 'Average Confidence',
-            value: `${avgConfidence.toFixed(1)}%`,
+            title: 'Median Confidence',
+            value: formatQuartileRange(categoryQuartiles),
             icon: 'fas fa-thumbs-up',
             color: 'success'
         },
@@ -351,7 +386,7 @@ function displayModelPerformance(predictions) {
         },
         {
             title: 'Overall Confidence',
-            value: `${avgModelConfidence.toFixed(1)}%`,
+            value: formatQuartileRange(overallQuartiles),
             icon: 'fas fa-chart-line',
             color: 'warning'
         },
