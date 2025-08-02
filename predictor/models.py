@@ -20,6 +20,89 @@ class DrawCategory(models.Model):
     def __str__(self):
         return self.name
     
+    @classmethod
+    def get_ircc_category_mapping(cls):
+        """
+        Map IRCC official categories to our database category names.
+        This allows pooling data across different versions of the same category.
+        """
+        return {
+            'French-language proficiency': [
+                'French language proficiency (Version 1)',
+                'French language proficiency (Version 2)',
+            ],
+            'Healthcare and social services occupations': [
+                'Healthcare occupations (Version 1)',
+                'Healthcare and social services occupations (Version 2)',
+                'Healthcare and social services occupations (Version 1)',
+            ],
+            'STEM occupations': [
+                'Science, technology, engineering and math (STEM) occupations',
+                'STEM occupations (Version 1)',
+                'STEM occupations (Version 2)',
+            ],
+            'Trade occupations': [
+                'Trade occupations (Version 1)',
+                'Trade occupations (Version 2)',
+            ],
+            'Agriculture and agri-food occupations': [
+                'Agriculture and agri-food occupations (Version 1)',
+                'Agriculture and agri-food occupations (Version 2)',
+            ],
+            'Education occupations': [
+                'Education occupations (Version 1)',
+                'Education occupations (Version 2)',
+            ],
+            # Non-category specific draws
+            'Canadian Experience Class': ['Canadian Experience Class'],
+            'Provincial Nominee Program': ['Provincial Nominee Program'],
+            'Federal Skilled Worker': ['Federal Skilled Worker'],
+            'Federal Skilled Trades': ['Federal Skilled Trades'], 
+            'General': ['General', 'No Program Specified'],
+        }
+    
+    @classmethod
+    def get_pooled_categories(cls, category_name):
+        """
+        Get all category objects that should be pooled with the given category.
+        Returns the main IRCC category name and list of related DrawCategory objects.
+        """
+        mapping = cls.get_ircc_category_mapping()
+        
+        # Find which IRCC category this belongs to
+        ircc_category = None
+        related_names = []
+        
+        for ircc_cat, name_list in mapping.items():
+            if category_name in name_list:
+                ircc_category = ircc_cat
+                related_names = name_list
+                break
+        
+        if not ircc_category:
+            # If not found in mapping, treat as standalone
+            ircc_category = category_name
+            related_names = [category_name]
+        
+        # Get actual DrawCategory objects that exist in database
+        related_categories = cls.objects.filter(name__in=related_names)
+        
+        return ircc_category, related_categories
+    
+    def get_pooled_data(self):
+        """
+        Get combined historical data from all related category versions.
+        Returns queryset of ExpressEntryDraw objects from pooled categories.
+        """
+        ircc_category, related_categories = self.get_pooled_categories(self.name)
+        
+        # Get all draws from related categories
+        pooled_draws = ExpressEntryDraw.objects.filter(
+            category__in=related_categories
+        ).order_by('date')
+        
+        return pooled_draws, ircc_category, len(related_categories)
+    
     def has_recent_activity(self, months=24):
         """Check if category has draws within the specified number of months (default: 24 months)"""
         from django.utils import timezone

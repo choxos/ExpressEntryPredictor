@@ -136,23 +136,33 @@ class Command(BaseCommand):
             if existing_predictions >= num_predictions:
                 return 0  # Already have recent predictions
         
-        # Get historical data
-        draws = ExpressEntryDraw.objects.filter(category=category).order_by('date')
+        # ENHANCED: Get pooled data from related category versions
+        pooled_draws, ircc_category, num_pooled_categories = category.get_pooled_data()
         
-        if draws.count() < 1:  # Need at least one data point
-            raise ValueError(f"No data available: {draws.count()} draws found")
+        if pooled_draws.count() < 1:  # Need at least one data point
+            raise ValueError(f"No data available: {pooled_draws.count()} draws found")
         
-        # Log data availability for transparency  
-        data_count = draws.count()
-        if data_count <= 4:
-            print(f"⚠️  Small dataset: {category.name} has only {data_count} draws - using specialized predictor")
-        elif data_count <= 10:
-            print(f"🔄 Limited data: {category.name} has {data_count} draws - using Bayesian approach")
+        # Log data availability and pooling info
+        individual_count = ExpressEntryDraw.objects.filter(category=category).count()
+        pooled_count = pooled_draws.count()
         
-        # Convert to DataFrame
+        if num_pooled_categories > 1:
+            print(f"📊 POOLED DATA: {category.name}")
+            print(f"   ├─ Individual draws: {individual_count}")
+            print(f"   ├─ Pooled with {num_pooled_categories} categories: {pooled_count} total draws")
+            print(f"   └─ IRCC category: {ircc_category}")
+        
+        if pooled_count <= 4:
+            print(f"⚠️  Small dataset: {ircc_category} has only {pooled_count} draws - using specialized predictor")
+        elif pooled_count <= 10:
+            print(f"🔄 Limited data: {ircc_category} has {pooled_count} draws - using Bayesian approach")
+        else:
+            print(f"✅ Good dataset: {ircc_category} has {pooled_count} draws - using advanced models")
+        
+        # Convert to DataFrame with pooled data
         df = pd.DataFrame([{
             'date': draw.date,
-            'category': category.name,
+            'category': ircc_category,  # Use IRCC category name for consistency
             'lowest_crs_score': draw.lowest_crs_score,
             'invitations_issued': draw.invitations_issued,
             'days_since_last_draw': draw.days_since_last_draw or 14,
@@ -160,7 +170,7 @@ class Command(BaseCommand):
             'is_holiday': draw.is_holiday,
             'month': draw.month,
             'quarter': draw.quarter
-        } for draw in draws])
+        } for draw in pooled_draws])
         
         # Choose best model for this category
         best_model, confidence = self.select_best_model(df, category)
@@ -183,7 +193,7 @@ class Command(BaseCommand):
         today_eastern = now_eastern.date()
         
         # Get last draw date
-        last_draw_date = draws.last().date
+        last_draw_date = pooled_draws.last().date
         
         # Start predictions from today or 2 weeks after last draw, whichever is later
         days_since_last_draw = (today_eastern - last_draw_date).days
@@ -453,6 +463,7 @@ class Command(BaseCommand):
     def select_best_model(self, df, category):
         """Select the best model for a category based on data characteristics"""
         
+        # Use pooled data count for model selection
         data_size = len(df)
         
         # Handle very small datasets (1-4 data points)
@@ -473,96 +484,57 @@ class Command(BaseCommand):
             except Exception as e:
                 print(f"Error setting up small dataset predictor: {e}")
                 # Fallback to simple linear model with low confidence
-                return LinearRegressionPredictor(), 0.15
+                fallback_model = LinearRegressionPredictor()
+                fallback_model.name = "Linear Regression (Fallback)"
+                return fallback_model, 0.2
         
-        # Small datasets (5-10 data points) - use Bayesian model
-        if data_size <= 10:
-            models_to_try = [
-                (BayesianPredictor(), 0.60),      # Great for small data with uncertainty
-                (LinearRegressionPredictor(), 0.50),  # Simple baseline
-            ]
-            
-            # Add small dataset predictor as backup
+        # Handle small datasets (5-10 data points) with pooled benefits  
+        elif data_size <= 10:
             try:
-                from predictor.models import ExpressEntryDraw
-                global_draws = ExpressEntryDraw.objects.all().values(
-                    'date', 'lowest_crs_score', 'invitations_issued'  
-                )
-                global_df = pd.DataFrame(global_draws)
-                small_model = SmallDatasetPredictor(global_data=global_df)
-                models_to_try.append((small_model, 0.40))
-            except Exception:
-                pass
-        
-        # Medium datasets (11-19 data points)
-        elif data_size <= 19:
-            models_to_try = [
-                (BayesianPredictor(), 0.75),         # Still good for medium data
-                (LinearRegressionPredictor(), 0.70),  # Reliable baseline
-                (RandomForestPredictor(), 0.65),     # May overfit with small data
-            ]
-        
-        # Larger datasets (20+ data points) - full model suite
-        else:
-            models_to_try = [
-                (LinearRegressionPredictor(), 0.70),  # Always available, good baseline
-                (BayesianPredictor(), 0.72),         # Great uncertainty quantification
-                (RandomForestPredictor(), 0.75),     # Good for non-linear patterns
-            ]
-            
-            # Add more sophisticated models if enough data
-            if data_size >= 20:
-                try:
-                    models_to_try.append((ARIMAPredictor(), 0.80))
-                except ImportError:
-                    pass
+                # With pooled data, we might have enough for Bayesian approach
+                bayesian_model = BayesianPredictor()
+                bayesian_model.name = "Bayesian Regression"
+                confidence = 0.4 + (data_size * 0.05)  # 40-90% confidence based on data size
+                return bayesian_model, confidence
                 
-                try:
-                    models_to_try.append((XGBoostPredictor(), 0.85))
-                except ImportError:
-                    pass
-            
-            if data_size >= 30:
-                try:
-                    models_to_try.append((NeuralNetworkPredictor(), 0.78))
-                except ImportError:
-                    pass
-        
-        # Try models and pick the best one
-        best_model = None
-        best_confidence = 0
-        
-        for model, base_confidence in models_to_try:
-            try:
-                # Adjust confidence based on data quality
-                data_quality_score = min(1.0, data_size / 50)  # More data = higher confidence
-                score_variance = df['lowest_crs_score'].std()
-                stability_score = max(0.3, min(1.0, 50 / score_variance)) if score_variance > 0 else 0.5
-                
-                # Penalty for very small datasets (but don't exclude completely)
-                size_penalty = 1.0 if data_size >= 10 else (0.5 + data_size * 0.05)
-                
-                confidence = base_confidence * data_quality_score * stability_score * size_penalty
-                
-                # For small datasets, add uncertainty bonus to Bayesian models
-                if data_size <= 10 and hasattr(model, 'predict_with_uncertainty'):
-                    confidence *= 1.1  # 10% bonus for uncertainty quantification
-                
-                if confidence > best_confidence:
-                    best_model = model
-                    best_confidence = confidence
-                    
             except Exception as e:
-                print(f"Error evaluating model {model.name}: {e}")
-                continue
+                print(f"Error setting up Bayesian model: {e}")
+                # Fallback to Random Forest which works well with small data
+                rf_model = RandomForestPredictor()
+                rf_model.name = "Random Forest (Small Data)"
+                return rf_model, 0.3
         
-        # Ensure we always return a model
-        if best_model is None:
-            print(f"No suitable model found, using fallback LinearRegression for {category.name}")
-            best_model = LinearRegressionPredictor()
-            best_confidence = 0.2
+        # Medium datasets (11-30 data points) - pooled data advantage
+        elif data_size <= 30:
+            try:
+                # Random Forest for medium pooled data
+                rf_model = RandomForestPredictor()
+                rf_model.name = "Random Forest (Medium Data)"
+                confidence = 0.6 + (data_size * 0.01)  # 60-90% confidence
+                return rf_model, confidence
+                
+            except Exception as e:
+                print(f"Error setting up Random Forest: {e}")
+                linear_model = LinearRegressionPredictor()
+                linear_model.name = "Linear Regression (Fallback)"
+                return linear_model, 0.5
         
-        return best_model, best_confidence
+        # Large datasets (30+ data points) - full model capability
+        else:
+            try:
+                # XGBoost for large pooled datasets
+                from predictor.ml_models import XGBoostPredictor
+                xgb_model = XGBoostPredictor()
+                xgb_model.name = "XGBoost (Large Pooled Data)"
+                confidence = 0.75 + min(data_size * 0.005, 0.2)  # 75-95% confidence
+                return xgb_model, confidence
+                
+            except Exception as e:
+                print(f"Error setting up XGBoost: {e}")
+                # Fallback to Random Forest
+                rf_model = RandomForestPredictor()
+                rf_model.name = "Random Forest (Fallback)"
+                return rf_model, 0.7
 
     def cache_dashboard_stats(self):
         """Cache basic prediction counts (removed conflicting dashboard stats cache)"""

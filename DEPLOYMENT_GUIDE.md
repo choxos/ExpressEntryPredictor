@@ -47,9 +47,9 @@ sudo apt install -y python3.12 python3.12-venv python3-pip git nginx postgresql 
 sudo apt install -y python3.12-dev libpq-dev build-essential
 
 # Create application directory
-sudo mkdir -p /var/www/expressentry
-sudo chown xeradb:xeradb /var/www/expressentry
-cd /var/www/expressentry
+sudo mkdir -p /var/www/eep
+sudo chown xeradb:xeradb /var/www/eep
+cd /var/www/eep
 ```
 
 ### 3. PostgreSQL Database Setup
@@ -122,8 +122,8 @@ chmod 600 .env
 
 ```bash
 # Activate virtual environment
-source /var/www/expressentry/venv/bin/activate
-cd /var/www/expressentry
+source /var/www/eep/venv/bin/activate
+cd /var/www/eep
 
 # Run migrations
 python manage.py migrate
@@ -132,12 +132,12 @@ python manage.py migrate
 python manage.py collectstatic --noinput
 
 # Create static directory if it doesn't exist
-mkdir -p /var/www/expressentry/static
-mkdir -p /var/www/expressentry/staticfiles
+mkdir -p /var/www/eep/static
+mkdir -p /var/www/eep/staticfiles
 
 # Set proper permissions
-chown -R xeradb:xeradb /var/www/expressentry/static
-chown -R xeradb:xeradb /var/www/expressentry/staticfiles
+chown -R xeradb:xeradb /var/www/eep/static
+chown -R xeradb:xeradb /var/www/eep/staticfiles
 
 # Load initial data and setup models
 python manage.py setup_initial_data
@@ -169,10 +169,10 @@ After=network.target postgresql.service
 Type=exec
 User=xeradb
 Group=xeradb
-WorkingDirectory=/var/www/expressentry
-Environment=PATH=/var/www/expressentry/venv/bin
-EnvironmentFile=/var/www/expressentry/.env
-ExecStart=/var/www/expressentry/venv/bin/gunicorn --workers 3 --bind 127.0.0.1:8010 expressentry_predictor.wsgi:application
+WorkingDirectory=/var/www/eep
+Environment=PATH=/var/www/eep/venv/bin
+EnvironmentFile=/var/www/eep/.env
+ExecStart=/var/www/eep/venv/bin/gunicorn --workers 3 --bind 127.0.0.1:8010 expressentry_predictor.wsgi:application
 ExecReload=/bin/kill -s HUP \$MAINPID
 Restart=always
 RestartSec=10
@@ -222,13 +222,13 @@ server {
     
     # Static files
     location /static/ {
-        alias /var/www/expressentry/staticfiles/;
+        alias /var/www/eep/staticfiles/;
         expires 1y;
         add_header Cache-Control "public, immutable";
     }
     
     location /media/ {
-        alias /var/www/expressentry/media/;
+        alias /var/www/eep/media/;
         expires 1y;
         add_header Cache-Control "public, immutable";
     }
@@ -291,7 +291,7 @@ sudo systemctl status expressentry
 curl -I http://localhost:8010/
 
 # 2. Test database connection
-cd /var/www/expressentry
+cd /var/www/eep
 source venv/bin/activate
 python manage.py shell -c "from django.db import connection; connection.ensure_connection(); print('✅ Database connected')"
 
@@ -332,7 +332,7 @@ When new Express Entry draws are published by IRCC:
 ```bash
 # SSH into your VPS
 ssh xeradb@your-vps-ip
-cd /var/www/expressentry
+cd /var/www/eep
 source venv/bin/activate
 
 # Method 1: Update CSV file and reload
@@ -459,13 +459,13 @@ Create an automated update script:
 
 ```bash
 # Create update script
-cat > /var/www/expressentry/update_data.sh << 'EOF'
+cat > /var/www/eep/update_data.sh << 'EOF'
 #!/bin/bash
 
 # Express Entry Predictor Data Update Script
 # Usage: ./update_data.sh [--with-predictions]
 
-cd /var/www/expressentry
+cd /var/www/eep
 source venv/bin/activate
 
 echo "🔄 Starting data update process..."
@@ -510,7 +510,7 @@ echo "🌐 Website: https://expressentry.xeradb.com"
 EOF
 
 # Make script executable
-chmod +x /var/www/expressentry/update_data.sh
+chmod +x /var/www/eep/update_data.sh
 
 # Usage examples:
 # ./update_data.sh                    # Update data only
@@ -521,11 +521,11 @@ chmod +x /var/www/expressentry/update_data.sh
 
 ```bash
 # Create backup script
-cat > /var/www/expressentry/backup_db.sh << 'EOF'
+cat > /var/www/eep/backup_db.sh << 'EOF'
 #!/bin/bash
 
 # Database backup script
-BACKUP_DIR="/var/www/expressentry/backups"
+BACKUP_DIR="/var/www/eep/backups"
 DATE=$(date +%Y%m%d_%H%M%S)
 BACKUP_FILE="eep_production_backup_$DATE.sql"
 
@@ -545,10 +545,10 @@ echo "✅ Database backup created: $BACKUP_FILE.gz"
 EOF
 
 # Make executable and setup cron
-chmod +x /var/www/expressentry/backup_db.sh
+chmod +x /var/www/eep/backup_db.sh
 
 # Add to crontab (daily backup at 2 AM)
-(crontab -l 2>/dev/null; echo "0 2 * * * /var/www/expressentry/backup_db.sh") | crontab -
+(crontab -l 2>/dev/null; echo "0 2 * * * /var/www/eep/backup_db.sh") | crontab -
 ```
 
 ---
@@ -855,7 +855,7 @@ sudo -u postgres psql -c "SELECT count(*) FROM pg_stat_activity WHERE datname='e
 **Health Check Script:**
 ```bash
 # Create monitoring script
-cat > /var/www/expressentry/monitor.sh << 'EOF'
+cat > /var/www/eep/monitor.sh << 'EOF'
 #!/bin/bash
 
 echo "🔍 Express Entry Predictor Health Check"
@@ -876,7 +876,7 @@ else
 fi
 
 # Check disk space
-DISK_USAGE=$(df /var/www/expressentry | awk 'NR==2 {print $5}' | sed 's/%//')
+DISK_USAGE=$(df /var/www/eep | awk 'NR==2 {print $5}' | sed 's/%//')
 if [ $DISK_USAGE -lt 80 ]; then
     echo "✅ Disk space: ${DISK_USAGE}% used"
 else
@@ -884,17 +884,17 @@ else
 fi
 
 # Check predictions count
-PRED_COUNT=$(sudo -u xeradb /var/www/expressentry/venv/bin/python /var/www/expressentry/manage.py shell -c "from predictor.models import PreComputedPrediction; print(PreComputedPrediction.objects.filter(is_active=True).count())" 2>/dev/null)
+PRED_COUNT=$(sudo -u xeradb /var/www/eep/venv/bin/python /var/www/eep/manage.py shell -c "from predictor.models import PreComputedPrediction; print(PreComputedPrediction.objects.filter(is_active=True).count())" 2>/dev/null)
 echo "📊 Active predictions: $PRED_COUNT"
 
 # Check last prediction update
-LAST_UPDATE=$(sudo -u xeradb /var/www/expressentry/venv/bin/python /var/www/expressentry/manage.py shell -c "from predictor.models import PreComputedPrediction; from django.utils import timezone; import datetime; latest = PreComputedPrediction.objects.filter(is_active=True).order_by('-created_at').first(); print((timezone.now() - latest.created_at).days if latest else 'N/A')" 2>/dev/null)
+LAST_UPDATE=$(sudo -u xeradb /var/www/eep/venv/bin/python /var/www/eep/manage.py shell -c "from predictor.models import PreComputedPrediction; from django.utils import timezone; import datetime; latest = PreComputedPrediction.objects.filter(is_active=True).order_by('-created_at').first(); print((timezone.now() - latest.created_at).days if latest else 'N/A')" 2>/dev/null)
 echo "📅 Last prediction update: $LAST_UPDATE days ago"
 
 echo "========================================"
 EOF
 
-chmod +x /var/www/expressentry/monitor.sh
+chmod +x /var/www/eep/monitor.sh
 ```
 
 ### 2. Performance Optimization
@@ -914,7 +914,7 @@ SELECT query, mean_time, calls FROM pg_stat_statements ORDER BY mean_time DESC L
 EOF
 
 # Add database indices for better performance
-sudo -u xeradb /var/www/expressentry/venv/bin/python /var/www/expressentry/manage.py shell -c "
+sudo -u xeradb /var/www/eep/venv/bin/python /var/www/eep/manage.py shell -c "
 from django.db import connection
 cursor = connection.cursor()
 cursor.execute('CREATE INDEX IF NOT EXISTS idx_draws_date ON predictor_expressentry_draw(date);')
@@ -929,13 +929,13 @@ print('Database indices created successfully')
 **Weekly Maintenance Script:**
 ```bash
 # Create weekly maintenance script
-cat > /var/www/expressentry/weekly_maintenance.sh << 'EOF'
+cat > /var/www/eep/weekly_maintenance.sh << 'EOF'
 #!/bin/bash
 
 echo "🔧 Weekly Maintenance - $(date)"
 echo "================================"
 
-cd /var/www/expressentry
+cd /var/www/eep
 source venv/bin/activate
 
 # 1. Clean up old predictions (keep last 100 per category)
@@ -973,10 +973,10 @@ sudo systemctl reload nginx
 echo "✅ Weekly maintenance completed"
 EOF
 
-chmod +x /var/www/expressentry/weekly_maintenance.sh
+chmod +x /var/www/eep/weekly_maintenance.sh
 
 # Schedule weekly maintenance (Sundays at 3 AM)
-(crontab -l 2>/dev/null; echo "0 3 * * 0 /var/www/expressentry/weekly_maintenance.sh >> /var/log/expressentry_maintenance.log 2>&1") | crontab -
+(crontab -l 2>/dev/null; echo "0 3 * * 0 /var/www/eep/weekly_maintenance.sh >> /var/log/expressentry_maintenance.log 2>&1") | crontab -
 ```
 
 ### 4. Troubleshooting Common Issues
@@ -990,10 +990,10 @@ sudo journalctl -u expressentry -n 50
 sudo netstat -tlnp | grep :8010
 
 # Check environment file
-cat /var/www/expressentry/.env
+cat /var/www/eep/.env
 
 # Test database connection manually
-cd /var/www/expressentry
+cd /var/www/eep
 source venv/bin/activate
 python manage.py check --database default
 ```
@@ -1001,16 +1001,16 @@ python manage.py check --database default
 **Static Files Warning Fix:**
 ```bash
 # If you see "The directory '/var/www/eep/static' does not exist" warning:
-cd /var/www/expressentry
+cd /var/www/eep
 source venv/bin/activate
 
 # Create missing static directories
-mkdir -p /var/www/expressentry/static
-mkdir -p /var/www/expressentry/staticfiles
+mkdir -p /var/www/eep/static
+mkdir -p /var/www/eep/staticfiles
 
 # Set proper permissions
-sudo chown -R xeradb:xeradb /var/www/expressentry/static
-sudo chown -R xeradb:xeradb /var/www/expressentry/staticfiles
+sudo chown -R xeradb:xeradb /var/www/eep/static
+sudo chown -R xeradb:xeradb /var/www/eep/staticfiles
 
 # Re-collect static files
 python manage.py collectstatic --noinput
@@ -1022,7 +1022,7 @@ python manage.py shell -c "from django.conf import settings; print('STATIC_ROOT:
 **NaN Prediction Errors:**
 ```bash
 # If you see "cannot convert float NaN to integer" errors:
-cd /var/www/expressentry
+cd /var/www/eep
 source venv/bin/activate
 
 # Clear problematic predictions
@@ -1103,7 +1103,7 @@ sudo certbot renew                    # Renew certificates
 sudo certbot certificates             # List certificates
 
 # Data Updates (after CSV changes)
-cd /var/www/expressentry && source venv/bin/activate
+cd /var/www/eep && source venv/bin/activate
 ./update_data.sh --with-predictions   # Full update with predictions
 python manage.py compute_predictions --force  # Regenerate predictions only
 
@@ -1114,7 +1114,7 @@ free -h                               # Memory usage
 ```
 
 ### File Locations:
-- **Application**: `/var/www/expressentry/`
+- **Application**: `/var/www/eep/`
 - **Logs**: `sudo journalctl -u expressentry`
 - **Database**: `eep_production` (PostgreSQL)
 - **SSL Certs**: `/etc/letsencrypt/live/expressentry.xeradb.com/`
