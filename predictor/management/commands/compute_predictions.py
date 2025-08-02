@@ -306,8 +306,19 @@ class Command(BaseCommand):
                 # Calculate uncertainty range with proper 95% confidence intervals
                 score_std = df['lowest_crs_score'].std()
                 
-                # For small datasets, increase uncertainty significantly
+                # Calculate data size first for use in multiple places
                 data_size = len(df)
+                
+                # Handle NaN std for single data points
+                if pd.isna(score_std) or np.isnan(score_std):
+                    # For single data points, use a reasonable default uncertainty
+                    if data_size == 1:
+                        score_std = 50  # Default 50-point uncertainty for single data point
+                    else:
+                        score_std = 25  # Default 25-point uncertainty for very small datasets
+                    print(f"⚠️ NaN std detected, using fallback: {score_std}")
+                
+                # For small datasets, increase uncertainty significantly
                 if data_size <= 4:
                     uncertainty_multiplier = 3.0  # Very wide confidence intervals
                 elif data_size <= 10:
@@ -323,6 +334,12 @@ class Command(BaseCommand):
                 if hasattr(best_model, 'predict_with_uncertainty') and hasattr(best_model, 'last_prediction_std'):
                     # Use model's uncertainty estimation for Bayesian models
                     model_std = getattr(best_model, 'last_prediction_std', [score_std])[0] if hasattr(best_model, 'last_prediction_std') else score_std
+                    
+                    # Handle NaN in model_std
+                    if pd.isna(model_std) or np.isnan(model_std):
+                        model_std = score_std  # Fall back to score_std
+                        print(f"⚠️ NaN model_std detected, using score_std: {model_std}")
+                    
                     # Apply z-score for 95% CI
                     margin_of_error = z_score_95 * model_std * uncertainty_multiplier
                 else:
@@ -333,6 +350,13 @@ class Command(BaseCommand):
                 # Calculate 95% confidence interval bounds for CRS score
                 ci_lower = max(250, int(predicted_score - margin_of_error))
                 ci_upper = min(950, int(predicted_score + margin_of_error))
+                
+                # Handle NaN in margin_of_error
+                if pd.isna(margin_of_error) or np.isnan(margin_of_error):
+                    margin_of_error = 50.0  # Default margin of error
+                    ci_lower = max(250, int(predicted_score - margin_of_error))
+                    ci_upper = min(950, int(predicted_score + margin_of_error))
+                    print(f"⚠️ NaN margin_of_error detected, using fallback: {margin_of_error}")
                 
                 # Calculate date confidence interval (± days around predicted date)
                 base_date_margin = 7  # Base uncertainty of ±7 days
