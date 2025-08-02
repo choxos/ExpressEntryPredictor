@@ -2,6 +2,13 @@
 
 {% block title %}Express Entry Predictions - AI Forecasts{% endblock %}
 
+{% block extra_css %}
+<!-- Cache busting and refresh meta tags -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+{% endblock %}
+
 {% block content %}
 <!-- Header Section -->
 <section class="hero-section">
@@ -140,7 +147,9 @@ async function loadPredictions() {
     loading.style.display = 'block';
     
     try {
-        const response = await axios.get('/api/predict/');
+        // Add timestamp to prevent caching
+        const timestamp = new Date().getTime();
+        const response = await axios.get(`/api/predict/?t=${timestamp}`);
         const apiData = response.data;
         
         if (apiData.success && apiData.data) {
@@ -171,15 +180,24 @@ async function loadPredictions() {
         
     } catch (error) {
         loading.style.display = 'none';
+        console.error('Error loading predictions:', error);
+        console.error('Error stack:', error.stack);
+        
         grid.innerHTML = `
             <div class="col-12">
                 <div class="alert alert-danger text-center">
                     <i class="fas fa-exclamation-triangle me-2"></i>
-                    Error loading predictions: ${error.message}. Please try again later.
+                    Error loading predictions: ${error.message}. 
+                    <br><br>
+                    <strong>Try these steps:</strong>
+                    <ol class="text-start mt-2 small">
+                        <li>Press <kbd>Ctrl+F5</kbd> (or <kbd>Cmd+Shift+R</kbd> on Mac) to hard refresh</li>
+                        <li>Clear your browser cache and reload</li>
+                        <li>Check the browser console (F12) for detailed error messages</li>
+                    </ol>
                 </div>
             </div>
         `;
-        console.error('Error loading predictions:', error);
     }
 }
 
@@ -200,8 +218,18 @@ function displayPredictions(predictions) {
     }
     
     predictions.forEach(prediction => {
-        const categoryColor = getCategoryColor(prediction.category_name);
-        const nextPrediction = prediction.predictions[0]; // Get first prediction
+        // Debug logging
+        console.log('Processing prediction:', prediction);
+        
+        const categoryName = prediction.category?.name || prediction.category_name || 'Unknown';
+        const categoryColor = getCategoryColor(categoryName);
+        const nextPrediction = prediction.predictions?.[0]; // Get first prediction
+        
+        if (!nextPrediction) {
+            console.error('No predictions found for category:', categoryName);
+            return;
+        }
+        
         const confidence = nextPrediction.confidence_score;
         
         const col = document.createElement('div');
@@ -211,7 +239,7 @@ function displayPredictions(predictions) {
             <div class="card h-100">
                 <div class="card-header" style="background: ${categoryColor}; color: white;">
                     <div class="d-flex justify-content-between align-items-center">
-                        <h6 class="mb-0">${prediction.category_name}</h6>
+                        <h6 class="mb-0">${categoryName}</h6>
                         <span class="badge bg-light text-dark">
                             ${confidence}% Confidence
                         </span>
