@@ -682,7 +682,7 @@ class InvitationPredictor(BasePredictor):
         from .models import EconomicIndicator, PolicyAnnouncement, GovernmentContext, PoolComposition, PNPActivity
         from django.db import models
         
-        features = self.prepare_features(df)  # Get base features
+        features = self.prepare_clean_features(df)  # Get clean base features (no data leakage)
         
         # CATEGORY-SPECIFIC PATTERNS
         # Some categories have more fixed quotas
@@ -898,10 +898,10 @@ class InvitationPredictor(BasePredictor):
         )
         
         # POOL COMPOSITION PROXIES (when pool data unavailable)
-        # Estimate pool pressure from historical patterns
+        # Estimate pool pressure from clean historical patterns (no data leakage)
         features['estimated_pool_pressure'] = (
-            features['crs_rolling_mean_14'] / 450.0 +  # Higher CRS = more competitive pool
-            features['invitations_rolling_mean_14'] / 5000.0  # Historical volume
+            features['lowest_crs_score'] / 450.0 +  # Current CRS pressure (not leaked future data)
+            features['invitations_issued'] / 5000.0  # Current volume pattern (not leaked future data)
         )
         
         # POLITICAL FACTORS (proxy indicators)
@@ -911,8 +911,8 @@ class InvitationPredictor(BasePredictor):
         features['pre_election_year'] = (features['year_mod_4'] == 3).astype(int)
         
         # INVITATION EFFICIENCY METRICS
-        # Government wants to optimize invitation-to-landing ratios
-        features['historical_efficiency'] = features['invitations_per_crs_point']
+        # Government wants to optimize invitation-to-landing ratios (using clean calculation)
+        features['historical_efficiency'] = features['invitations_issued'] / (features['lowest_crs_score'] + 1)
         
         # INTERACTION TERMS for policy effects
         features['economic_policy_interaction'] = (
