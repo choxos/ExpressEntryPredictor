@@ -371,6 +371,37 @@ class Command(BaseCommand):
                 elif data_size <= 10:
                     confidence = min(confidence * 0.8, 0.6)  # Cap at 60% for small data
                 
+                # FINAL NaN SAFETY CHECKS before database save
+                # Ensure all values are valid numbers that can be saved to database
+                if pd.isna(predicted_score) or np.isnan(predicted_score):
+                    predicted_score = int(df['lowest_crs_score'].mean() or 450)
+                    print(f"⚠️ NaN predicted_score detected, using fallback: {predicted_score}")
+                
+                if pd.isna(predicted_invitations) or np.isnan(predicted_invitations):
+                    fallback_invitations = int(df['invitations_issued'].mean() or 2000)
+                    predicted_invitations = fallback_invitations
+                    print(f"⚠️ NaN predicted_invitations detected, using fallback: {predicted_invitations}")
+                
+                if pd.isna(confidence) or np.isnan(confidence):
+                    confidence = 0.3  # Default 30% confidence
+                    print(f"⚠️ NaN confidence detected, using fallback: {confidence}")
+                
+                # Ensure integer values are properly cast
+                try:
+                    predicted_score = int(float(predicted_score))
+                    predicted_invitations = int(float(predicted_invitations))
+                    confidence = float(confidence)
+                except (ValueError, TypeError) as e:
+                    print(f"⚠️ Value conversion error: {e}, using safe fallbacks")
+                    predicted_score = int(df['lowest_crs_score'].mean() or 450)
+                    predicted_invitations = int(df['invitations_issued'].mean() or 2000)
+                    confidence = 0.3
+                
+                # Final bounds checking
+                predicted_score = max(250, min(950, predicted_score))
+                predicted_invitations = max(100, min(10000, predicted_invitations))
+                confidence = max(0.1, min(1.0, confidence))
+                
                 # Create prediction
                 PreComputedPrediction.objects.update_or_create(
                     category=category,

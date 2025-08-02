@@ -522,6 +522,14 @@ python manage.py migrate
 # Collect static files
 python manage.py collectstatic --noinput
 
+# Create static directory if it doesn't exist
+mkdir -p /var/www/expressentry/static
+mkdir -p /var/www/expressentry/staticfiles
+
+# Set proper permissions
+chown -R xeradb:xeradb /var/www/expressentry/static
+chown -R xeradb:xeradb /var/www/expressentry/staticfiles
+
 # Load initial data and setup models
 python manage.py setup_initial_data
 
@@ -1379,6 +1387,43 @@ cat /var/www/expressentry/.env
 cd /var/www/expressentry
 source venv/bin/activate
 python manage.py check --database default
+```
+
+**Static Files Warning Fix:**
+```bash
+# If you see "The directory '/var/www/eep/static' does not exist" warning:
+cd /var/www/expressentry
+source venv/bin/activate
+
+# Create missing static directories
+mkdir -p /var/www/expressentry/static
+mkdir -p /var/www/expressentry/staticfiles
+
+# Set proper permissions
+sudo chown -R xeradb:xeradb /var/www/expressentry/static
+sudo chown -R xeradb:xeradb /var/www/expressentry/staticfiles
+
+# Re-collect static files
+python manage.py collectstatic --noinput
+
+# Verify settings match directory structure
+python manage.py shell -c "from django.conf import settings; print('STATIC_ROOT:', settings.STATIC_ROOT); print('STATICFILES_DIRS:', settings.STATICFILES_DIRS)"
+```
+
+**NaN Prediction Errors:**
+```bash
+# If you see "cannot convert float NaN to integer" errors:
+cd /var/www/expressentry
+source venv/bin/activate
+
+# Clear problematic predictions
+python manage.py clear_predictions --category "Education" --confirm
+
+# Regenerate with enhanced NaN handling
+python manage.py compute_predictions --category "Education occupations (Version 1)" --force
+
+# Check for remaining issues
+python manage.py shell -c "from predictor.models import PreComputedPrediction; print(f'Active predictions: {PreComputedPrediction.objects.filter(is_active=True).count()}')"
 ```
 
 **Database Connection Issues:**
