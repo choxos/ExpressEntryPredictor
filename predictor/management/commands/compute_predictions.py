@@ -9,9 +9,10 @@ from predictor.models import (
     PredictionModel, PredictionCache
 )
 from predictor.ml_models import (
-    ARIMAPredictor, RandomForestPredictor, XGBoostPredictor, 
-    LinearRegressionPredictor, NeuralNetworkPredictor,
-    BayesianPredictor, SmallDatasetPredictor
+    SmallDatasetPredictor, ARIMAPredictor, LSTMPredictor, ProphetPredictor,
+    CleanLinearRegressionPredictor, BayesianHierarchicalPredictor, GaussianProcessPredictor,
+    SARIMAPredictor, VARPredictor, HoltWintersPredictor, DynamicLinearModelPredictor,
+    ExponentialSmoothingPredictor, AdvancedEnsemblePredictor
 )
 
 
@@ -566,7 +567,7 @@ class Command(BaseCommand):
                 confidence = 0.2 + (data_size * 0.1)
                 return small_model, confidence
             except Exception as e:
-                fallback_model = LinearRegressionPredictor()
+                fallback_model = CleanLinearRegressionPredictor()
                 fallback_model.name = "Linear Regression (Fallback)"
                 return fallback_model, 0.2
         
@@ -979,22 +980,22 @@ class Command(BaseCommand):
         print(f"🔄 Using fallback model selection for {data_size} data points")
         
         if data_size <= 10:
-            model = LinearRegressionPredictor()
+            model = CleanLinearRegressionPredictor()
             model.name = "Linear Regression (Fallback)"
             confidence = 0.3 + (data_size * 0.02)
         elif data_size <= 20:
-            model = RandomForestPredictor()
-            model.name = "Random Forest (Fallback)"
+            model = BayesianHierarchicalPredictor()
+            model.name = "Bayesian Hierarchical (Fallback)"
             confidence = 0.5 + (data_size * 0.01)
         else:
             try:
-                from predictor.ml_models import XGBoostPredictor
-                model = XGBoostPredictor()
-                model.name = "XGBoost (Fallback)"
+                from predictor.ml_models import GaussianProcessPredictor
+                model = GaussianProcessPredictor()
+                model.name = "Gaussian Process (Fallback)"
                 confidence = 0.7
             except ImportError:
-                model = RandomForestPredictor()
-                model.name = "Random Forest (Fallback)"
+                model = BayesianHierarchicalPredictor()
+                model.name = "Bayesian Hierarchical (Fallback)"
                 confidence = 0.6
         
         return model, confidence
