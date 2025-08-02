@@ -323,198 +323,67 @@ sudo journalctl -u expressentry -f
 
 ## 📊 Data Update Procedures
 
-*How to update CSV files and refresh predictions with enhanced data*
+### **Manual Data Updates**
 
-### 1. Express Entry Draw Data Updates
-
-When new Express Entry draws are published by IRCC:
+When you have new draw data or need to refresh economic indicators:
 
 ```bash
-# SSH into your VPS
-ssh xeradb@your-vps-ip
-cd /var/www/eep
-source venv/bin/activate
+# Basic data update (draw data + economic indicators)
+./update_data.sh
 
-# Method 1: Update CSV file and reload
-# 1. Update data/draw_data.csv with new draw information
-# 2. Run the data update command
-python manage.py load_draw_data --update
+# Full update including new predictions
+./update_data.sh --with-predictions
 
-# Method 2: Add single draw via Django admin
-# Access https://expressentry.xeradb.com/admin/
-# Go to Express Entry Draws → Add Express Entry Draw
-# Fill in the new draw details
+# Clear and reload all data
+./update_data.sh --clear-data --with-predictions
 
-# After adding new draws, regenerate predictions
+# View help
+./update_data.sh --help
+```
+
+### **Automated Update Script**
+
+The `update_data.sh` script handles all data updates automatically:
+
+**What it does:**
+- ✅ Loads new Express Entry draws from `data/draw_data.csv`
+- ✅ Updates economic indicators (last 3 months)
+- ✅ Syncs new IRCC draws automatically  
+- ✅ Computes new predictions (optional)
+- ✅ Restarts web services (on VPS)
+- ✅ Clears cache
+
+**Usage Examples:**
+```bash
+# Quick update (no predictions)
+./update_data.sh
+
+# Full update with new predictions
+./update_data.sh --with-predictions
+
+# Fresh start (clear existing data)
+./update_data.sh --clear-data --with-predictions
+```
+
+### **Manual Command Reference**
+
+If you need to run individual commands:
+
+```bash
+# Load new draw data
+python manage.py load_draw_data --file data/draw_data.csv
+
+# Update economic indicators  
+python manage.py collect_economic_data --start-date 2024-05-01 --end-date 2024-08-01
+
+# Sync latest IRCC draws
+python manage.py sync_ircc_draws --days-back 30
+
+# Compute new predictions
 python manage.py compute_predictions --force
 
-# Restart the application
-sudo systemctl restart expressentry
-```
-
-### 2. Economic Indicators Updates
-
-Update economic data from Statistics Canada, Bank of Canada:
-
-```bash
-# Update economic indicators CSV
-# Edit: data/economic_indicators.csv
-# Columns: date, unemployment_rate, job_vacancy_rate, gdp_growth, bank_rate, inflation_rate, immigration_target
-
-# Load updated economic data
-python manage.py shell -c "
-from predictor.models import EconomicIndicator
-import pandas as pd
-from datetime import datetime
-
-# Load and update economic indicators
-df = pd.read_csv('data/economic_indicators.csv')
-for _, row in df.iterrows():
-    EconomicIndicator.objects.update_or_create(
-        date=datetime.strptime(row['date'], '%Y-%m-%d').date(),
-        defaults={
-            'unemployment_rate': row['unemployment_rate'],
-            'job_vacancy_rate': row['job_vacancy_rate'],
-            'gdp_growth': row['gdp_growth'],
-            'bank_rate': row['bank_rate'],
-            'inflation_rate': row['inflation_rate'],
-            'immigration_target': row['immigration_target'],
-        }
-    )
-print('Economic indicators updated successfully')
-"
-
-# Regenerate predictions with updated economic data
-python manage.py compute_predictions --force
-```
-
-### 3. Pool Composition Updates
-
-Update Express Entry pool data:
-
-```bash
-# Update pool composition data
-# Edit: data/pool_data.csv
-# Columns: date, total_candidates, candidates_600_plus, candidates_500_599, etc.
-
-python manage.py shell -c "
-from predictor.models import PoolComposition
-import pandas as pd
-from datetime import datetime
-
-# Load pool composition data
-df = pd.read_csv('data/pool_data.csv')
-for _, row in df.iterrows():
-    PoolComposition.objects.update_or_create(
-        date=datetime.strptime(row['date'], '%Y-%m-%d').date(),
-        defaults={
-            'total_candidates': row['total_candidates'],
-            'candidates_600_plus': row['candidates_600_plus'],
-            'candidates_500_599': row['candidates_500_599'],
-            'candidates_450_499': row['candidates_450_499'],
-            'candidates_400_449': row['candidates_400_449'],
-            'candidates_below_400': row['candidates_below_400'],
-            'average_crs': row.get('average_crs'),
-            'median_crs': row.get('median_crs'),
-        }
-    )
-print('Pool composition updated successfully')
-"
-```
-
-### 4. PNP Activity Updates
-
-Update Provincial Nominee Program data:
-
-```bash
-# Update PNP data
-# Edit: data/pnp_data.csv
-# Columns: date, province, invitations_issued, minimum_score, program_stream
-
-python manage.py shell -c "
-from predictor.models import PNPActivity
-import pandas as pd
-from datetime import datetime
-
-# Load PNP activity data
-df = pd.read_csv('data/pnp_data.csv')
-for _, row in df.iterrows():
-    PNPActivity.objects.update_or_create(
-        date=datetime.strptime(row['date'], '%Y-%m-%d').date(),
-        province=row['province'],
-        defaults={
-            'invitations_issued': row['invitations_issued'],
-            'minimum_score': row.get('minimum_score'),
-            'program_stream': row.get('program_stream'),
-            'provincial_unemployment': row.get('provincial_unemployment'),
-        }
-    )
-print('PNP activity updated successfully')
-"
-```
-
-### 5. Automated Update Script
-
-Create an automated update script:
-
-```bash
-# Create update script
-cat > /var/www/eep/update_data.sh << 'EOF'
-#!/bin/bash
-
-# Express Entry Predictor Data Update Script
-# Usage: ./update_data.sh [--with-predictions]
-
-cd /var/www/eep
-source venv/bin/activate
-
-echo "🔄 Starting data update process..."
-
-# Update draw data if CSV has changed
-if [ -f "data/draw_data.csv" ]; then
-    echo "📊 Loading Express Entry draw data..."
-    python manage.py load_draw_data --update
-fi
-
-# Update economic indicators if available
-if [ -f "data/economic_indicators.csv" ]; then
-    echo "💰 Updating economic indicators..."
-    python manage.py shell -c "exec(open('scripts/update_economic_data.py').read())"
-fi
-
-# Update pool composition if available
-if [ -f "data/pool_data.csv" ]; then
-    echo "🏊 Updating pool composition..."
-    python manage.py shell -c "exec(open('scripts/update_pool_data.py').read())"
-fi
-
-# Update PNP activity if available
-if [ -f "data/pnp_data.csv" ]; then
-    echo "🏛️ Updating PNP activity..."
-    python manage.py shell -c "exec(open('scripts/update_pnp_data.py').read())"
-fi
-
-# Regenerate predictions if requested
-if [ "$1" = "--with-predictions" ]; then
-    echo "🤖 Regenerating predictions with enhanced 87-feature system..."
-    python manage.py compute_predictions --force
-    echo "✅ Predictions updated with latest data"
-fi
-
-# Restart application
-echo "🔄 Restarting application..."
-sudo systemctl restart expressentry
-
-echo "✅ Data update complete!"
-echo "🌐 Website: https://expressentry.xeradb.com"
-EOF
-
-# Make script executable
-chmod +x /var/www/eep/update_data.sh
-
-# Usage examples:
-# ./update_data.sh                    # Update data only
-# ./update_data.sh --with-predictions # Update data and regenerate predictions
+# Clear cache
+python manage.py shell -c "from django.core.cache import cache; cache.clear()"
 ```
 
 ### 6. Database Backup Strategy
