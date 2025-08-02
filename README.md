@@ -279,3 +279,39 @@ For support and questions:
 ---
 
 Built with ❤️ for the Canadian immigration community.
+
+## 🚀 Development Workflow
+
+### Automated GitHub Push
+
+This project includes an automated script to push changes to GitHub after editing sessions:
+
+```bash
+# Push changes with auto-generated commit message
+./auto_push.sh
+
+# Push changes with custom commit message
+./auto_push.sh "Your custom commit message here"
+```
+
+**Features:**
+- ✅ Automatic staging of all changes
+- ✅ Smart commit messages with file listings
+- ✅ Automatic push to main branch
+- ✅ Error handling and status reporting
+- ✅ Summary of changes pushed
+
+**Usage Examples:**
+```bash
+# Quick push after development session
+./auto_push.sh
+
+# Push with specific feature description
+./auto_push.sh "✨ Add new prediction feature
+
+• Enhanced ML models
+• Improved frontend UI
+• Fixed critical bugs"
+```
+
+The script will automatically detect changes, commit them, and push to GitHub with proper error handling.
