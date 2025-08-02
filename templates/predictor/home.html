@@ -18,8 +18,8 @@
                     <a href="{% url 'predictor:predictions' %}" class="btn btn-light btn-lg">
                         <i class="fas fa-magic me-2"></i>View Predictions
                     </a>
-                    <a href="{% url 'predictor:dashboard' %}" class="btn btn-outline-light btn-lg">
-                        <i class="fas fa-chart-line me-2"></i>Dashboard
+                                    <a href="{% url 'predictor:analytics' %}" class="btn btn-outline-light btn-lg">
+                    <i class="fas fa-chart-bar me-2"></i>Analytics
                     </a>
                 </div>
             </div>
@@ -180,14 +180,14 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Load dashboard stats
-    loadDashboardStats();
+    // Load analytics stats
+    loadAnalyticsStats();
     
     // Load latest predictions
     loadLatestPredictions();
 });
 
-async function loadDashboardStats() {
+async function loadAnalyticsStats() {
     try {
         const response = await axios.get('/api/stats/');
         const data = response.data;
@@ -217,7 +217,7 @@ async function loadDashboardStats() {
         });
         
     } catch (error) {
-        console.error('Error loading dashboard stats:', error);
+        console.error('Error loading analytics stats:', error);
     }
 }
 

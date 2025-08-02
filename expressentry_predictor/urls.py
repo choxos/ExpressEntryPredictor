@@ -23,7 +23,6 @@ from django.conf.urls.static import static
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("", include("predictor.urls")),
-    path("analytics/", include("analytics.urls")),
 ]
 
 # Serve static files during development

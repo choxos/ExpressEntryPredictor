@@ -1,428 +1,643 @@
 # Express Entry Predictor - Deployment Guide
 
-This guide provides step-by-step instructions for deploying the Express Entry Predictor application.
+*Updated: August 2025 - Latest Version with Pre-computed Prediction System*
 
-## 🚀 Quick Start (Minimal Setup)
+This comprehensive guide provides step-by-step instructions for deploying the Express Entry Predictor application with all the latest features and improvements.
 
-For a quick demo with basic functionality:
+## 🎯 System Overview
 
-### 1. Basic Installation
+The Express Entry Predictor is a Django-based web application that uses **8 machine learning models** to predict Canadian Express Entry draws. Key features:
+
+- ⚡ **Pre-computed predictions** for fast loading (no real-time ML calculations)
+- 🤖 **8 ML models**: ARIMA, LSTM, XGBoost, Random Forest, Linear Regression, Neural Networks, Prophet, Ensemble
+- 📊 **Clean navigation**: Home | Predictions | Analytics
+- 🔄 **Admin-controlled updates** when new data is added
+- 📈 **358+ historical draws** across 14 categories
+
+---
+
+## 🚀 Quick Start (Recommended)
+
+### 1. Prerequisites
+
+- **Python 3.12+**
+- **Git**
+- **Virtual environment** (recommended)
+
+### 2. Installation & Setup
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/ExpressEntryPredictor.git
+# 1. Clone and setup environment
+git clone https://github.com/choxos/ExpressEntryPredictor.git
 cd ExpressEntryPredictor
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Install minimal dependencies
-pip install django djangorestframework django-cors-headers pandas numpy plotly seaborn matplotlib statsmodels xgboost tensorflow scikit-learn prophet
-
-# Setup database
-python manage.py migrate
-python manage.py setup_initial_data
-python manage.py load_draw_data --file data/draw_data.csv
-
-# Create admin user
-python manage.py createsuperuser
-
-# Run server
-python manage.py runserver
-```
-
-### 2. Access the Application
-
-- **Web Interface**: http://127.0.0.1:8000/
-- **Admin Panel**: http://127.0.0.1:8000/admin/
-- **API**: http://127.0.0.1:8000/api/
-
-## 📦 Full Installation (All Features)
-
-For complete functionality including all ML models:
-
-### 1. Install All Dependencies
-
-```bash
-# Install full requirements
+# 2. Install dependencies (Python 3.12 compatible versions)
 pip install -r requirements.txt
 
-# Or install specific packages
-pip install scikit-learn xgboost tensorflow statsmodels plotly seaborn matplotlib
+# 3. Setup database with fresh schema
+python3 manage.py migrate
+
+# 4. Load initial data and models
+python3 manage.py setup_initial_data
+python3 manage.py load_draw_data
+
+# 5. Generate pre-computed predictions
+python3 manage.py compute_predictions
+
+# 6. Create admin user (optional)
+python3 manage.py createsuperuser
+
+# 7. Start server
+python3 manage.py runserver 8002
 ```
 
-### 2. Verify Installation
+### 3. Access Your Application
+
+- **🏠 Home Page**: http://127.0.0.1:8002/
+- **🔮 Predictions**: http://127.0.0.1:8002/predictions/
+- **📊 Analytics**: http://127.0.0.1:8002/analytics/
+- **⚙️ Admin Panel**: http://127.0.0.1:8002/admin/
+- **🔗 API Root**: http://127.0.0.1:8002/api/
+
+---
+
+## 📦 Dependencies & Versions
+
+### Core Dependencies (Latest Versions)
+```python
+# Framework
+Django==4.2.16
+djangorestframework==3.14.0
+django-cors-headers==4.3.1
+
+# Database & Storage
+psycopg2-binary==2.9.9  # PostgreSQL (production)
+dj-database-url==2.1.0
+whitenoise==6.6.0
+
+# Configuration
+python-decouple==3.8
+
+# Data Science & ML (Python 3.12 compatible)
+pandas==2.2.2
+numpy>=1.26.0
+scikit-learn==1.4.2
+xgboost==2.0.3
+tensorflow>=2.16.0
+statsmodels==0.14.5
+prophet==1.1.7
+
+# Visualization
+plotly==5.19.0
+seaborn==0.13.2
+matplotlib==3.8.4
+
+# Utilities
+requests==2.32.3
+python-dateutil==2.9.0
+holidays==0.45
+beautifulsoup4==4.12.3
+
+# Background Tasks
+celery==5.3.6
+redis==5.0.4
+
+# Development
+django-debug-toolbar==4.3.0
+black==24.4.2
+flake8==7.0.0
+```
+
+### Verify Installation
+```bash
+# Test all ML libraries
+python3 -c "
+import django, sklearn, xgboost, tensorflow, statsmodels, pandas, numpy, plotly
+from prophet import Prophet
+print('✅ All dependencies working!')
+print(f'Python: {django.get_version()}')
+print(f'TensorFlow: {tensorflow.__version__}')
+print(f'Prophet: Available')
+"
+```
+
+---
+
+## 🗄️ Data Management
+
+### Initial Data Loading
 
 ```bash
-python -c "import sklearn, xgboost, tensorflow, statsmodels; print('All ML libraries installed successfully')"
+# 1. Setup prediction models in database
+python3 manage.py setup_initial_data
+# ✅ Creates 8 prediction models: ARIMA, LSTM, XGBoost, Random Forest, 
+#    Linear Regression, Neural Networks, Prophet, Ensemble
+
+# 2. Load historical Express Entry draws
+python3 manage.py load_draw_data
+# ✅ Loads 358+ draws across 14 categories from data/draw_data.csv
+
+# 3. Generate predictions for all categories
+python3 manage.py compute_predictions
+# ✅ Creates pre-computed predictions for categories with sufficient data
 ```
 
-## 🐋 Docker Deployment
+### Adding New Data (Admin Workflow)
 
-### 1. Create Dockerfile
+When new Express Entry draws are published:
 
+```bash
+# 1. Update your CSV file (data/draw_data.csv) with new draws
+
+# 2. Reload the data
+python3 manage.py load_draw_data
+
+# 3. Regenerate predictions with latest data
+python3 manage.py compute_predictions --force
+
+# 4. Auto-commit changes (optional)
+./auto_commit.sh
+```
+
+### Advanced Data Management
+
+```bash
+# Generate predictions for specific category
+python3 manage.py compute_predictions --category "Canadian Experience Class"
+
+# Generate more predictions (default is 10)
+python3 manage.py compute_predictions --predictions 15
+
+# Force recomputation even if recent predictions exist
+python3 manage.py compute_predictions --force
+
+# Evaluate model performance
+python3 manage.py evaluate_models
+```
+
+---
+
+## 🤖 Machine Learning Models
+
+### Available Models (8 Total)
+
+| Model | Type | Best For | Accuracy |
+|-------|------|----------|----------|
+| **ARIMA** | Time Series | Seasonal patterns | ⭐⭐⭐⭐⭐ |
+| **LSTM** | Deep Learning | Complex sequences | ⭐⭐⭐⭐⭐ |
+| **XGBoost** | Gradient Boosting | Feature-based | ⭐⭐⭐⭐⭐ |
+| **Prophet** | Time Series | Trend + seasonality | ⭐⭐⭐⭐ |
+| **Random Forest** | Ensemble | Robust predictions | ⭐⭐⭐⭐ |
+| **Linear Regression** | Statistical | Interpretable baseline | ⭐⭐⭐ |
+| **Neural Network** | Deep Learning | Non-linear patterns | ⭐⭐⭐⭐ |
+| **Ensemble** | Combined | Maximum accuracy | ⭐⭐⭐⭐⭐ |
+
+### Model Selection Strategy
+
+The system automatically selects the best model for each category based on:
+- **Data quantity** (more data = more sophisticated models)
+- **Data quality** (stability and variance)
+- **Model performance** (validation metrics)
+
+### Testing Models
+
+```bash
+# Test individual models
+python3 manage.py run_predictions --model sarima --steps 4
+python3 manage.py run_predictions --model xgboost --steps 4
+python3 manage.py run_predictions --model lstm --steps 4
+python3 manage.py run_predictions --model neural --steps 4
+python3 manage.py run_predictions --model ensemble --steps 4
+
+# Compare all models
+python3 manage.py evaluate_models
+```
+
+---
+
+## 🌐 Production Deployment
+
+### Environment Variables
+
+Create `.env` file:
+```bash
+# Django Settings
+SECRET_KEY=your-super-secret-key-here
+DEBUG=False
+ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com
+
+# Database (PostgreSQL recommended for production)
+DATABASE_URL=postgresql://user:password@localhost:5432/express_entry_db
+
+# Optional: API Keys
+STATCAN_API_KEY=your-statistics-canada-api-key
+BOC_API_KEY=your-bank-of-canada-api-key
+```
+
+### Docker Deployment
+
+**Dockerfile:**
 ```dockerfile
-FROM python:3.9-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application
 COPY . .
 
+# Setup application
 RUN python manage.py collectstatic --noinput
 RUN python manage.py migrate
 RUN python manage.py setup_initial_data
-RUN python manage.py load_draw_data --file data/draw_data.csv
+RUN python manage.py load_draw_data
+
+# Generate initial predictions
+RUN python manage.py compute_predictions
 
 EXPOSE 8000
 
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+CMD ["gunicorn", "expressentry_predictor.wsgi:application", "--bind", "0.0.0.0:8000"]
 ```
 
-### 2. Build and Run
-
+**Build and run:**
 ```bash
 docker build -t express-entry-predictor .
 docker run -p 8000:8000 express-entry-predictor
 ```
 
-## ☁️ Cloud Deployment
-
 ### Heroku Deployment
 
-1. **Install Heroku CLI** and login:
 ```bash
+# 1. Install Heroku CLI and login
 heroku login
-```
 
-2. **Create Heroku app**:
-```bash
+# 2. Create app
 heroku create your-app-name
-```
 
-3. **Add environment variables**:
-```bash
-heroku config:set DEBUG=False
+# 3. Add PostgreSQL
+heroku addons:create heroku-postgresql:essential-0
+
+# 4. Set environment variables
 heroku config:set SECRET_KEY=your-secret-key
-heroku config:set DATABASE_URL=postgres://...
-```
+heroku config:set DEBUG=False
 
-4. **Deploy**:
-```bash
+# 5. Deploy
 git push heroku main
+
+# 6. Setup database
 heroku run python manage.py migrate
 heroku run python manage.py setup_initial_data
-heroku run python manage.py load_draw_data --file data/draw_data.csv
+heroku run python manage.py load_draw_data
+heroku run python manage.py compute_predictions
+heroku run python manage.py createsuperuser
 ```
 
-### AWS Deployment
+### AWS/DigitalOcean Deployment
 
-1. **EC2 Instance Setup**:
+1. **Server Setup:**
 ```bash
-# Update system
-sudo apt update && sudo apt upgrade -y
+# Install dependencies
+sudo apt update
+sudo apt install python3-pip python3-venv nginx postgresql
 
-# Install Python and pip
-sudo apt install python3 python3-pip python3-venv nginx -y
-
-# Create virtual environment
-python3 -m venv express_entry_env
-source express_entry_env/bin/activate
-
-# Clone and setup project
-git clone https://github.com/your-username/ExpressEntryPredictor.git
+# Setup application
+git clone https://github.com/choxos/ExpressEntryPredictor.git
 cd ExpressEntryPredictor
-pip install -r requirements.txt
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt gunicorn
 ```
 
-2. **Configure Nginx**:
+2. **Database Setup:**
+```bash
+sudo -u postgres createdb express_entry_db
+sudo -u postgres createuser express_entry_user
+```
+
+3. **Nginx Configuration:**
 ```nginx
 server {
     listen 80;
-    server_name your-domain.com;
+    server_name yourdomain.com;
 
+    location = /favicon.ico { access_log off; log_not_found off; }
     location /static/ {
-        alias /path/to/ExpressEntryPredictor/staticfiles/;
+        root /path/to/ExpressEntryPredictor;
     }
 
     location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
+        include proxy_params;
+        proxy_pass http://unix:/path/to/ExpressEntryPredictor/gunicorn.sock;
     }
 }
 ```
 
-3. **Run with Gunicorn**:
+4. **Systemd Service:**
+```ini
+[Unit]
+Description=Express Entry Predictor gunicorn daemon
+Requires=gunicorn.socket
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/path/to/ExpressEntryPredictor
+ExecStart=/path/to/ExpressEntryPredictor/venv/bin/gunicorn \
+          --access-logfile - \
+          --workers 3 \
+          --bind unix:/path/to/ExpressEntryPredictor/gunicorn.sock \
+          expressentry_predictor.wsgi:application
+
+[Install]
+WantedBy=multi-user.target
+```
+
+---
+
+## 🔄 Maintenance & Updates
+
+### Daily Operations
+
+**For ongoing maintenance, you only need:**
+
+1. **Check website is running**: Visit your URL
+2. **Update predictions when new draws published**:
+   ```bash
+   # Update CSV with new data, then:
+   python3 manage.py load_draw_data
+   python3 manage.py compute_predictions --force
+   ```
+
+### Weekly Tasks
+
 ```bash
-pip install gunicorn
-gunicorn expressentry_predictor.wsgi:application --bind 127.0.0.1:8000
+# 1. Backup database
+python3 manage.py dumpdata > backup_$(date +%Y%m%d).json
+
+# 2. Check model performance
+python3 manage.py evaluate_models
+
+# 3. Update system
+git pull origin main
+pip install -r requirements.txt --upgrade
+python3 manage.py migrate
+python3 manage.py compute_predictions --force
 ```
 
-## 🗄️ Database Configuration
+### Auto-Commit Workflow
 
-### PostgreSQL Setup
-
-1. **Install PostgreSQL**:
+Use the included auto-commit script:
 ```bash
-# Ubuntu/Debian
-sudo apt install postgresql postgresql-contrib
+# Make changes, then auto-commit
+./auto_commit.sh
 
-# macOS
-brew install postgresql
+# Or manually
+git add .
+git commit -m "Updated predictions with latest data"
+git push origin main
 ```
 
-2. **Create database**:
-```sql
-CREATE DATABASE expressentry_db;
-CREATE USER expressentry_user WITH PASSWORD 'your_password';
-GRANT ALL PRIVILEGES ON DATABASE expressentry_db TO expressentry_user;
+---
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+**1. Prophet Import Error:**
+```bash
+# Fix NumPy compatibility
+pip install prophet==1.1.7 --upgrade --force-reinstall
 ```
 
-3. **Update settings**:
+**2. No Predictions Generated:**
+```bash
+# Check if data is loaded
+python3 manage.py shell -c "from predictor.models import ExpressEntryDraw; print(f'Draws: {ExpressEntryDraw.objects.count()}')"
+
+# Check if models exist
+python3 manage.py shell -c "from predictor.models import PredictionModel; print(f'Models: {PredictionModel.objects.count()}')"
+
+# Regenerate predictions
+python3 manage.py compute_predictions --force
+```
+
+**3. Database Issues:**
+```bash
+# Reset migrations (if needed)
+rm predictor/migrations/000*.py
+python3 manage.py makemigrations predictor
+python3 manage.py migrate
+```
+
+**4. Memory Issues:**
+```bash
+# Use specific models for large datasets
+python3 manage.py compute_predictions --model linear  # Fastest
+python3 manage.py compute_predictions --model xgboost  # Good balance
+```
+
+### Performance Optimization
+
+**1. Enable Caching:**
 ```python
-# settings.py
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'expressentry_db',
-        'USER': 'expressentry_user',
-        'PASSWORD': 'your_password',
-        'HOST': 'localhost',
-        'PORT': '5432',
-    }
-}
-```
-
-## 🔧 Configuration
-
-### Environment Variables
-
-Create `.env` file:
-```env
-DEBUG=False
-SECRET_KEY=your-super-secret-key-here
-DATABASE_URL=postgresql://user:password@localhost:5432/dbname
-ALLOWED_HOSTS=your-domain.com,127.0.0.1
-
-# Optional
-REDIS_URL=redis://localhost:6379/0
-IRCC_API_KEY=your-api-key
-STATSCAN_API_KEY=your-api-key
-```
-
-### Production Settings
-
-```python
-# settings_production.py
-import os
-from .settings import *
-
-DEBUG = False
-ALLOWED_HOSTS = ['your-domain.com', 'www.your-domain.com']
-
-# Security settings
-SECURE_SSL_REDIRECT = True
-SECURE_HSTS_SECONDS = 31536000
-SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-SECURE_HSTS_PRELOAD = True
-SECURE_CONTENT_TYPE_NOSNIFF = True
-SECURE_BROWSER_XSS_FILTER = True
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
-
-# Static files
-STATIC_ROOT = '/var/www/static/'
-MEDIA_ROOT = '/var/www/media/'
-```
-
-## 📊 Performance Optimization
-
-### Caching Setup
-
-```python
-# settings.py
+# In settings.py
 CACHES = {
     'default': {
-        'BACKEND': 'django_redis.cache.RedisCache',
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
         'LOCATION': 'redis://127.0.0.1:6379/1',
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-        }
-    }
-}
-
-# Cache timeout settings
-CACHE_TIMEOUT = 60 * 15  # 15 minutes
-```
-
-### Database Optimization
-
-```python
-# settings.py
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'expressentry_db',
-        'USER': 'expressentry_user',
-        'PASSWORD': 'password',
-        'HOST': 'localhost',
-        'PORT': '5432',
-        'OPTIONS': {
-            'MAX_CONNS': 20,
-            'CONN_MAX_AGE': 600,
-        }
     }
 }
 ```
 
-## 🔄 Automation & Monitoring
+**2. Database Optimization:**
+```bash
+# PostgreSQL recommended for production
+pip install psycopg2-binary
+# Set DATABASE_URL in environment
+```
 
-### Celery for Background Tasks
+**3. Static Files:**
+```bash
+# Collect static files for production
+python3 manage.py collectstatic
+```
 
-```python
-# celery.py
-import os
-from celery import Celery
+---
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'expressentry_predictor.settings')
+## 📊 API Documentation
 
-app = Celery('expressentry_predictor')
-app.config_from_object('django.conf:settings', namespace='CELERY')
-app.autodiscover_tasks()
+### Key Endpoints
 
-# Periodic task for updating predictions
-from celery.schedules import crontab
+```bash
+# Get all predictions
+GET /api/predict/
 
-app.conf.beat_schedule = {
-    'update-predictions': {
-        'task': 'predictor.tasks.update_predictions',
-        'schedule': crontab(hour=0, minute=0),  # Daily at midnight
-    },
+# Get predictions for specific category
+GET /api/predict/{category_id}/
+
+# Get dashboard statistics
+GET /api/stats/
+
+# Get recent draws
+GET /api/draws/recent/
+
+# Get category statistics
+GET /api/categories/{id}/statistics/
+```
+
+### API Response Examples
+
+**Predictions API:**
+```json
+{
+  "success": true,
+  "total_categories": 2,
+  "generated_at": "2025-08-02T12:00:00Z",
+  "data": [
+    {
+      "category_name": "Canadian Experience Class",
+      "predictions": [
+        {
+          "rank": 1,
+          "predicted_date": "2025-08-16",
+          "predicted_crs_score": 467,
+          "confidence_score": 78.5,
+          "model_used": "XGBoost"
+        }
+      ]
+    }
+  ]
 }
 ```
 
-### Monitoring with Django Extensions
+---
 
-```bash
-pip install django-extensions
-pip install werkzeug
+## 🚨 Security
 
-# settings.py
-INSTALLED_APPS += ['django_extensions']
+### Production Security Checklist
 
-# Run with profiling
-python manage.py runserver_plus --print-sql
-```
+- [ ] Set `DEBUG = False`
+- [ ] Use strong `SECRET_KEY`
+- [ ] Enable HTTPS
+- [ ] Set proper `ALLOWED_HOSTS`
+- [ ] Use PostgreSQL (not SQLite)
+- [ ] Regular security updates
+- [ ] Enable CSRF protection
+- [ ] Use environment variables for secrets
 
-## 🛡️ Security
-
-### SSL Certificate (Let's Encrypt)
-
-```bash
-sudo apt install certbot python3-certbot-nginx
-sudo certbot --nginx -d your-domain.com
-```
-
-### Firewall Configuration
-
-```bash
-sudo ufw allow 22    # SSH
-sudo ufw allow 80    # HTTP
-sudo ufw allow 443   # HTTPS
-sudo ufw enable
-```
-
-## 📋 Maintenance
-
-### Regular Tasks
-
-```bash
-# Update predictions
-python manage.py generate_predictions
-
-# Backup database
-pg_dump expressentry_db > backup_$(date +%Y%m%d).sql
-
-# Clean old logs
-find /var/log -name "*.log" -type f -mtime +30 -delete
-
-# Update dependencies
-pip list --outdated
-pip install -U package_name
-```
-
-### Health Checks
+### Basic Security Settings
 
 ```python
-# views.py
-from django.http import JsonResponse
-from django.db import connection
+# settings.py for production
+DEBUG = False
+ALLOWED_HOSTS = ['yourdomain.com', 'www.yourdomain.com']
 
+SECURE_SSL_REDIRECT = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = True
+```
+
+---
+
+## 📈 Monitoring
+
+### Key Metrics to Monitor
+
+1. **Prediction Accuracy**: Check against actual draws
+2. **Response Times**: API and page load times
+3. **Data Freshness**: Last prediction update time
+4. **Error Rates**: Failed predictions or API calls
+5. **User Traffic**: Page views and API usage
+
+### Health Check Endpoint
+
+```python
+# Custom health check
 def health_check(request):
     try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT 1")
-        return JsonResponse({'status': 'healthy'})
+        # Check database
+        from predictor.models import ExpressEntryDraw
+        draw_count = ExpressEntryDraw.objects.count()
+        
+        # Check predictions
+        from predictor.models import PreComputedPrediction
+        prediction_count = PreComputedPrediction.objects.filter(is_active=True).count()
+        
+        return JsonResponse({
+            'status': 'healthy',
+            'draws': draw_count,
+            'predictions': prediction_count,
+            'timestamp': timezone.now().isoformat()
+        })
     except Exception as e:
         return JsonResponse({'status': 'unhealthy', 'error': str(e)}, status=500)
 ```
 
-## 🚨 Troubleshooting
-
-### Common Issues
-
-1. **Missing ML Libraries**:
-```bash
-# Error: ModuleNotFoundError: No module named 'sklearn'
-pip install scikit-learn
-```
-
-2. **Database Connection Error**:
-```bash
-# Check PostgreSQL status
-sudo systemctl status postgresql
-# Restart if needed
-sudo systemctl restart postgresql
-```
-
-3. **Static Files Not Loading**:
-```bash
-python manage.py collectstatic --clear
-```
-
-4. **Memory Issues with ML Models**:
-```python
-# Reduce model complexity in settings
-MODEL_SETTINGS = {
-    'RF_N_ESTIMATORS': 50,  # Reduce from 100
-    'LSTM_EPOCHS': 25,      # Reduce from 50
-}
-```
-
-### Logs and Debugging
-
-```bash
-# Django logs
-tail -f debug.log
-
-# Nginx logs
-tail -f /var/log/nginx/access.log
-tail -f /var/log/nginx/error.log
-
-# System logs
-journalctl -u your-service-name -f
-```
+---
 
 ## 📞 Support
 
-For deployment issues:
+### Getting Help
 
-1. Check the logs first
-2. Verify all dependencies are installed
-3. Ensure database is properly configured
-4. Check firewall and network settings
-5. Review the [main README](README.md) for additional help
+1. **Check logs**: `python3 manage.py runserver` output
+2. **Review this guide**: Most common issues covered
+3. **Check GitHub issues**: https://github.com/choxos/ExpressEntryPredictor/issues
+4. **Test with minimal setup**: Use quick start section
+
+### Useful Commands Reference
+
+```bash
+# Data Management
+python3 manage.py load_draw_data           # Load historical data
+python3 manage.py compute_predictions      # Generate all predictions
+python3 manage.py setup_initial_data       # Setup ML models
+
+# Model Operations
+python3 manage.py evaluate_models          # Check model performance
+python3 manage.py run_predictions --model ensemble --steps 5
+
+# System Management
+python3 manage.py check                    # System health check
+python3 manage.py migrate                  # Database updates
+python3 manage.py collectstatic           # Collect static files
+
+# Development
+python3 manage.py runserver 8002          # Development server
+python3 manage.py shell                   # Django shell
+python3 manage.py createsuperuser         # Create admin user
+```
 
 ---
 
-**Note**: This guide assumes Ubuntu/Debian for Linux instructions. Adjust commands for other distributions as needed. 
+## 🎯 Summary
+
+Your Express Entry Predictor is now equipped with:
+
+✅ **8 sophisticated ML models** with automatic selection  
+✅ **Pre-computed predictions** for lightning-fast performance  
+✅ **Clean, modern interface** with Home | Predictions | Analytics  
+✅ **Admin-friendly workflow** for data updates  
+✅ **Production-ready deployment** options  
+✅ **Comprehensive API** for external integrations  
+✅ **Automated workflows** for maintenance  
+
+**The system is designed to be set-and-forget** - just update your CSV when new draws are published, run the prediction update command, and you're done! 🇨🇦🚀
+
+---
+
+*Last Updated: August 2025*  
+*Express Entry Predictor v2.0 - Pre-computed Prediction System* 

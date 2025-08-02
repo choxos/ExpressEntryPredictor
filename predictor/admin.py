@@ -1,8 +1,8 @@
 from django.contrib import admin
 from django.db.models import Avg, Count
 from .models import (
-    DrawCategory, ExpressEntryDraw, EconomicIndicator, 
-    PredictionModel, DrawPrediction, PredictionAccuracy
+    DrawCategory, ExpressEntryDraw, PredictionModel, 
+    DrawPrediction, PredictionAccuracy, PreComputedPrediction, PredictionCache
 )
 
 
@@ -14,11 +14,11 @@ class DrawCategoryAdmin(admin.ModelAdmin):
     readonly_fields = ('draw_count', 'avg_crs_score')
     
     def draw_count(self, obj):
-        return obj.expressentry_draws.count()
+        return obj.expressentrydraw_set.count()
     draw_count.short_description = 'Total Draws'
     
     def avg_crs_score(self, obj):
-        avg = obj.expressentry_draws.aggregate(avg=Avg('lowest_crs_score'))['avg']
+        avg = obj.expressentrydraw_set.aggregate(avg=Avg('lowest_crs_score'))['avg']
         return round(avg, 1) if avg else 0
     avg_crs_score.short_description = 'Avg CRS Score'
 
@@ -52,16 +52,6 @@ class ExpressEntryDrawAdmin(admin.ModelAdmin):
     )
     readonly_fields = ('created_at', 'updated_at', 'month', 'quarter', 'is_weekend')
 
-
-@admin.register(EconomicIndicator)
-class EconomicIndicatorAdmin(admin.ModelAdmin):
-    list_display = (
-        'date', 'unemployment_rate', 'job_vacancy_rate', 
-        'gdp_growth', 'immigration_target'
-    )
-    list_filter = ('date',)
-    date_hierarchy = 'date'
-    ordering = ('-date',)
 
 
 @admin.register(PredictionModel)
@@ -125,12 +115,54 @@ class DrawPredictionAdmin(admin.ModelAdmin):
 @admin.register(PredictionAccuracy)
 class PredictionAccuracyAdmin(admin.ModelAdmin):
     list_display = (
-        'prediction', 'actual_draw', 'date_error_days', 'score_error',
-        'date_accuracy_score', 'score_accuracy_score'
+        'model', 'actual_draw', 'predicted_score', 'actual_score', 'error', 'created_at'
     )
-    list_filter = ('prediction__model', 'prediction__category')
-    ordering = ('-evaluated_on',)
-    readonly_fields = ('evaluated_on',)
+    list_filter = ('model', 'actual_draw__category')
+    ordering = ('-created_at',)
+    readonly_fields = ('error', 'created_at')
+    
+    def save_model(self, request, obj, form, change):
+        # Calculate error automatically
+        obj.error = abs(obj.predicted_score - obj.actual_score)
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(PreComputedPrediction)
+class PreComputedPredictionAdmin(admin.ModelAdmin):
+    list_display = (
+        'category', 'prediction_rank', 'predicted_date', 'predicted_crs_score', 
+        'confidence_score', 'model_used', 'is_active', 'created_at'
+    )
+    list_filter = ('category', 'model_used', 'is_active', 'created_at')
+    search_fields = ('category__name',)
+    ordering = ('category', 'prediction_rank', 'predicted_date')
+    readonly_fields = ('created_at', 'updated_at')
+    
+    fieldsets = (
+        ('Prediction Details', {
+            'fields': ('category', 'prediction_rank', 'predicted_date', 'predicted_crs_score', 'predicted_invitations')
+        }),
+        ('Model Information', {
+            'fields': ('model_used', 'model_version', 'confidence_score')
+        }),
+        ('Additional Data', {
+            'fields': ('uncertainty_range', 'is_active'),
+            'classes': ('collapse',)
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+
+@admin.register(PredictionCache)
+class PredictionCacheAdmin(admin.ModelAdmin):
+    list_display = ('cache_key', 'expires_at', 'created_at')
+    list_filter = ('expires_at', 'created_at')
+    search_fields = ('cache_key',)
+    ordering = ('-created_at',)
+    readonly_fields = ('created_at',)
 
 
 # Admin site customization

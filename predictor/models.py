@@ -156,20 +156,72 @@ class DrawPrediction(models.Model):
 
 
 class PredictionAccuracy(models.Model):
-    """Track prediction accuracy against actual results"""
-    prediction = models.ForeignKey(DrawPrediction, on_delete=models.CASCADE)
+    """Track prediction accuracy over time"""
+    model = models.ForeignKey(PredictionModel, on_delete=models.CASCADE)
     actual_draw = models.ForeignKey(ExpressEntryDraw, on_delete=models.CASCADE)
-    
-    date_error_days = models.IntegerField(help_text="Days difference between predicted and actual date")
-    score_error = models.IntegerField(help_text="CRS score difference between predicted and actual")
-    
-    date_accuracy_score = models.FloatField(help_text="Date prediction accuracy (0-100)")
-    score_accuracy_score = models.FloatField(help_text="CRS score prediction accuracy (0-100)")
-    
-    evaluated_on = models.DateTimeField(auto_now_add=True)
+    predicted_score = models.IntegerField(default=0)
+    actual_score = models.IntegerField(default=0)
+    error = models.FloatField(default=0.0)  # abs(predicted - actual)
+    created_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:
-        unique_together = ['prediction', 'actual_draw']
+        db_table = 'predictor_prediction_accuracy'
+
+
+class PreComputedPrediction(models.Model):
+    """Store pre-computed predictions for fast website loading"""
+    category = models.ForeignKey(DrawCategory, on_delete=models.CASCADE)
+    predicted_date = models.DateField()
+    predicted_crs_score = models.IntegerField()
+    predicted_invitations = models.IntegerField(null=True, blank=True)
+    confidence_score = models.FloatField(default=0.75)
+    model_used = models.CharField(max_length=100, default='Ensemble')
+    model_version = models.CharField(max_length=20, default='1.0')
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True)
+    
+    # Additional prediction details
+    prediction_rank = models.IntegerField(default=1)  # 1st, 2nd, 3rd prediction etc.
+    uncertainty_range = models.JSONField(default=dict, blank=True)  # {min: 450, max: 480}
+    
+    class Meta:
+        db_table = 'predictor_precomputed_prediction'
+        ordering = ['category', 'prediction_rank', 'predicted_date']
+        unique_together = ['category', 'prediction_rank']
     
     def __str__(self):
-        return f"Accuracy for {self.prediction} vs {self.actual_draw}"
+        return f"{self.category.name} - {self.predicted_date} (CRS: {self.predicted_crs_score})"
+
+
+class PredictionCache(models.Model):
+    """Cache for expensive calculations and model training results"""
+    cache_key = models.CharField(max_length=255, unique=True)
+    cache_data = models.JSONField()
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'predictor_prediction_cache'
+    
+    @classmethod
+    def get_cached(cls, key):
+        """Get cached data if not expired"""
+        from django.utils import timezone
+        try:
+            cache_obj = cls.objects.get(cache_key=key, expires_at__gt=timezone.now())
+            return cache_obj.cache_data
+        except cls.DoesNotExist:
+            return None
+    
+    @classmethod
+    def set_cache(cls, key, data, hours=24):
+        """Set cached data with expiration"""
+        from django.utils import timezone
+        expires_at = timezone.now() + timezone.timedelta(hours=hours)
+        cls.objects.update_or_create(
+            cache_key=key,
+            defaults={'cache_data': data, 'expires_at': expires_at}
+        )

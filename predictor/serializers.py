@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import (
-    DrawCategory, ExpressEntryDraw, EconomicIndicator,
-    PredictionModel, DrawPrediction, PredictionAccuracy
+    DrawCategory, ExpressEntryDraw, PredictionModel, 
+    DrawPrediction, PredictionAccuracy, PreComputedPrediction, PredictionCache
 )
 
 
@@ -14,10 +14,10 @@ class DrawCategorySerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'code', 'description', 'is_active', 'draw_count', 'avg_crs_score']
     
     def get_draw_count(self, obj):
-        return obj.expressentry_draws.count()
+        return obj.expressentrydraw_set.count()
     
     def get_avg_crs_score(self, obj):
-        draws = obj.expressentry_draws.all()
+        draws = obj.expressentrydraw_set.all()
         if draws:
             return round(sum(draw.lowest_crs_score for draw in draws) / len(draws), 1)
         return 0
@@ -35,14 +35,6 @@ class ExpressEntryDrawSerializer(serializers.ModelSerializer):
             'is_weekend', 'is_holiday', 'month', 'quarter', 'created_at', 'updated_at'
         ]
 
-
-class EconomicIndicatorSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = EconomicIndicator
-        fields = [
-            'id', 'date', 'unemployment_rate', 'job_vacancy_rate',
-            'gdp_growth', 'immigration_target', 'created_at', 'updated_at'
-        ]
 
 
 class PredictionModelSerializer(serializers.ModelSerializer):
@@ -90,16 +82,13 @@ class DrawPredictionSerializer(serializers.ModelSerializer):
 
 
 class PredictionAccuracySerializer(serializers.ModelSerializer):
-    prediction_details = DrawPredictionSerializer(source='prediction', read_only=True)
     actual_draw_details = ExpressEntryDrawSerializer(source='actual_draw', read_only=True)
     
     class Meta:
         model = PredictionAccuracy
         fields = [
-            'id', 'prediction', 'actual_draw',
-            'date_error_days', 'score_error',
-            'date_accuracy_score', 'score_accuracy_score',
-            'evaluated_on', 'prediction_details', 'actual_draw_details'
+            'id', 'model', 'actual_draw', 'predicted_score',
+            'actual_score', 'error', 'created_at', 'actual_draw_details'
         ]
 
 
@@ -133,4 +122,38 @@ class ModelTrainingResultSerializer(serializers.Serializer):
     feature_importance = serializers.DictField()
     training_time = serializers.FloatField()
     success = serializers.BooleanField()
-    error_message = serializers.CharField(required=False) 
+    error_message = serializers.CharField(required=False)
+
+
+class PreComputedPredictionSerializer(serializers.ModelSerializer):
+    """Serializer for pre-computed predictions"""
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    
+    class Meta:
+        model = PreComputedPrediction
+        fields = [
+            'id', 'category', 'category_name', 'predicted_date', 
+            'predicted_crs_score', 'predicted_invitations', 
+            'confidence_score', 'model_used', 'model_version',
+            'prediction_rank', 'uncertainty_range', 
+            'created_at', 'updated_at', 'is_active'
+        ]
+
+
+class DashboardStatsSerializer(serializers.Serializer):
+    """Serializer for dashboard statistics"""
+    totals = serializers.DictField()
+    crs_statistics = serializers.DictField()
+    recent_draws = serializers.ListField()
+    next_predictions = serializers.ListField()
+    last_updated = serializers.DateTimeField()
+
+
+class PredictionSummarySerializer(serializers.Serializer):
+    """Serializer for prediction summary"""
+    category_id = serializers.IntegerField()
+    category_name = serializers.CharField()
+    category_description = serializers.CharField()
+    last_updated = serializers.DateTimeField()
+    recent_draws = serializers.ListField()
+    predictions = serializers.ListField() 

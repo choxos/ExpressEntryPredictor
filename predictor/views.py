@@ -1,482 +1,339 @@
+import pandas as pd
+from datetime import date, timedelta
 from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
+from django.db.models import Avg, Count, Max, Min, Q, Sum
 from django.utils import timezone
-from django.db.models import Avg, Count, Q
+from django.core.paginator import Paginator
+
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from datetime import datetime, date, timedelta
-import pandas as pd
 
 from .models import (
-    DrawCategory, ExpressEntryDraw, EconomicIndicator,
-    PredictionModel, DrawPrediction, PredictionAccuracy
+    DrawCategory, ExpressEntryDraw, PredictionModel, 
+    DrawPrediction, PredictionAccuracy, PreComputedPrediction, PredictionCache
 )
 from .serializers import (
-    DrawCategorySerializer, ExpressEntryDrawSerializer, EconomicIndicatorSerializer,
-    PredictionModelSerializer, DrawPredictionSerializer, PredictionAccuracySerializer,
-    DrawStatsSerializer, PredictionResultSerializer, ModelTrainingResultSerializer
-)
-from .ml_models import (
-    ARIMAPredictor, RandomForestPredictor, XGBoostPredictor,
-    LinearRegressionPredictor, EnsemblePredictor
+    DrawCategorySerializer, ExpressEntryDrawSerializer, 
+    PredictionModelSerializer, DrawPredictionSerializer,
+    DashboardStatsSerializer, PredictionSummarySerializer
 )
 
 
-class DrawCategoryViewSet(viewsets.ReadOnlyModelViewSet):
-    """ViewSet for Draw Categories"""
+# =================== VIEWSETS ===================
+
+class DrawCategoryViewSet(viewsets.ModelViewSet):
+    """API for managing draw categories"""
     queryset = DrawCategory.objects.filter(is_active=True)
     serializer_class = DrawCategorySerializer
-    
+
     @action(detail=True, methods=['get'])
-    def draws(self, request, pk=None):
-        """Get all draws for a specific category"""
-        category = self.get_object()
-        draws = ExpressEntryDraw.objects.filter(category=category).order_by('-date')
-        
-        # Pagination
-        page = int(request.query_params.get('page', 1))
-        page_size = int(request.query_params.get('page_size', 20))
-        start = (page - 1) * page_size
-        end = start + page_size
-        
-        paginated_draws = draws[start:end]
-        serializer = ExpressEntryDrawSerializer(paginated_draws, many=True)
-        
-        return Response({
-            'count': draws.count(),
-            'results': serializer.data,
-            'page': page,
-            'page_size': page_size
-        })
-    
-    @action(detail=True, methods=['get'])
-    def stats(self, request, pk=None):
+    def statistics(self, request, pk=None):
         """Get statistics for a specific category"""
         category = self.get_object()
         draws = ExpressEntryDraw.objects.filter(category=category)
         
-        if not draws.exists():
-            return Response({'message': 'No draws found for this category'})
-        
         stats = {
             'total_draws': draws.count(),
-            'avg_crs_score': draws.aggregate(avg=Avg('lowest_crs_score'))['avg'],
-            'avg_invitations': draws.aggregate(avg=Avg('invitations_issued'))['avg'],
-            'min_crs_score': draws.order_by('lowest_crs_score').first().lowest_crs_score,
-            'max_crs_score': draws.order_by('-lowest_crs_score').first().lowest_crs_score,
-            'latest_draw': ExpressEntryDrawSerializer(draws.order_by('-date').first()).data,
-            'earliest_draw': ExpressEntryDrawSerializer(draws.order_by('date').first()).data,
+            'avg_crs_score': draws.aggregate(Avg('lowest_crs_score'))['lowest_crs_score__avg'],
+            'min_crs_score': draws.aggregate(Min('lowest_crs_score'))['lowest_crs_score__min'],
+            'max_crs_score': draws.aggregate(Max('lowest_crs_score'))['lowest_crs_score__max'],
+            'total_invitations': draws.aggregate(total=Sum('invitations_issued'))['total'],
+            'latest_draw': draws.order_by('-date').first()
         }
         
         return Response(stats)
 
+    @action(detail=True, methods=['get'])
+    def predictions(self, request, pk=None):
+        """Get pre-computed predictions for a category"""
+        category = self.get_object()
+        predictions = PreComputedPrediction.objects.filter(
+            category=category, 
+            is_active=True
+        ).order_by('prediction_rank')[:10]
+        
+        prediction_data = [{
+            'rank': pred.prediction_rank,
+            'predicted_date': pred.predicted_date,
+            'predicted_crs_score': pred.predicted_crs_score,
+            'predicted_invitations': pred.predicted_invitations,
+            'confidence_score': pred.confidence_score,
+            'model_used': pred.model_used,
+            'uncertainty_range': pred.uncertainty_range,
+            'created_at': pred.created_at
+        } for pred in predictions]
+        
+        return Response({
+            'category': category.name,
+            'predictions': prediction_data,
+            'total_predictions': len(prediction_data)
+        })
 
-class ExpressEntryDrawViewSet(viewsets.ReadOnlyModelViewSet):
-    """ViewSet for Express Entry Draws"""
+
+class ExpressEntryDrawViewSet(viewsets.ModelViewSet):
+    """API for managing Express Entry draws"""
     queryset = ExpressEntryDraw.objects.all().order_by('-date')
     serializer_class = ExpressEntryDrawSerializer
-    filterset_fields = ['category', 'month', 'quarter', 'is_weekend', 'is_holiday']
-    search_fields = ['round_number', 'category__name']
-    ordering_fields = ['date', 'lowest_crs_score', 'invitations_issued']
     
+    def get_queryset(self):
+        """Filter draws by category and date range"""
+        queryset = super().get_queryset()
+        
+        # Filter by category
+        category_id = self.request.query_params.get('category', None)
+        if category_id:
+            queryset = queryset.filter(category_id=category_id)
+        
+        # Filter by date range
+        start_date = self.request.query_params.get('start_date', None)
+        end_date = self.request.query_params.get('end_date', None)
+        
+        if start_date:
+            queryset = queryset.filter(date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(date__lte=end_date)
+            
+        return queryset
+
     @action(detail=False, methods=['get'])
     def recent(self, request):
         """Get recent draws (last 30 days)"""
         thirty_days_ago = timezone.now().date() - timedelta(days=30)
-        recent_draws = self.queryset.filter(date__gte=thirty_days_ago)
+        recent_draws = self.get_queryset().filter(date__gte=thirty_days_ago)
         serializer = self.get_serializer(recent_draws, many=True)
         return Response(serializer.data)
-    
+
     @action(detail=False, methods=['get'])
     def trends(self, request):
-        """Get draw trends over time"""
-        # Get draws from last 2 years
-        two_years_ago = timezone.now().date() - timedelta(days=730)
-        draws = self.queryset.filter(date__gte=two_years_ago)
+        """Get CRS score trends by category"""
+        category_id = request.query_params.get('category')
+        days = int(request.query_params.get('days', 180))  # Default 6 months
         
-        # Group by month
-        monthly_data = {}
-        for draw in draws:
-            month_key = f"{draw.date.year}-{draw.date.month:02d}"
-            if month_key not in monthly_data:
-                monthly_data[month_key] = {
-                    'month': month_key,
-                    'draws': [],
-                    'avg_crs': 0,
-                    'total_invitations': 0,
-                    'categories': set()
-                }
-            
-            monthly_data[month_key]['draws'].append(draw)
-            monthly_data[month_key]['total_invitations'] += draw.invitations_issued
-            monthly_data[month_key]['categories'].add(draw.category.name)
-        
-        # Calculate averages
-        for month_data in monthly_data.values():
-            draws_in_month = month_data['draws']
-            month_data['avg_crs'] = sum(d.lowest_crs_score for d in draws_in_month) / len(draws_in_month)
-            month_data['draw_count'] = len(draws_in_month)
-            month_data['categories'] = list(month_data['categories'])
-            del month_data['draws']  # Remove draws to reduce payload size
-        
-        return Response(sorted(monthly_data.values(), key=lambda x: x['month']))
-
-
-class PredictionModelViewSet(viewsets.ReadOnlyModelViewSet):
-    """ViewSet for Prediction Models"""
-    queryset = PredictionModel.objects.filter(is_active=True).order_by('-created_at')
-    serializer_class = PredictionModelSerializer
-    
-    @action(detail=True, methods=['post'])
-    def train(self, request, pk=None):
-        """Train a specific model"""
-        model_obj = self.get_object()
-        
-        try:
-            # Get training data
-            draws = ExpressEntryDraw.objects.all().order_by('date')
-            if not draws.exists():
-                return Response(
-                    {'error': 'No training data available'}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Convert to DataFrame
-            df = pd.DataFrame([{
-                'date': draw.date,
-                'category': draw.category.name,
-                'lowest_crs_score': draw.lowest_crs_score,
-                'invitations_issued': draw.invitations_issued,
-                'days_since_last_draw': draw.days_since_last_draw or 14,
-                'is_weekend': draw.is_weekend,
-                'is_holiday': draw.is_holiday,
-                'month': draw.month,
-                'quarter': draw.quarter
-            } for draw in draws])
-            
-            # Initialize model based on type
-            start_time = timezone.now()
-            
-            if model_obj.model_type == 'ARIMA':
-                predictor = ARIMAPredictor()
-            elif model_obj.model_type == 'RF':
-                predictor = RandomForestPredictor()
-            elif model_obj.model_type == 'XGB':
-                predictor = XGBoostPredictor()
-            elif model_obj.model_type == 'LR':
-                predictor = LinearRegressionPredictor()
-            else:
-                return Response(
-                    {'error': f'Unknown model type: {model_obj.model_type}'}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Train model
-            metrics = predictor.train(df)
-            training_time = (timezone.now() - start_time).total_seconds()
-            
-            # Update model object with results
-            model_obj.mae_score = metrics.get('mae')
-            model_obj.mse_score = metrics.get('mse')
-            model_obj.r2_score = metrics.get('r2')
-            model_obj.feature_importance = getattr(predictor, 'feature_importance', {})
-            model_obj.trained_on = timezone.now()
-            model_obj.save()
-            
-            result = ModelTrainingResultSerializer({
-                'model_name': model_obj.name,
-                'model_type': model_obj.model_type,
-                'training_metrics': metrics,
-                'feature_importance': model_obj.feature_importance,
-                'training_time': training_time,
-                'success': True
-            })
-            
-            return Response(result.data)
-            
-        except Exception as e:
-            result = ModelTrainingResultSerializer({
-                'model_name': model_obj.name,
-                'model_type': model_obj.model_type,
-                'training_metrics': {},
-                'feature_importance': {},
-                'training_time': 0,
-                'success': False,
-                'error_message': str(e)
-            })
-            
-            return Response(result.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-class DrawPredictionViewSet(viewsets.ReadOnlyModelViewSet):
-    """ViewSet for Draw Predictions"""
-    queryset = DrawPrediction.objects.filter(is_published=True).order_by('predicted_date')
-    serializer_class = DrawPredictionSerializer
-    filterset_fields = ['category', 'model']
-    
-    @action(detail=False, methods=['get'])
-    def upcoming(self, request):
-        """Get upcoming predictions"""
-        today = date.today()
-        upcoming = self.queryset.filter(predicted_date__gte=today)
-        serializer = self.get_serializer(upcoming, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=False, methods=['get'])
-    def by_category(self, request):
-        """Get predictions grouped by category"""
-        today = date.today()
-        end_of_year = date(today.year, 12, 31)
-        
-        predictions_by_category = {}
-        
-        for category in DrawCategory.objects.filter(is_active=True):
-            predictions = self.queryset.filter(
-                category=category,
-                predicted_date__gte=today,
-                predicted_date__lte=end_of_year
-            )
-            
-            if predictions.exists():
-                predictions_by_category[category.name] = {
-                    'category': DrawCategorySerializer(category).data,
-                    'predictions': self.get_serializer(predictions, many=True).data
-                }
-        
-        return Response(predictions_by_category)
-
-
-class PredictionAPIView(APIView):
-    """Main prediction API endpoint"""
-    
-    def get(self, request, category_id=None):
-        """Generate predictions for a specific category or all categories"""
+        start_date = timezone.now().date() - timedelta(days=days)
+        queryset = self.get_queryset().filter(date__gte=start_date)
         
         if category_id:
-            try:
-                category = DrawCategory.objects.get(id=category_id, is_active=True)
-                categories = [category]
-            except DrawCategory.DoesNotExist:
-                return Response(
-                    {'error': 'Category not found'}, 
-                    status=status.HTTP_404_NOT_FOUND
-                )
-        else:
-            categories = DrawCategory.objects.filter(is_active=True)
+            queryset = queryset.filter(category_id=category_id)
         
-        results = []
+        # Group by month and calculate averages
+        trends = queryset.extra(
+            select={'month': "EXTRACT(month FROM date)", 'year': "EXTRACT(year FROM date)"}
+        ).values('month', 'year', 'category__name').annotate(
+            avg_crs=Avg('lowest_crs_score'),
+            total_invitations=Sum('invitations_issued'),
+            draw_count=Count('id')
+        ).order_by('year', 'month')
         
-        for category in categories:
-            try:
-                # Get historical data for this category
-                draws = ExpressEntryDraw.objects.filter(category=category).order_by('date')
+        return Response(list(trends))
+
+
+class PredictionModelViewSet(viewsets.ModelViewSet):
+    """API for managing prediction models"""
+    queryset = PredictionModel.objects.filter(is_active=True)
+    serializer_class = PredictionModelSerializer
+
+
+class DrawPredictionViewSet(viewsets.ModelViewSet):
+    """API for managing predictions"""
+    queryset = DrawPrediction.objects.all()
+    serializer_class = DrawPredictionSerializer
+
+
+# =================== CUSTOM API VIEWS ===================
+
+class PredictionAPIView(APIView):
+    """Fast prediction API using pre-computed predictions"""
+    
+    def get(self, request, category_id=None):
+        """Get pre-computed predictions for categories"""
+        
+        try:
+            # Get cached predictions first
+            cache_key = f"predictions_api_{category_id or 'all'}"
+            cached_data = PredictionCache.get_cached(cache_key)
+            
+            if cached_data:
+                return Response(cached_data)
+            
+            # Get categories
+            if category_id:
+                categories = DrawCategory.objects.filter(id=category_id, is_active=True)
+            else:
+                categories = DrawCategory.objects.filter(is_active=True)
+            
+            results = []
+            
+            for category in categories:
+                # Get pre-computed predictions
+                predictions = PreComputedPrediction.objects.filter(
+                    category=category,
+                    is_active=True
+                ).order_by('prediction_rank')[:5]  # Next 5 draws
                 
-                if draws.count() < 10:  # Need minimum data for predictions
+                if not predictions.exists():
                     continue
                 
-                # Convert to DataFrame
-                df = pd.DataFrame([{
-                    'date': draw.date,
-                    'category': draw.category.name,
-                    'lowest_crs_score': draw.lowest_crs_score,
-                    'invitations_issued': draw.invitations_issued,
-                    'days_since_last_draw': draw.days_since_last_draw or 14,
-                    'is_weekend': draw.is_weekend,
-                    'is_holiday': draw.is_holiday,
-                    'month': draw.month,
-                    'quarter': draw.quarter
-                } for draw in draws])
+                # Get recent draws for context
+                recent_draws = ExpressEntryDraw.objects.filter(
+                    category=category
+                ).order_by('-date')[:3]
                 
-                # Create ensemble of models
-                ensemble = EnsemblePredictor()
-                
-                # Add models to ensemble
-                try:
-                    ensemble.add_model(ARIMAPredictor())
-                except:
-                    pass
-                
-                try:
-                    ensemble.add_model(RandomForestPredictor())
-                except:
-                    pass
-                
-                try:
-                    ensemble.add_model(XGBoostPredictor())
-                except:
-                    pass
-                
-                try:
-                    ensemble.add_model(LinearRegressionPredictor())
-                except:
-                    pass
-                
-                if not ensemble.models:
-                    continue
-                
-                # Train ensemble
-                ensemble.train(df)
-                
-                # Generate predictions for next few draws
-                predictions = []
-                last_draw_date = draws.last().date
-                
-                # Predict next 5 draws until end of year
-                current_date = last_draw_date
-                year_end = date(current_date.year, 12, 31)
-                
-                for i in range(5):
-                    if current_date >= year_end:
-                        break
-                    
-                    # Estimate next draw date (typically 2 weeks apart)
-                    next_date = current_date + timedelta(days=14)
-                    
-                    # Predict CRS score
-                    try:
-                        predicted_score = ensemble.predict(steps=1)[0]
-                        predicted_score = max(300, min(900, int(predicted_score)))  # Reasonable bounds
-                    except:
-                        predicted_score = 450  # Fallback
-                    
-                    predictions.append({
-                        'predicted_date': next_date,
-                        'predicted_crs_score': predicted_score,
-                        'confidence': 75,  # Default confidence
-                        'model_used': 'Ensemble'
-                    })
-                    
-                    current_date = next_date
-                
-                result_data = {
-                    'category': DrawCategorySerializer(category).data,
-                    'predictions': predictions,
-                    'ensemble_prediction': {
-                        'next_draw_date': predictions[0]['predicted_date'] if predictions else None,
-                        'next_crs_score': predictions[0]['predicted_crs_score'] if predictions else None,
-                        'confidence': predictions[0]['confidence'] if predictions else None
-                    },
-                    'model_performance': {
-                        'r2_score': ensemble.metrics.get('r2', 0),
-                        'mae': ensemble.metrics.get('mae', 0)
-                    },
-                    'confidence_metrics': {
-                        'overall_confidence': 75,
-                        'data_quality': 'Good' if draws.count() > 50 else 'Limited'
-                    },
-                    'prediction_timeline': predictions
+                category_data = {
+                    'category_id': category.id,
+                    'category_name': category.name,
+                    'category_description': category.description,
+                    'last_updated': predictions.first().updated_at if predictions else None,
+                    'recent_draws': [{
+                        'date': draw.date,
+                        'crs_score': draw.lowest_crs_score,
+                        'invitations': draw.invitations_issued
+                    } for draw in recent_draws],
+                    'predictions': [{
+                        'rank': pred.prediction_rank,
+                        'predicted_date': pred.predicted_date,
+                        'predicted_crs_score': pred.predicted_crs_score,
+                        'predicted_invitations': pred.predicted_invitations,
+                        'confidence_score': round(pred.confidence_score * 100, 1),
+                        'model_used': pred.model_used,
+                        'uncertainty_range': pred.uncertainty_range
+                    } for pred in predictions]
                 }
                 
-                results.append(PredictionResultSerializer(result_data).data)
-                
-            except Exception as e:
-                print(f"Error predicting for category {category.name}: {e}")
-                continue
-        
-        return Response(results)
+                results.append(category_data)
+            
+            response_data = {
+                'success': True,
+                'total_categories': len(results),
+                'generated_at': timezone.now(),
+                'data': results
+            }
+            
+            # Cache for 1 hour
+            PredictionCache.set_cache(cache_key, response_data, hours=1)
+            
+            return Response(response_data)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e),
+                'data': []
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class DashboardStatsAPIView(APIView):
-    """API endpoint for dashboard statistics"""
+    """Optimized dashboard statistics API"""
     
     def get(self, request):
-        """Get comprehensive dashboard statistics"""
+        """Get dashboard statistics using cached data"""
         
-        # Basic stats
-        total_draws = ExpressEntryDraw.objects.count()
-        categories_count = DrawCategory.objects.filter(is_active=True).count()
-        
-        # Date range
-        earliest_draw = ExpressEntryDraw.objects.order_by('date').first()
-        latest_draw = ExpressEntryDraw.objects.order_by('-date').first()
-        
-        date_range = {
-            'start': earliest_draw.date if earliest_draw else None,
-            'end': latest_draw.date if latest_draw else None
-        }
-        
-        # Averages
-        avg_stats = ExpressEntryDraw.objects.aggregate(
-            avg_crs=Avg('lowest_crs_score'),
-            avg_invitations=Avg('invitations_issued')
-        )
-        
-        # Category breakdown
-        category_breakdown = []
-        for category in DrawCategory.objects.filter(is_active=True):
-            draws = ExpressEntryDraw.objects.filter(category=category)
-            if draws.exists():
-                category_breakdown.append({
-                    'category': category.name,
-                    'count': draws.count(),
-                    'avg_crs': draws.aggregate(avg=Avg('lowest_crs_score'))['avg'],
-                    'latest_draw': draws.order_by('-date').first().date
-                })
-        
-        # Monthly trends (last 12 months)
-        twelve_months_ago = timezone.now().date() - timedelta(days=365)
-        recent_draws = ExpressEntryDraw.objects.filter(date__gte=twelve_months_ago)
-        
-        monthly_trends = []
-        current_date = twelve_months_ago
-        end_date = timezone.now().date()
-        
-        while current_date <= end_date:
-            month_draws = recent_draws.filter(
-                date__year=current_date.year,
-                date__month=current_date.month
+        try:
+            # Try to get cached stats first
+            cached_stats = PredictionCache.get_cached('dashboard_stats')
+            
+            if cached_stats:
+                return Response(cached_stats)
+            
+            # Calculate fresh stats
+            total_draws = ExpressEntryDraw.objects.count()
+            total_categories = DrawCategory.objects.filter(is_active=True).count()
+            total_predictions = PreComputedPrediction.objects.filter(is_active=True).count()
+            
+            # Recent draws
+            recent_draws = ExpressEntryDraw.objects.select_related('category').order_by('-date')[:10]
+            
+            # Next predicted draws
+            next_predictions = PreComputedPrediction.objects.filter(
+                is_active=True,
+                prediction_rank=1  # Only next draw for each category
+            ).select_related('category').order_by('predicted_date')[:10]
+            
+            # CRS score statistics
+            crs_stats = ExpressEntryDraw.objects.aggregate(
+                avg_crs=Avg('lowest_crs_score'),
+                min_crs=Min('lowest_crs_score'),
+                max_crs=Max('lowest_crs_score')
             )
             
-            if month_draws.exists():
-                monthly_trends.append({
-                    'month': f"{current_date.year}-{current_date.month:02d}",
-                    'draw_count': month_draws.count(),
-                    'avg_crs': month_draws.aggregate(avg=Avg('lowest_crs_score'))['avg'],
-                    'total_invitations': sum(d.invitations_issued for d in month_draws)
-                })
+            stats = {
+                'totals': {
+                    'draws': total_draws,
+                    'categories': total_categories,
+                    'predictions': total_predictions
+                },
+                'crs_statistics': {
+                    'average': round(crs_stats['avg_crs'] or 0, 1),
+                    'minimum': crs_stats['min_crs'] or 0,
+                    'maximum': crs_stats['max_crs'] or 0
+                },
+                'recent_draws': [{
+                    'id': draw.id,
+                    'date': draw.date,
+                    'category': draw.category.name,
+                    'crs_score': draw.lowest_crs_score,
+                    'invitations': draw.invitations_issued
+                } for draw in recent_draws],
+                'next_predictions': [{
+                    'category': pred.category.name,
+                    'predicted_date': pred.predicted_date,
+                    'predicted_crs_score': pred.predicted_crs_score,
+                    'confidence_score': round(pred.confidence_score * 100, 1)
+                } for pred in next_predictions],
+                'last_updated': timezone.now()
+            }
             
-            # Move to next month
-            if current_date.month == 12:
-                current_date = current_date.replace(year=current_date.year + 1, month=1)
-            else:
-                current_date = current_date.replace(month=current_date.month + 1)
-        
-        # Recent draws
-        recent_draws_qs = ExpressEntryDraw.objects.order_by('-date')[:10]
-        recent_draws_data = ExpressEntryDrawSerializer(recent_draws_qs, many=True).data
-        
-        stats_data = {
-            'total_draws': total_draws,
-            'categories_count': categories_count,
-            'date_range': date_range,
-            'avg_crs_score': avg_stats['avg_crs'],
-            'avg_invitations': avg_stats['avg_invitations'],
-            'category_breakdown': category_breakdown,
-            'monthly_trends': monthly_trends,
-            'recent_draws': recent_draws_data
-        }
-        
-        serializer = DrawStatsSerializer(stats_data)
-        return Response(serializer.data)
+            # Cache for 30 minutes
+            PredictionCache.set_cache('dashboard_stats', stats, hours=0.5)
+            
+            return Response(stats)
+            
+        except Exception as e:
+            return Response({
+                'error': str(e),
+                'totals': {'draws': 0, 'categories': 0, 'predictions': 0}
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-def home_view(request):
-    """Home page view"""
+# =================== WEB VIEWS ===================
+
+def home(request):
+    """Home page with overview"""
     return render(request, 'predictor/home.html')
 
 
-def dashboard_view(request):
-    """Dashboard view"""
-    return render(request, 'predictor/dashboard.html')
+def predictions_page(request):
+    """Predictions page"""
+    return render(request, 'predictor/predictions.html')
 
 
-def analytics_view(request):
-    """Analytics view"""
+def analytics_page(request):
+    """Analytics page"""
     return render(request, 'predictor/analytics.html')
 
 
-def predictions_view(request):
-    """Predictions view"""
-    return render(request, 'predictor/predictions.html')
+def category_detail(request, category_id):
+    """Category detail page"""
+    category = get_object_or_404(DrawCategory, id=category_id, is_active=True)
+    
+    # Get recent draws
+    recent_draws = ExpressEntryDraw.objects.filter(
+        category=category
+    ).order_by('-date')[:20]
+    
+    # Get predictions
+    predictions = PreComputedPrediction.objects.filter(
+        category=category,
+        is_active=True
+    ).order_by('prediction_rank')[:10]
+    
+    context = {
+        'category': category,
+        'recent_draws': recent_draws,
+        'predictions': predictions,
+        'total_draws': recent_draws.count()
+    }
+    
+    return render(request, 'predictor/category_detail.html', context)
