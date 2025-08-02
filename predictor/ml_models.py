@@ -1357,6 +1357,9 @@ class InvitationPredictor(BasePredictor):
             features['target_pressure']
         )
         
+        # Handle NaN in interaction terms
+        features['economic_policy_interaction'] = features['economic_policy_interaction'].fillna(1.0)
+        
         # Political-Economic Interaction
         if 'political_is_liberal_gov' in features.columns and 'political_economic_priority' in features.columns:
             features['political_economic_interaction'] = (
@@ -1364,6 +1367,21 @@ class InvitationPredictor(BasePredictor):
                 features['political_economic_priority'] / 10.0 *
                 features['economic_policy_interaction']
             )
+            # Handle NaN in political interaction
+            features['political_economic_interaction'] = features['political_economic_interaction'].fillna(0.5)
+        
+        # Final cleanup: Replace any remaining NaN values with sensible defaults
+        numeric_columns = features.select_dtypes(include=[np.number]).columns
+        for col in numeric_columns:
+            if features[col].isna().any():
+                if 'rate' in col.lower() or 'factor' in col.lower():
+                    features[col] = features[col].fillna(1.0)  # Neutral multiplier
+                elif 'count' in col.lower() or 'total' in col.lower():
+                    features[col] = features[col].fillna(0)  # Zero count
+                elif 'pressure' in col.lower():
+                    features[col] = features[col].fillna(0.5)  # Medium pressure
+                else:
+                    features[col] = features[col].fillna(features[col].median())  # Median fallback
         
         return features
     
@@ -1374,11 +1392,31 @@ class InvitationPredictor(BasePredictor):
         # Calculate category baselines for reference
         for category in features['category'].unique():
             cat_data = features[features['category'] == category]
+            
+            # Calculate statistics with NaN handling
+            mean_inv = cat_data[target_col].mean()
+            std_inv = cat_data[target_col].std()
+            median_inv = cat_data[target_col].median()
+            q25 = cat_data[target_col].quantile(0.25)
+            q75 = cat_data[target_col].quantile(0.75)
+            
+            # Handle NaN values in statistics
+            if pd.isna(mean_inv):
+                mean_inv = 2000  # Default mean
+            if pd.isna(std_inv) or std_inv == 0:
+                std_inv = 800   # Default std
+            if pd.isna(median_inv):
+                median_inv = mean_inv
+            if pd.isna(q25):
+                q25 = mean_inv * 0.7
+            if pd.isna(q75):
+                q75 = mean_inv * 1.3
+            
             self.category_baselines[category] = {
-                'mean_invitations': cat_data[target_col].mean(),
-                'std_invitations': cat_data[target_col].std(),
-                'median_invitations': cat_data[target_col].median(),
-                'typical_range': (cat_data[target_col].quantile(0.25), cat_data[target_col].quantile(0.75))
+                'mean_invitations': float(mean_inv),
+                'std_invitations': float(std_inv),
+                'median_invitations': float(median_inv),
+                'typical_range': (float(q25), float(q75))
             }
         
         # Feature selection for invitation prediction
@@ -1469,7 +1507,25 @@ class InvitationPredictor(BasePredictor):
                 base_prediction = self.model.predict(X)
         else:
             # Fallback prediction
-            return [3000]  # Conservative estimate
+            return 3000  # Conservative estimate
+        
+        # Extract prediction value and handle NaN
+        if hasattr(base_prediction, '__len__') and len(base_prediction) > 0:
+            prediction_value = base_prediction[0]
+        else:
+            prediction_value = base_prediction
+        
+        # Check for NaN and use fallback if needed
+        if pd.isna(prediction_value) or np.isnan(prediction_value):
+            print(f"⚠️ Model returned NaN, using category fallback for {category}")
+            if category and 'CEC' in str(category) or 'Canadian Experience' in str(category):
+                prediction_value = 3000
+            elif category and ('PNP' in str(category) or 'Provincial' in str(category)):
+                prediction_value = 800
+            elif category and ('Education' in str(category) or 'Healthcare' in str(category)):
+                prediction_value = 500
+            else:
+                prediction_value = 2000  # General fallback
         
         # Apply category-specific adjustments
         if category and category in self.category_baselines:
@@ -1477,17 +1533,21 @@ class InvitationPredictor(BasePredictor):
             
             # Ensure prediction is within reasonable bounds for category
             predicted_value = np.clip(
-                base_prediction[0] if hasattr(base_prediction, '__len__') else base_prediction,
+                prediction_value,
                 baseline['typical_range'][0] * 0.5,  # 50% below typical minimum
                 baseline['typical_range'][1] * 1.5   # 50% above typical maximum
             )
         else:
             # General bounds
             predicted_value = np.clip(
-                base_prediction[0] if hasattr(base_prediction, '__len__') else base_prediction,
+                prediction_value,
                 500,   # Minimum reasonable invitation count
                 7000   # Maximum reasonable invitation count
             )
+        
+        # Final NaN check before integer conversion
+        if pd.isna(predicted_value) or np.isnan(predicted_value):
+            predicted_value = 2000  # Ultimate fallback
         
         return int(predicted_value)
     
@@ -1498,18 +1558,36 @@ class InvitationPredictor(BasePredictor):
         # Estimate uncertainty based on historical volatility
         if category and category in self.category_baselines:
             std_dev = self.category_baselines[category]['std_invitations']
+            # Handle NaN in standard deviation
+            if pd.isna(std_dev) or np.isnan(std_dev):
+                std_dev = 800  # Default uncertainty
         else:
             std_dev = 800  # Default uncertainty
         
+        # Ensure std_dev is not NaN
+        if pd.isna(std_dev) or np.isnan(std_dev):
+            std_dev = 800
+        
         # 95% confidence interval
         margin_of_error = 1.96 * std_dev
+        
+        # Ensure all calculations are valid numbers
+        if pd.isna(margin_of_error) or np.isnan(margin_of_error):
+            margin_of_error = 1568  # 1.96 * 800
+        
         lower_bound = max(500, int(base_prediction - margin_of_error))
         upper_bound = min(7000, int(base_prediction + margin_of_error))
         
+        # Final validation of all values
+        if pd.isna(lower_bound) or np.isnan(lower_bound):
+            lower_bound = 500
+        if pd.isna(upper_bound) or np.isnan(upper_bound):
+            upper_bound = 7000
+        
         return {
-            'prediction': base_prediction,
-            'lower_bound': lower_bound,
-            'upper_bound': upper_bound,
+            'prediction': int(base_prediction),
+            'lower_bound': int(lower_bound),
+            'upper_bound': int(upper_bound),
             'confidence': 95,
-            'std_dev': std_dev
+            'std_dev': float(std_dev)
         } 
