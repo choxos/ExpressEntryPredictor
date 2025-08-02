@@ -45,16 +45,47 @@ class Command(BaseCommand):
             f'🚀 Starting prediction computation for {num_predictions} future draws'
         ))
         
-        # Get categories to process
+        # Get all categories with recent activity (draws within last 2 years)
+        all_categories = DrawCategory.objects.filter(is_active=True)
+        active_categories = []
+        
+        for category in all_categories:
+            if category.has_recent_activity(24):  # 24 months = 2 years
+                active_categories.append(category)
+            else:
+                days_since = category.days_since_last_draw
+                if days_since:
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f'⚠️  Skipping {category.name}: Last draw was {category.latest_draw_date} '
+                            f'({days_since} days ago) - Program appears discontinued'
+                        )
+                    )
+                else:
+                    self.stdout.write(
+                        self.style.WARNING(f'⚠️  Skipping {category.name}: No draws found')
+                    )
+        
+        self.stdout.write(
+            self.style.SUCCESS(
+                f'📊 Found {len(active_categories)} active categories (with draws in last 2 years)'
+            )
+        )
+        
+        if not active_categories:
+            self.stdout.write(self.style.ERROR('❌ No active categories found!'))
+            return
+        
+        # Get categories to process (filter active categories if specified)
         if category_filter:
-            categories = DrawCategory.objects.filter(name__icontains=category_filter, is_active=True)
-            if not categories.exists():
-                self.stdout.write(self.style.ERROR(f'❌ Category "{category_filter}" not found'))
+            categories = [cat for cat in active_categories if category_filter.lower() in cat.name.lower()]
+            if not categories:
+                self.stdout.write(self.style.ERROR(f'❌ Active category "{category_filter}" not found'))
                 return
         else:
-            categories = DrawCategory.objects.filter(is_active=True)
+            categories = active_categories
         
-        total_categories = categories.count()
+        total_categories = len(categories)
         self.stdout.write(f'📊 Processing {total_categories} categories...')
         
         successful_predictions = 0

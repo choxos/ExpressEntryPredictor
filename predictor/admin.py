@@ -8,10 +8,10 @@ from .models import (
 
 @admin.register(DrawCategory)
 class DrawCategoryAdmin(admin.ModelAdmin):
-    list_display = ('name', 'code', 'is_active', 'draw_count', 'avg_crs_score')
+    list_display = ('name', 'code', 'is_active', 'latest_draw_date', 'days_since_last_draw', 'draw_count', 'avg_crs_score')
     list_filter = ('is_active',)
-    search_fields = ('name', 'code')
-    readonly_fields = ('draw_count', 'avg_crs_score')
+    search_fields = ('name', 'code', 'description')
+    readonly_fields = ('latest_draw_date', 'days_since_last_draw', 'draw_count', 'avg_crs_score')
     
     def draw_count(self, obj):
         return obj.expressentrydraw_set.count()

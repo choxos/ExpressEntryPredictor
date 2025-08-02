@@ -158,11 +158,15 @@ class PredictionAPIView(APIView):
             if cached_data:
                 return Response(cached_data)
             
-            # Get categories
+            # Get categories with recent activity (draws within last 2 years)
             if category_id:
                 categories = DrawCategory.objects.filter(id=category_id, is_active=True)
+                # Filter for recent activity
+                categories = [cat for cat in categories if cat.has_recent_activity(24)]
             else:
-                categories = DrawCategory.objects.filter(is_active=True)
+                all_categories = DrawCategory.objects.filter(is_active=True)
+                # Filter for recent activity (draws within last 2 years)
+                categories = [cat for cat in all_categories if cat.has_recent_activity(24)]
             
             results = []
             
@@ -239,7 +243,10 @@ class DashboardStatsAPIView(APIView):
             
             # Calculate fresh stats
             total_draws = ExpressEntryDraw.objects.count()
-            total_categories = DrawCategory.objects.filter(is_active=True).count()
+            # Only count categories with recent activity (draws within last 2 years)
+            all_active_categories = DrawCategory.objects.filter(is_active=True)
+            active_with_recent_draws = [cat for cat in all_active_categories if cat.has_recent_activity(24)]
+            total_categories = len(active_with_recent_draws)
             total_predictions = PreComputedPrediction.objects.filter(is_active=True).count()
             
             # Recent draws

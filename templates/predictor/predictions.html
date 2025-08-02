@@ -200,9 +200,9 @@ function displayPredictions(predictions) {
     }
     
     predictions.forEach(prediction => {
-        const categoryColor = getCategoryColor(prediction.category.name);
-        const nextPrediction = prediction.ensemble_prediction;
-        const confidence = prediction.confidence_metrics.overall_confidence;
+        const categoryColor = getCategoryColor(prediction.category_name);
+        const nextPrediction = prediction.predictions[0]; // Get first prediction
+        const confidence = nextPrediction.confidence_score;
         
         const col = document.createElement('div');
         col.className = 'col-lg-6 mb-4';
@@ -211,7 +211,7 @@ function displayPredictions(predictions) {
             <div class="card h-100">
                 <div class="card-header" style="background: ${categoryColor}; color: white;">
                     <div class="d-flex justify-content-between align-items-center">
-                        <h6 class="mb-0">${prediction.category.name}</h6>
+                        <h6 class="mb-0">${prediction.category_name}</h6>
                         <span class="badge bg-light text-dark">
                             ${confidence}% Confidence
                         </span>
@@ -222,14 +222,14 @@ function displayPredictions(predictions) {
                         <div class="col-6">
                             <div class="text-center mb-3">
                                 <i class="fas fa-calendar-alt fa-2x text-primary mb-2"></i>
-                                <h5 class="mb-1">${formatDate(nextPrediction.next_draw_date)}</h5>
+                                <h5 class="mb-1">${formatDate(nextPrediction.predicted_date)}</h5>
                                 <small class="text-muted">Next Draw Date</small>
                             </div>
                         </div>
                         <div class="col-6">
                             <div class="text-center mb-3">
                                 <i class="fas fa-trophy fa-2x text-warning mb-2"></i>
-                                <h5 class="mb-1">${nextPrediction.next_crs_score}</h5>
+                                <h5 class="mb-1">${formatCRSWithCI(nextPrediction.predicted_crs_score, nextPrediction.uncertainty_range)}</h5>
                                 <small class="text-muted">Predicted CRS</small>
                             </div>
                         </div>
@@ -238,7 +238,7 @@ function displayPredictions(predictions) {
                     <div class="mb-3">
                         <h6>Upcoming Predictions:</h6>
                         <div class="prediction-timeline">
-                            ${prediction.prediction_timeline.slice(0, 4).map(pred => `
+                            ${prediction.predictions.slice(0, 4).map(pred => `
                                 <div class="d-flex justify-content-between py-1">
                                     <span>${formatDate(pred.predicted_date)}</span>
                                     <strong>CRS: ${formatCRSWithCI(pred.predicted_crs_score, pred.uncertainty_range)}</strong>
@@ -249,12 +249,12 @@ function displayPredictions(predictions) {
                     
                     <div class="row text-center">
                         <div class="col-6">
-                            <small class="text-muted">Model R²</small>
-                            <div><strong>${(prediction.model_performance.r2_score || 0).toFixed(3)}</strong></div>
+                            <small class="text-muted">Model Used</small>
+                            <div><strong>${nextPrediction.model_used}</strong></div>
                         </div>
                         <div class="col-6">
-                            <small class="text-muted">Data Quality</small>
-                            <div><strong>${prediction.confidence_metrics.data_quality}</strong></div>
+                            <small class="text-muted">Invitations</small>
+                            <div><strong>${nextPrediction.predicted_invitations.toLocaleString()}</strong></div>
                         </div>
                     </div>
                 </div>

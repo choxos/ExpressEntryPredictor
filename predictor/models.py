@@ -1,13 +1,14 @@
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import json
+import pytz
 
 
 class DrawCategory(models.Model):
-    """Categories for Express Entry draws"""
+    """Express Entry draw categories"""
     name = models.CharField(max_length=100, unique=True)
-    code = models.CharField(max_length=20, unique=True)
+    code = models.CharField(max_length=20, unique=True, default='')
     description = models.TextField(blank=True, null=True)
     is_active = models.BooleanField(default=True)
     
@@ -18,6 +19,36 @@ class DrawCategory(models.Model):
     
     def __str__(self):
         return self.name
+    
+    def has_recent_activity(self, months=24):
+        """Check if category has draws within the specified number of months (default: 24 months)"""
+        from django.utils import timezone
+        
+        # Get current date in Eastern Time (Ottawa)
+        eastern = pytz.timezone('America/Toronto')
+        now_eastern = timezone.now().astimezone(eastern)
+        cutoff_date = now_eastern.date() - timedelta(days=months * 30)
+        
+        # Check if there are any draws after the cutoff date
+        latest_draw = self.expressentrydraw_set.order_by('-date').first()
+        return latest_draw and latest_draw.date >= cutoff_date
+    
+    @property
+    def latest_draw_date(self):
+        """Get the date of the most recent draw for this category"""
+        latest_draw = self.expressentrydraw_set.order_by('-date').first()
+        return latest_draw.date if latest_draw else None
+    
+    @property
+    def days_since_last_draw(self):
+        """Get the number of days since the last draw"""
+        if not self.latest_draw_date:
+            return None
+        
+        from django.utils import timezone
+        eastern = pytz.timezone('America/Toronto')
+        now_eastern = timezone.now().astimezone(eastern)
+        return (now_eastern.date() - self.latest_draw_date).days
 
 
 class ExpressEntryDraw(models.Model):
