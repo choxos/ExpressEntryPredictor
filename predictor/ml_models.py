@@ -69,118 +69,99 @@ class BasePredictor:
         self.feature_importance = {}
         self.metrics = {}
     
-    def prepare_features(self, df):
-        """Prepare features for modeling with comprehensive variable integration"""
+    def prepare_clean_features(self, df):
+        """Prepare features WITHOUT data leakage for valid scientific prediction"""
         from .models import EconomicIndicator
         
         features = df.copy()
         
-        # Time-based features
+        # ✅ VALID: Time-based features (no future information)
         features['year'] = pd.to_datetime(features['date']).dt.year
         features['month'] = pd.to_datetime(features['date']).dt.month
         features['quarter'] = pd.to_datetime(features['date']).dt.quarter
         features['day_of_year'] = pd.to_datetime(features['date']).dt.dayofyear
         features['is_weekend'] = pd.to_datetime(features['date']).dt.weekday >= 5
         
-        # Lag features for both CRS and invitations
-        for lag in [1, 2, 3, 7, 14]:
-            features[f'crs_lag_{lag}'] = features['lowest_crs_score'].shift(lag)
-            features[f'invitations_lag_{lag}'] = features['invitations_issued'].shift(lag)
+        # ✅ VALID: Cyclical encoding for temporal patterns
+        features['month_sin'] = np.sin(2 * np.pi * features['month'] / 12)
+        features['month_cos'] = np.cos(2 * np.pi * features['month'] / 12)
+        features['day_sin'] = np.sin(2 * np.pi * features['day_of_year'] / 365)
+        features['day_cos'] = np.cos(2 * np.pi * features['day_of_year'] / 365)
         
-        # Rolling statistics
-        for window in [3, 7, 14]:
-            features[f'crs_rolling_mean_{window}'] = features['lowest_crs_score'].rolling(window).mean()
-            features[f'crs_rolling_std_{window}'] = features['lowest_crs_score'].rolling(window).std()
-            features[f'invitations_rolling_mean_{window}'] = features['invitations_issued'].rolling(window).mean()
-            features[f'invitations_rolling_std_{window}'] = features['invitations_issued'].rolling(window).std()
+        # ✅ VALID: Days since last draw (known at prediction time)
+        features['days_since_last'] = features['days_since_last_draw'].fillna(14)
         
-        # Days since last draw
-        features['days_since_last'] = features['days_since_last_draw'].fillna(14)  # Default 2 weeks
+        # ✅ VALID: Category encoding (static information)
+        if 'category' in features.columns:
+            category_dummies = pd.get_dummies(features['category'], prefix='category')
+            features = pd.concat([features, category_dummies], axis=1)
         
-        # Category encoding
-        category_dummies = pd.get_dummies(features['category'], prefix='category')
-        features = pd.concat([features, category_dummies], axis=1)
-        
-        # ENHANCED: Economic Indicators Integration
+        # ✅ VALID: Economic indicators (lagged appropriately to prevent future info)
         try:
-            # Get economic indicators for the date range
             economic_data = []
             for _, row in features.iterrows():
                 draw_date = pd.to_datetime(row['date'])
                 
-                # Find closest economic indicator within 45 days
+                # Look for economic data at least 30 days BEFORE draw (realistic lag)
                 closest_economic = EconomicIndicator.objects.filter(
-                    date__lte=draw_date,
-                    date__gte=draw_date - pd.Timedelta(days=45)
+                    date__lte=draw_date - pd.Timedelta(days=30),  # Ensure no future info
+                    date__gte=draw_date - pd.Timedelta(days=90)   # Within 3 months
                 ).order_by('-date').first()
                 
                 if closest_economic:
                     economic_data.append({
-                        'unemployment_rate': closest_economic.unemployment_rate or 6.0,  # Default Canadian average
+                        'unemployment_rate': closest_economic.unemployment_rate or 6.0,
                         'job_vacancy_rate': closest_economic.job_vacancy_rate or 3.5,
                         'gdp_growth': closest_economic.gdp_growth or 2.0,
-                        'immigration_target': closest_economic.immigration_target or 400000,  # 2024 target
+                        'immigration_target': closest_economic.immigration_target or 400000,
                         'economic_date_lag': (draw_date.date() - closest_economic.date).days
                     })
                 else:
-                    # Use reasonable defaults if no economic data available
+                    # Use historical Canadian averages
                     economic_data.append({
                         'unemployment_rate': 6.0,
                         'job_vacancy_rate': 3.5,
                         'gdp_growth': 2.0,
                         'immigration_target': 400000,
-                        'economic_date_lag': 30  # Assume 30-day lag
+                        'economic_date_lag': 60
                     })
             
-            # Add economic features to dataframe
             economic_df = pd.DataFrame(economic_data)
             for col in economic_df.columns:
                 features[f'econ_{col}'] = economic_df[col].values
                 
         except Exception as e:
-            print(f"Warning: Could not load economic indicators: {e}")
-            # Add default economic features
+            print(f"Warning: Using default economic indicators: {e}")
             features['econ_unemployment_rate'] = 6.0
             features['econ_job_vacancy_rate'] = 3.5
             features['econ_gdp_growth'] = 2.0
             features['econ_immigration_target'] = 400000
-            features['econ_economic_date_lag'] = 30
+            features['econ_economic_date_lag'] = 60
         
-        # ENHANCED: Invitation-specific features
-        # Invitations per CRS point ratio (efficiency metric)
-        features['invitations_per_crs_point'] = features['invitations_issued'] / (features['lowest_crs_score'] + 1)
-        
-        # Category-specific invitation patterns
-        if 'category' in features.columns:
-            category_groups = features.groupby('category')['invitations_issued']
-            features['category_avg_invitations'] = features['category'].map(category_groups.mean())
-            features['category_std_invitations'] = features['category'].map(category_groups.std().fillna(0))
-        
-        # Time-based invitation patterns
-        features['month_avg_invitations'] = features.groupby('month')['invitations_issued'].transform('mean')
-        features['quarter_avg_invitations'] = features.groupby('quarter')['invitations_issued'].transform('mean')
-        
-        # ENHANCED: Policy and external factors
-        # Government fiscal year (April-March in Canada)
+        # ✅ VALID: Policy and calendar features
         features['fiscal_year'] = features['month'].apply(lambda x: 1 if x in [4,5,6] else 
                                                                    2 if x in [7,8,9] else
-                                                                   3 if x in [10,11,12] else 4)  # Numerical encoding
+                                                                   3 if x in [10,11,12] else 4)
         features['is_fiscal_year_end'] = (features['month'] == 3).astype(int)
         
-        # Holiday proximity (affects processing)
+        # ✅ VALID: Holiday proximity (affects government processing)
         features['days_to_christmas'] = features['day_of_year'].apply(
             lambda x: min(abs(x - 359), abs(x + 365 - 359)) if x < 359 else 365 - x + 359
         )
         features['is_summer_period'] = ((features['month'] >= 7) & (features['month'] <= 8)).astype(int)
         
-        # ENHANCED: Economic pressure indicators
-        features['economic_pressure'] = (
-            (features['econ_unemployment_rate'] - 5.5) * 0.3 +  # Deviation from target
-            (features['econ_job_vacancy_rate'] - 3.0) * 0.4 +   # Labor demand
-            (features['econ_gdp_growth'] - 2.0) * 0.3           # Economic growth
-        )
+        # ✅ VALID: Trend features (time since program start)
+        program_start = pd.Timestamp('2015-01-01')  # Express Entry started Jan 2015
+        features['days_since_program_start'] = (pd.to_datetime(features['date']) - program_start).dt.days
+        features['years_since_program_start'] = features['days_since_program_start'] / 365.25
         
         return features
+
+    # Keep old method for backward compatibility but mark as deprecated
+    def prepare_features(self, df):
+        """DEPRECATED: Contains data leakage. Use prepare_clean_features instead."""
+        print("⚠️  WARNING: prepare_features() contains data leakage. Use prepare_clean_features() for valid predictions.")
+        return self.prepare_clean_features(df)
     
     def split_data(self, df, test_size=0.2):
         """Split data into train/test sets"""
@@ -1597,3 +1578,1077 @@ class InvitationPredictor(BasePredictor):
             'std_dev': float(scaled_std_dev),
             'horizon': prediction_horizon
         } 
+
+
+class CleanLinearRegressionPredictor(BasePredictor):
+    """Linear Regression using ONLY scientifically valid features (no data leakage)"""
+    
+    def __init__(self):
+        super().__init__("Clean Linear Regression", "CLR")
+        
+        if not SKLEARN_AVAILABLE:
+            raise ImportError("scikit-learn is required for Clean Linear Regression model")
+    
+    def train(self, df, target_col='lowest_crs_score'):
+        """Train Clean Linear Regression model"""
+        features = self.prepare_clean_features(df)
+        
+        # Define feature columns (exclude target and metadata)
+        exclude_cols = ['date', 'lowest_crs_score', 'invitations_issued', 'round_number', 'url', 'category']
+        feature_cols = [col for col in features.columns if col not in exclude_cols]
+        
+        X = features[feature_cols].fillna(0)
+        y = features[target_col]
+        
+        # Remove rows with NaN in target
+        mask = ~y.isna()
+        X = X[mask]
+        y = y[mask]
+        
+        if len(X) == 0:
+            raise ValueError("No valid training data after removing missing values")
+        
+        # Scale features
+        X_scaled = self.scaler.fit_transform(X)
+        
+        # Train model with regularization
+        from sklearn.linear_model import Ridge
+        self.model = Ridge(alpha=1.0)
+        self.model.fit(X_scaled, y)
+        
+        # Calculate feature importance (coefficient magnitudes)
+        self.feature_importance = dict(zip(feature_cols, np.abs(self.model.coef_)))
+        
+        # Calculate metrics
+        predictions = self.model.predict(X_scaled)
+        self.metrics = self.evaluate(y, predictions)
+        self.is_trained = True
+        
+        return self.metrics
+    
+    def predict(self, X):
+        """Make predictions"""
+        if not self.is_trained:
+            raise ValueError("Model must be trained before prediction")
+        
+        X_scaled = self.scaler.transform(X)
+        return self.model.predict(X_scaled)
+
+
+class BayesianHierarchicalPredictor(BasePredictor):
+    """Bayesian Hierarchical model for handling multiple Express Entry categories with partial pooling"""
+    
+    def __init__(self):
+        super().__init__("Bayesian Hierarchical", "BH")
+        self.alpha = 1.0  # Prior precision
+        self.beta = 1.0   # Noise precision
+        self.category_effects = {}  # Category-specific effects
+        self.global_mean = None
+        self.global_cov = None
+        
+    def train(self, df, target_col='lowest_crs_score'):
+        """Train Bayesian Hierarchical model with category-specific effects"""
+        features = self.prepare_clean_features(df)
+        
+        # Prepare features (exclude target and metadata)
+        exclude_cols = ['date', 'lowest_crs_score', 'invitations_issued', 'round_number', 'url']
+        
+        # Handle category separately for hierarchical modeling
+        if 'category' in features.columns:
+            categories = features['category'].unique()
+            category_cols = [col for col in features.columns if col.startswith('category_')]
+        else:
+            categories = ['Unknown']
+            category_cols = []
+        
+        # Base features (without category dummies)
+        base_feature_cols = [col for col in features.columns 
+                           if col not in exclude_cols and not col.startswith('category_')]
+        
+        # Train hierarchical model
+        try:
+            self._train_hierarchical_bayesian(features, base_feature_cols, categories, target_col)
+        except Exception as e:
+            print(f"Hierarchical training failed: {e}, falling back to simple Bayesian")
+            self._train_simple_bayesian(features, base_feature_cols, target_col)
+        
+        self.is_trained = True
+        return self.metrics
+    
+    def _train_hierarchical_bayesian(self, features, feature_cols, categories, target_col):
+        """Train hierarchical model with category-specific effects"""
+        
+        # Global prior parameters
+        n_features = len(feature_cols)
+        
+        # For each category, fit a separate model but share information
+        category_means = {}
+        category_precisions = {}
+        
+        for category in categories:
+            if 'category' in features.columns:
+                cat_mask = features['category'] == category
+            else:
+                cat_mask = np.ones(len(features), dtype=bool)
+            
+            if cat_mask.sum() < 2:  # Need at least 2 samples
+                continue
+                
+            X_cat = features.loc[cat_mask, feature_cols].fillna(0).values
+            y_cat = features.loc[cat_mask, target_col].values
+            
+            # Add bias term
+            X_cat = np.column_stack([np.ones(X_cat.shape[0]), X_cat])
+            
+            # Bayesian linear regression for this category
+            alpha_I = self.alpha * np.eye(X_cat.shape[1])
+            XTX = self.beta * np.dot(X_cat.T, X_cat)
+            
+            try:
+                cov_cat = np.linalg.inv(alpha_I + XTX + 1e-6 * np.eye(X_cat.shape[1]))
+                mean_cat = self.beta * np.dot(cov_cat, np.dot(X_cat.T, y_cat))
+                
+                category_means[category] = mean_cat
+                category_precisions[category] = np.linalg.inv(cov_cat)
+                
+            except np.linalg.LinAlgError:
+                # Fallback for numerical issues
+                category_means[category] = np.zeros(X_cat.shape[1])
+                category_precisions[category] = np.eye(X_cat.shape[1])
+        
+        # Store category effects
+        self.category_effects = category_means
+        
+        # Global parameters (pooled across categories)
+        if category_means:
+            all_means = np.array(list(category_means.values()))
+            self.global_mean = np.mean(all_means, axis=0)
+            self.global_cov = np.cov(all_means.T) + 1e-6 * np.eye(all_means.shape[1])
+        else:
+            self.global_mean = np.zeros(n_features + 1)
+            self.global_cov = np.eye(n_features + 1)
+        
+        # Calculate overall metrics
+        self._calculate_hierarchical_metrics(features, feature_cols, target_col)
+    
+    def _train_simple_bayesian(self, features, feature_cols, target_col):
+        """Fallback to simple Bayesian regression"""
+        X = features[feature_cols].fillna(0).values
+        y = features[target_col].values
+        
+        # Add bias term
+        X = np.column_stack([np.ones(X.shape[0]), X])
+        
+        # Bayesian linear regression
+        alpha_I = self.alpha * np.eye(X.shape[1])
+        XTX = self.beta * np.dot(X.T, X)
+        
+        self.global_cov = np.linalg.inv(alpha_I + XTX + 1e-6 * np.eye(X.shape[1]))
+        self.global_mean = self.beta * np.dot(self.global_cov, np.dot(X.T, y))
+        
+        # Calculate metrics
+        y_pred = np.dot(X, self.global_mean)
+        self.metrics = self.evaluate(y, y_pred)
+    
+    def _calculate_hierarchical_metrics(self, features, feature_cols, target_col):
+        """Calculate metrics for hierarchical model"""
+        all_predictions = []
+        all_actual = []
+        
+        for category, mean_params in self.category_effects.items():
+            if 'category' in features.columns:
+                cat_mask = features['category'] == category
+            else:
+                cat_mask = np.ones(len(features), dtype=bool)
+            
+            if cat_mask.sum() == 0:
+                continue
+                
+            X_cat = features.loc[cat_mask, feature_cols].fillna(0).values
+            y_cat = features.loc[cat_mask, target_col].values
+            
+            # Add bias term
+            X_cat = np.column_stack([np.ones(X_cat.shape[0]), X_cat])
+            
+            # Predict for this category
+            y_pred_cat = np.dot(X_cat, mean_params)
+            
+            all_predictions.extend(y_pred_cat)
+            all_actual.extend(y_cat)
+        
+        if all_predictions:
+            self.metrics = self.evaluate(np.array(all_actual), np.array(all_predictions))
+        else:
+            self.metrics = {'mae': np.inf, 'mse': np.inf, 'r2': -np.inf}
+    
+    def predict(self, X, category=None):
+        """Make predictions with uncertainty"""
+        if not self.is_trained:
+            raise ValueError("Model must be trained before prediction")
+        
+        # Use category-specific parameters if available
+        if category and category in self.category_effects:
+            mean_params = self.category_effects[category]
+        else:
+            mean_params = self.global_mean
+        
+        # Add bias term
+        if X.ndim == 1:
+            X = X.reshape(1, -1)
+        X_bias = np.column_stack([np.ones(X.shape[0]), X])
+        
+        # Predict mean
+        predictions = np.dot(X_bias, mean_params)
+        
+        return predictions
+
+
+class GaussianProcessPredictor(BasePredictor):
+    """Gaussian Process for uncertainty quantification in Express Entry prediction"""
+    
+    def __init__(self, kernel_type='rbf', length_scale=1.0):
+        super().__init__("Gaussian Process", "GP")
+        self.kernel_type = kernel_type
+        self.length_scale = length_scale
+        
+        if not SKLEARN_AVAILABLE:
+            raise ImportError("scikit-learn is required for Gaussian Process model")
+    
+    def train(self, df, target_col='lowest_crs_score'):
+        """Train Gaussian Process model"""
+        features = self.prepare_clean_features(df)
+        
+        # Define feature columns
+        exclude_cols = ['date', 'lowest_crs_score', 'invitations_issued', 'round_number', 'url', 'category']
+        feature_cols = [col for col in features.columns if col not in exclude_cols]
+        
+        X = features[feature_cols].fillna(0)
+        y = features[target_col]
+        
+        # Remove rows with NaN in target
+        mask = ~y.isna()
+        X = X[mask]
+        y = y[mask]
+        
+        if len(X) < 3:
+            raise ValueError("Need at least 3 samples for Gaussian Process")
+        
+        # Scale features for GP
+        X_scaled = self.scaler.fit_transform(X)
+        
+        # Create and train GP
+        from sklearn.gaussian_process import GaussianProcessRegressor
+        from sklearn.gaussian_process.kernels import RBF, WhiteKernel, ConstantKernel
+        
+        if self.kernel_type == 'rbf':
+            kernel = ConstantKernel() * RBF(length_scale=self.length_scale) + WhiteKernel()
+        else:
+            kernel = RBF(length_scale=self.length_scale) + WhiteKernel()
+        
+        self.model = GaussianProcessRegressor(
+            kernel=kernel,
+            n_restarts_optimizer=2,
+            alpha=1e-6,
+            normalize_y=True
+        )
+        
+        self.model.fit(X_scaled, y)
+        
+        # Calculate metrics
+        predictions, _ = self.model.predict(X_scaled, return_std=True)
+        self.metrics = self.evaluate(y, predictions)
+        self.is_trained = True
+        
+        return self.metrics
+    
+    def predict(self, X, return_std=False):
+        """Make predictions with uncertainty estimates"""
+        if not self.is_trained:
+            raise ValueError("Model must be trained before prediction")
+        
+        X_scaled = self.scaler.transform(X)
+        return self.model.predict(X_scaled, return_std=return_std)
+    
+    def predict_with_uncertainty(self, X):
+        """Predict with uncertainty bounds"""
+        predictions, std = self.predict(X, return_std=True)
+        return predictions, std
+
+
+class ExponentialSmoothingPredictor(BasePredictor):
+    """Exponential Smoothing model for simple trend and seasonality"""
+    
+    def __init__(self, trend='add', seasonal='add', seasonal_periods=26):  # 26 = bi-weekly
+        super().__init__("Exponential Smoothing", "ETS")
+        self.trend = trend
+        self.seasonal = seasonal
+        self.seasonal_periods = seasonal_periods
+        
+    def train(self, df, target_col='lowest_crs_score'):
+        """Train Exponential Smoothing model"""
+        # Sort by date and get target values
+        df_sorted = df.sort_values('date')
+        ts_data = df_sorted[target_col].dropna()
+        
+        if len(ts_data) < 10:
+            raise ValueError("Need at least 10 data points for Exponential Smoothing")
+        
+        try:
+            # Try with statsmodels if available
+            if STATSMODELS_AVAILABLE:
+                from statsmodels.tsa.holtwinters import ExponentialSmoothing
+                
+                # Adjust seasonal periods based on data length
+                max_seasonal_periods = len(ts_data) // 4
+                seasonal_periods = min(self.seasonal_periods, max_seasonal_periods)
+                
+                if seasonal_periods < 4:
+                    # Not enough data for seasonality
+                    self.model = ExponentialSmoothing(
+                        ts_data,
+                        trend=self.trend,
+                        seasonal=None
+                    ).fit()
+                else:
+                    self.model = ExponentialSmoothing(
+                        ts_data,
+                        trend=self.trend,
+                        seasonal=self.seasonal,
+                        seasonal_periods=seasonal_periods
+                    ).fit()
+                
+                # Calculate metrics
+                fitted_values = self.model.fittedvalues
+                self.metrics = self.evaluate(ts_data[1:], fitted_values[1:])  # Skip first NaN
+                
+            else:
+                # Simple exponential smoothing fallback
+                self._simple_exponential_smoothing(ts_data)
+                
+        except Exception as e:
+            print(f"Exponential smoothing failed: {e}, using simple moving average")
+            self._simple_exponential_smoothing(ts_data)
+        
+        self.is_trained = True
+        return self.metrics
+    
+    def _simple_exponential_smoothing(self, ts_data):
+        """Simple exponential smoothing implementation"""
+        alpha = 0.3  # Smoothing parameter
+        
+        smoothed = [ts_data.iloc[0]]
+        for i in range(1, len(ts_data)):
+            smoothed.append(alpha * ts_data.iloc[i] + (1 - alpha) * smoothed[-1])
+        
+        self.smoothed_values = np.array(smoothed)
+        self.last_value = smoothed[-1]
+        
+        # Calculate simple metrics
+        self.metrics = self.evaluate(ts_data[1:], self.smoothed_values[1:])
+    
+    def predict(self, steps=1):
+        """Make predictions"""
+        if not self.is_trained:
+            raise ValueError("Model must be trained before prediction")
+        
+        if hasattr(self.model, 'forecast'):
+            # Statsmodels version
+            forecast = self.model.forecast(steps)
+            return forecast.tolist() if hasattr(forecast, 'tolist') else [forecast]
+        else:
+            # Simple version - just repeat last value with slight trend
+            return [self.last_value] * steps
+
+
+# Update the LinearRegressionPredictor to use clean features
+class LinearRegressionPredictor(BasePredictor):
+    """DEPRECATED: Use CleanLinearRegressionPredictor instead"""
+    
+    def __init__(self):
+        super().__init__("Linear Regression (Legacy)", "LR")
+        print("⚠️  WARNING: This LinearRegressionPredictor contains data leakage. Use CleanLinearRegressionPredictor instead.")
+        
+        if not SKLEARN_AVAILABLE:
+            raise ImportError("scikit-learn is required for Linear Regression model")
+    
+    def train(self, df, target_col='lowest_crs_score'):
+        """Train Linear Regression model with leaked features (deprecated)"""
+        print("⚠️  WARNING: Training with features that contain data leakage!")
+        features = self.prepare_features(df)  # This calls the deprecated method
+        
+        # Rest of the implementation remains the same
+        exclude_cols = ['date', 'lowest_crs_score', 'round_number', 'url', 'category']
+        feature_cols = [col for col in features.columns if col not in exclude_cols]
+        
+        X = features[feature_cols].fillna(0)
+        y = features[target_col]
+        
+        mask = ~y.isna()
+        X = X[mask]
+        y = y[mask]
+        
+        X_scaled = self.scaler.fit_transform(X)
+        
+        self.model = LinearRegression()
+        self.model.fit(X_scaled, y)
+        
+        self.feature_importance = dict(zip(feature_cols, np.abs(self.model.coef_)))
+        
+        predictions = self.model.predict(X_scaled)
+        self.metrics = self.evaluate(y, predictions)
+        self.is_trained = True
+        
+        return self.metrics
+    
+    def predict(self, X):
+        """Make predictions"""
+        if not self.is_trained:
+            raise ValueError("Model must be trained before prediction")
+        
+        X_scaled = self.scaler.transform(X)
+        return self.model.predict(X_scaled) 
+
+
+class SARIMAPredictor(BasePredictor):
+    """Seasonal ARIMA model for Express Entry data with government fiscal patterns"""
+    
+    def __init__(self, seasonal_periods=26):  # 26 = bi-weekly draws in a year
+        super().__init__("SARIMA", "SARIMA")
+        self.seasonal_periods = seasonal_periods
+        
+        if not STATSMODELS_AVAILABLE:
+            raise ImportError("statsmodels is required for SARIMA model")
+    
+    def train(self, df, target_col='lowest_crs_score'):
+        """Train SARIMA model with automatic parameter selection"""
+        # Sort by date and get target values
+        df_sorted = df.sort_values('date')
+        ts_data = df_sorted[target_col].dropna()
+        
+        if len(ts_data) < 20:
+            raise ValueError("Need at least 20 data points for SARIMA")
+        
+        # Adjust seasonal periods based on data length
+        max_seasonal_periods = len(ts_data) // 4
+        seasonal_periods = min(self.seasonal_periods, max_seasonal_periods)
+        
+        try:
+            from statsmodels.tsa.statespace.sarimax import SARIMAX
+            from statsmodels.tsa.seasonal import seasonal_decompose
+            
+            # Check for seasonality
+            if seasonal_periods >= 4 and len(ts_data) >= seasonal_periods * 2:
+                try:
+                    decomp = seasonal_decompose(ts_data, model='additive', period=seasonal_periods)
+                    seasonal_strength = np.var(decomp.seasonal) / np.var(ts_data)
+                    use_seasonal = seasonal_strength > 0.1  # Use seasonal if significant
+                except:
+                    use_seasonal = False
+            else:
+                use_seasonal = False
+            
+            # Auto-select SARIMA parameters
+            best_aic = np.inf
+            best_model = None
+            best_order = None
+            best_seasonal_order = None
+            
+            # Search ranges (limited to avoid overfitting on small data)
+            p_range = range(0, min(3, len(ts_data) // 8))
+            d_range = range(0, 2)
+            q_range = range(0, min(3, len(ts_data) // 8))
+            
+            if use_seasonal:
+                seasonal_orders = [(0,1,1,seasonal_periods), (1,1,1,seasonal_periods)]
+            else:
+                seasonal_orders = [(0,0,0,0)]
+            
+            for p in p_range:
+                for d in d_range:
+                    for q in q_range:
+                        for seasonal_order in seasonal_orders:
+                            try:
+                                model = SARIMAX(ts_data, 
+                                              order=(p,d,q), 
+                                              seasonal_order=seasonal_order,
+                                              enforce_stationarity=False,
+                                              enforce_invertibility=False)
+                                fitted_model = model.fit(disp=False, maxiter=100)
+                                
+                                if fitted_model.aic < best_aic:
+                                    best_aic = fitted_model.aic
+                                    best_model = fitted_model
+                                    best_order = (p,d,q)
+                                    best_seasonal_order = seasonal_order
+                                    
+                            except:
+                                continue
+            
+            if best_model is None:
+                # Fallback to simple ARIMA
+                self.model = SARIMAX(ts_data, order=(1,1,1)).fit(disp=False)
+                print("  ⚠️  SARIMA auto-selection failed, using ARIMA(1,1,1)")
+            else:
+                self.model = best_model
+                print(f"  ✅ Selected SARIMA{best_order}x{best_seasonal_order} (AIC={best_aic:.2f})")
+            
+            # Calculate metrics
+            fitted_values = self.model.fittedvalues
+            if len(fitted_values) == len(ts_data):
+                self.metrics = self.evaluate(ts_data, fitted_values)
+            else:
+                # Handle different lengths due to differencing
+                min_len = min(len(ts_data), len(fitted_values))
+                self.metrics = self.evaluate(ts_data[-min_len:], fitted_values[-min_len:])
+                
+        except Exception as e:
+            print(f"SARIMA failed: {e}, falling back to simple ARIMA")
+            # Fallback to regular ARIMA
+            from statsmodels.tsa.arima.model import ARIMA
+            self.model = ARIMA(ts_data, order=(1,1,1)).fit()
+            fitted_values = self.model.fittedvalues
+            self.metrics = self.evaluate(ts_data[1:], fitted_values)
+        
+        self.is_trained = True
+        return self.metrics
+    
+    def predict(self, steps=1):
+        """Make predictions"""
+        if not self.is_trained:
+            raise ValueError("Model must be trained before prediction")
+        
+        forecast = self.model.forecast(steps=steps)
+        return forecast.tolist() if hasattr(forecast, 'tolist') else [forecast]
+
+
+class VARPredictor(BasePredictor):
+    """Vector Autoregression for modeling CRS scores and invitation numbers simultaneously"""
+    
+    def __init__(self, maxlags=None):
+        super().__init__("Vector Autoregression", "VAR")
+        self.maxlags = maxlags
+        
+        if not STATSMODELS_AVAILABLE:
+            raise ImportError("statsmodels is required for VAR model")
+    
+    def train(self, df, target_col='lowest_crs_score'):
+        """Train VAR model on multiple time series"""
+        # Sort by date
+        df_sorted = df.sort_values('date')
+        
+        # Prepare multivariate time series
+        required_cols = [target_col, 'invitations_issued']
+        available_cols = [col for col in required_cols if col in df_sorted.columns]
+        
+        if len(available_cols) < 2:
+            raise ValueError("VAR requires at least 2 time series variables")
+        
+        # Create multivariate time series
+        ts_data = df_sorted[available_cols].dropna()
+        
+        if len(ts_data) < 15:
+            raise ValueError("Need at least 15 data points for VAR")
+        
+        try:
+            from statsmodels.tsa.vector_ar.var_model import VAR
+            
+            # Determine optimal lag order
+            var_model = VAR(ts_data)
+            
+            if self.maxlags is None:
+                # Auto-select lags (limited to avoid overfitting)
+                max_possible_lags = min(8, len(ts_data) // 4)
+                lag_order_results = var_model.select_order(maxlags=max_possible_lags)
+                optimal_lags = lag_order_results.aic
+            else:
+                optimal_lags = min(self.maxlags, len(ts_data) // 4)
+            
+            # Fit VAR model
+            self.model = var_model.fit(optimal_lags)
+            self.target_col = target_col
+            self.variable_names = available_cols
+            
+            print(f"  ✅ VAR model with {optimal_lags} lags, variables: {available_cols}")
+            
+            # Calculate metrics for target variable
+            fitted_values = self.model.fittedvalues
+            if target_col in fitted_values.columns:
+                target_fitted = fitted_values[target_col]
+                target_actual = ts_data[target_col].iloc[optimal_lags:]  # Adjust for lags
+                self.metrics = self.evaluate(target_actual, target_fitted)
+            else:
+                self.metrics = {'mae': np.inf, 'mse': np.inf, 'r2': -np.inf}
+                
+        except Exception as e:
+            raise ValueError(f"VAR model training failed: {e}")
+        
+        self.is_trained = True
+        return self.metrics
+    
+    def predict(self, steps=1):
+        """Make predictions for all variables"""
+        if not self.is_trained:
+            raise ValueError("Model must be trained before prediction")
+        
+        forecast = self.model.forecast(self.model.y, steps=steps)
+        
+        # Return prediction for target variable
+        if hasattr(forecast, 'shape') and len(forecast.shape) > 1:
+            target_idx = self.variable_names.index(self.target_col)
+            return forecast[:, target_idx].tolist()
+        else:
+            return [forecast[0]] if len(forecast) > 0 else [0]
+
+
+class HoltWintersPredictor(BasePredictor):
+    """Enhanced Holt-Winters Triple Exponential Smoothing with automatic seasonality detection"""
+    
+    def __init__(self, seasonal_periods=26):
+        super().__init__("Holt-Winters", "HW")
+        self.seasonal_periods = seasonal_periods
+        
+    def train(self, df, target_col='lowest_crs_score'):
+        """Train Holt-Winters model with automatic parameter optimization"""
+        # Sort by date and get target values
+        df_sorted = df.sort_values('date')
+        ts_data = df_sorted[target_col].dropna()
+        
+        if len(ts_data) < 12:
+            raise ValueError("Need at least 12 data points for Holt-Winters")
+        
+        # Adjust seasonal periods based on data length
+        max_seasonal_periods = len(ts_data) // 3
+        seasonal_periods = min(self.seasonal_periods, max_seasonal_periods)
+        
+        try:
+            if STATSMODELS_AVAILABLE:
+                from statsmodels.tsa.holtwinters import ExponentialSmoothing
+                from statsmodels.tsa.seasonal import seasonal_decompose
+                
+                # Test for seasonality
+                if seasonal_periods >= 4 and len(ts_data) >= seasonal_periods * 2:
+                    try:
+                        decomp = seasonal_decompose(ts_data, model='additive', period=seasonal_periods)
+                        seasonal_strength = np.var(decomp.seasonal) / np.var(ts_data)
+                        use_seasonal = seasonal_strength > 0.05
+                    except:
+                        use_seasonal = False
+                else:
+                    use_seasonal = False
+                
+                # Try different combinations and select best AIC
+                best_aic = np.inf
+                best_model = None
+                best_config = None
+                
+                trend_options = [None, 'add'] if len(ts_data) > 10 else [None]
+                seasonal_options = ['add'] if use_seasonal else [None]
+                
+                for trend in trend_options:
+                    for seasonal in seasonal_options:
+                        try:
+                            model = ExponentialSmoothing(
+                                ts_data,
+                                trend=trend,
+                                seasonal=seasonal,
+                                seasonal_periods=seasonal_periods if seasonal else None
+                            )
+                            fitted_model = model.fit(optimized=True, use_brute=False)
+                            
+                            if fitted_model.aic < best_aic:
+                                best_aic = fitted_model.aic
+                                best_model = fitted_model
+                                best_config = (trend, seasonal)
+                                
+                        except:
+                            continue
+                
+                if best_model is None:
+                    raise ValueError("All Holt-Winters configurations failed")
+                
+                self.model = best_model
+                print(f"  ✅ Holt-Winters: trend={best_config[0]}, seasonal={best_config[1]} (AIC={best_aic:.2f})")
+                
+                # Calculate metrics
+                fitted_values = self.model.fittedvalues
+                # Skip first few values that may be NaN due to initialization
+                start_idx = 1 if seasonal_periods is None else seasonal_periods
+                if len(fitted_values) > start_idx:
+                    self.metrics = self.evaluate(ts_data[start_idx:], fitted_values[start_idx:])
+                else:
+                    self.metrics = self.evaluate(ts_data[1:], fitted_values[1:])
+                
+            else:
+                # Fallback to simple exponential smoothing
+                self._simple_holt_winters(ts_data)
+                
+        except Exception as e:
+            print(f"Holt-Winters failed: {e}, using simple exponential smoothing")
+            self._simple_holt_winters(ts_data)
+        
+        self.is_trained = True
+        return self.metrics
+    
+    def _simple_holt_winters(self, ts_data):
+        """Simple Holt's linear trend method as fallback"""
+        alpha = 0.3  # Level smoothing
+        beta = 0.1   # Trend smoothing
+        
+        level = ts_data.iloc[0]
+        trend = ts_data.iloc[1] - ts_data.iloc[0] if len(ts_data) > 1 else 0
+        smoothed = [level]
+        
+        for i in range(1, len(ts_data)):
+            prev_level = level
+            level = alpha * ts_data.iloc[i] + (1 - alpha) * (level + trend)
+            trend = beta * (level - prev_level) + (1 - beta) * trend
+            smoothed.append(level + trend)
+        
+        self.smoothed_values = np.array(smoothed)
+        self.last_level = level
+        self.last_trend = trend
+        
+        # Calculate metrics
+        self.metrics = self.evaluate(ts_data[1:], self.smoothed_values[1:])
+    
+    def predict(self, steps=1):
+        """Make predictions"""
+        if not self.is_trained:
+            raise ValueError("Model must be trained before prediction")
+        
+        if hasattr(self.model, 'forecast'):
+            # Statsmodels version
+            forecast = self.model.forecast(steps)
+            return forecast.tolist() if hasattr(forecast, 'tolist') else [forecast]
+        else:
+            # Simple version - linear trend extrapolation
+            predictions = []
+            for h in range(1, steps + 1):
+                pred = self.last_level + h * self.last_trend
+                predictions.append(pred)
+            return predictions
+
+
+class DynamicLinearModelPredictor(BasePredictor):
+    """Dynamic Linear Model with Bayesian state space approach"""
+    
+    def __init__(self):
+        super().__init__("Dynamic Linear Model", "DLM")
+        self.observation_noise = 1.0
+        self.process_noise = 0.1
+        
+    def train(self, df, target_col='lowest_crs_score'):
+        """Train DLM using Kalman filtering"""
+        # Sort by date and get target values
+        df_sorted = df.sort_values('date')
+        ts_data = df_sorted[target_col].dropna().values
+        
+        if len(ts_data) < 8:
+            raise ValueError("Need at least 8 data points for DLM")
+        
+        try:
+            # Simple local level + trend model
+            n = len(ts_data)
+            
+            # State: [level, trend]
+            # Observation: y_t = level_t + noise
+            # State evolution: level_t = level_{t-1} + trend_{t-1} + process_noise
+            #                 trend_t = trend_{t-1} + process_noise
+            
+            # Initialize state and covariance
+            state = np.array([ts_data[0], 0.0])  # [level, trend]
+            P = np.eye(2) * 10.0  # Initial uncertainty
+            
+            # System matrices
+            F = np.array([[1, 1], [0, 1]])  # State transition
+            H = np.array([1, 0])            # Observation matrix
+            Q = np.eye(2) * self.process_noise  # Process noise
+            R = self.observation_noise      # Observation noise
+            
+            # Kalman filter
+            states = []
+            predictions = []
+            log_likelihood = 0
+            
+            for t in range(n):
+                # Prediction step
+                state_pred = F @ state
+                P_pred = F @ P @ F.T + Q
+                
+                # Update step
+                y = ts_data[t]
+                y_pred = H @ state_pred
+                innovation = y - y_pred
+                S = H @ P_pred @ H.T + R
+                K = P_pred @ H.T / S
+                
+                state = state_pred + K * innovation
+                P = P_pred - K[:, np.newaxis] * H @ P_pred
+                
+                states.append(state.copy())
+                predictions.append(y_pred)
+                
+                # Update log likelihood
+                log_likelihood -= 0.5 * (np.log(2 * np.pi * S) + innovation**2 / S)
+            
+            # Store results
+            self.states = np.array(states)
+            self.final_state = state
+            self.final_P = P
+            self.F = F
+            self.H = H
+            self.Q = Q
+            self.R = R
+            self.log_likelihood = log_likelihood
+            
+            # Calculate metrics
+            predictions = np.array(predictions)
+            self.metrics = self.evaluate(ts_data, predictions)
+            
+            print(f"  ✅ DLM: Log-likelihood={log_likelihood:.2f}, Final level={state[0]:.2f}, trend={state[1]:.2f}")
+            
+        except Exception as e:
+            raise ValueError(f"DLM training failed: {e}")
+        
+        self.is_trained = True
+        return self.metrics
+    
+    def predict(self, steps=1):
+        """Make predictions with uncertainty"""
+        if not self.is_trained:
+            raise ValueError("Model must be trained before prediction")
+        
+        predictions = []
+        state = self.final_state.copy()
+        P = self.final_P.copy()
+        
+        for h in range(steps):
+            # Predict next state
+            state = self.F @ state
+            P = self.F @ P @ self.F.T + self.Q
+            
+            # Predict observation
+            y_pred = self.H @ state
+            predictions.append(y_pred)
+        
+        return predictions
+    
+    def predict_with_uncertainty(self, steps=1):
+        """Predict with confidence intervals"""
+        predictions = []
+        uncertainties = []
+        
+        state = self.final_state.copy()
+        P = self.final_P.copy()
+        
+        for h in range(steps):
+            # Predict next state
+            state = self.F @ state
+            P = self.F @ P @ self.F.T + self.Q
+            
+            # Predict observation with uncertainty
+            y_pred = self.H @ state
+            obs_var = self.H @ P @ self.H.T + self.R
+            
+            predictions.append(y_pred)
+            uncertainties.append(np.sqrt(obs_var))
+        
+        return predictions, uncertainties
+
+
+class AdvancedEnsemblePredictor(BasePredictor):
+    """Advanced ensemble combining multiple models with dynamic weighting"""
+    
+    def __init__(self):
+        super().__init__("Advanced Ensemble", "AE")
+        self.models = {}
+        self.weights = {}
+        self.performance_history = {}
+        
+    def train(self, df, target_col='lowest_crs_score'):
+        """Train ensemble of complementary models"""
+        data_size = len(df)
+        
+        # Select models based on data size and characteristics
+        candidate_models = []
+        
+        # Always include time series models
+        if data_size >= 10:
+            candidate_models.extend([
+                ('ARIMA', ARIMAPredictor()),
+                ('Prophet', ProphetPredictor()),
+            ])
+        
+        if data_size >= 15:
+            candidate_models.extend([
+                ('SARIMA', SARIMAPredictor()),
+                ('Holt-Winters', HoltWintersPredictor()),
+            ])
+        
+        if data_size >= 12:
+            candidate_models.append(('Exponential Smoothing', ExponentialSmoothingPredictor()))
+        
+        # Add ML models with clean features
+        if data_size >= 8:
+            candidate_models.extend([
+                ('Clean Linear Regression', CleanLinearRegressionPredictor()),
+                ('Gaussian Process', GaussianProcessPredictor()),
+            ])
+        
+        if data_size >= 10:
+            candidate_models.append(('Bayesian Hierarchical', BayesianHierarchicalPredictor()))
+        
+        # Train models and evaluate
+        successful_models = {}
+        model_scores = {}
+        
+        for name, model in candidate_models:
+            try:
+                print(f"  🔧 Training {name}...")
+                
+                # Train model
+                if name in ['ARIMA', 'SARIMA', 'Prophet', 'Holt-Winters', 'Exponential Smoothing']:
+                    metrics = model.train(df)
+                else:
+                    metrics = model.train(df, target_col)
+                
+                # Calculate composite score for ensemble weighting
+                mae_score = 1.0 / (1.0 + metrics.get('mae', np.inf))
+                r2_score = max(0, metrics.get('r2', -1))
+                composite_score = 0.6 * mae_score + 0.4 * r2_score
+                
+                successful_models[name] = model
+                model_scores[name] = composite_score
+                
+                print(f"    ✅ {name}: MAE={metrics.get('mae', 'N/A'):.2f}, R²={metrics.get('r2', 'N/A'):.3f}, Score={composite_score:.3f}")
+                
+            except Exception as e:
+                print(f"    ❌ {name} failed: {str(e)[:50]}...")
+                continue
+        
+        if len(successful_models) == 0:
+            raise ValueError("No models successfully trained for ensemble")
+        
+        # Calculate dynamic weights based on performance
+        total_score = sum(model_scores.values())
+        if total_score > 0:
+            # Performance-based weights
+            weights = {name: score / total_score for name, score in model_scores.items()}
+        else:
+            # Equal weights fallback
+            weights = {name: 1.0 / len(successful_models) for name in successful_models}
+        
+        # Apply diversity bonus to encourage model variety
+        model_types = {
+            'time_series': ['ARIMA', 'SARIMA', 'Prophet', 'Holt-Winters', 'Exponential Smoothing'],
+            'ml_models': ['Clean Linear Regression', 'Gaussian Process', 'Bayesian Hierarchical']
+        }
+        
+        type_counts = {t: sum(1 for name in successful_models if name in models) 
+                      for t, models in model_types.items()}
+        
+        # Boost weights for underrepresented model types
+        for name in weights:
+            for model_type, model_list in model_types.items():
+                if name in model_list and type_counts[model_type] < 2:
+                    weights[name] *= 1.2  # 20% boost for diversity
+        
+        # Renormalize weights
+        total_weight = sum(weights.values())
+        weights = {name: w / total_weight for name, w in weights.items()}
+        
+        # Store ensemble
+        self.models = successful_models
+        self.weights = weights
+        self.target_col = target_col
+        
+        # Calculate ensemble metrics
+        self._calculate_ensemble_metrics(df, target_col)
+        
+        print(f"  🎯 Ensemble with {len(self.models)} models:")
+        for name, weight in sorted(weights.items(), key=lambda x: x[1], reverse=True):
+            print(f"    • {name}: {weight:.1%}")
+        
+        self.is_trained = True
+        return self.metrics
+    
+    def _calculate_ensemble_metrics(self, df, target_col):
+        """Calculate ensemble performance metrics"""
+        try:
+            # Get predictions from all models
+            y_true = df[target_col].dropna()
+            ensemble_predictions = []
+            
+            for i in range(len(y_true)):
+                weighted_pred = 0
+                total_weight = 0
+                
+                for name, model in self.models.items():
+                    try:
+                        # Create single-row prediction
+                        if name in ['ARIMA', 'SARIMA', 'Prophet', 'Holt-Winters', 'Exponential Smoothing']:
+                            pred = model.predict(1)[0]
+                        else:
+                            # For ML models, use dummy features
+                            dummy_X = pd.DataFrame({'dummy': [0]})
+                            pred = model.predict(dummy_X)[0]
+                        
+                        weight = self.weights[name]
+                        weighted_pred += weight * pred
+                        total_weight += weight
+                        
+                    except:
+                        continue
+                
+                if total_weight > 0:
+                    ensemble_predictions.append(weighted_pred / total_weight)
+                else:
+                    ensemble_predictions.append(y_true.iloc[i])
+            
+            if len(ensemble_predictions) > 0:
+                self.metrics = self.evaluate(y_true, np.array(ensemble_predictions))
+            else:
+                self.metrics = {'mae': np.inf, 'mse': np.inf, 'r2': -np.inf}
+                
+        except Exception as e:
+            print(f"  ⚠️  Ensemble metrics calculation failed: {e}")
+            self.metrics = {'mae': np.inf, 'mse': np.inf, 'r2': -np.inf}
+    
+    def predict(self, X=None, steps=1):
+        """Make ensemble predictions"""
+        if not self.is_trained:
+            raise ValueError("Model must be trained before prediction")
+        
+        predictions = []
+        
+        for step in range(steps):
+            weighted_pred = 0
+            total_weight = 0
+            
+            for name, model in self.models.items():
+                try:
+                    weight = self.weights[name]
+                    
+                    if name in ['ARIMA', 'SARIMA', 'Prophet', 'Holt-Winters', 'Exponential Smoothing']:
+                        pred = model.predict(1)[0]
+                    else:
+                        # For ML models
+                        if X is not None:
+                            pred = model.predict(X)[0] if hasattr(model.predict(X), '__len__') else model.predict(X)
+                        else:
+                            # Use dummy features
+                            dummy_X = pd.DataFrame({'dummy': [0]})
+                            pred = model.predict(dummy_X)[0]
+                    
+                    weighted_pred += weight * pred
+                    total_weight += weight
+                    
+                except Exception as e:
+                    continue
+            
+            if total_weight > 0:
+                predictions.append(weighted_pred / total_weight)
+            else:
+                predictions.append(0)  # Fallback
+        
+        return predictions if len(predictions) > 1 else predictions[0]

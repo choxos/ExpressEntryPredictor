@@ -586,35 +586,84 @@ class Command(BaseCommand):
     def _evaluate_all_models(self, df, category):
         """Evaluate all available models and select the best based on statistical criteria"""
         
-        # Define models to evaluate
-        models_to_test = [
-            ('Linear Regression', LinearRegressionPredictor()),
-            ('Random Forest', RandomForestPredictor()),
-        ]
-        
-        # Add advanced models if data size permits
+        # ✅ SCIENTIFICALLY VALID MODELS ONLY
+        # Start with time series models (always valid)
+        models_to_test = []
         data_size = len(df)
-        if data_size >= 8:
-            try:
-                from predictor.ml_models import XGBoostPredictor
-                models_to_test.append(('XGBoost', XGBoostPredictor()))
-            except ImportError:
-                pass
         
-        if data_size >= 10:
+        # Time series models (no data leakage)
+        if data_size >= 8:
             try:
                 from predictor.ml_models import ARIMAPredictor
                 models_to_test.append(('ARIMA', ARIMAPredictor()))
             except ImportError:
                 pass
-                
-        if data_size >= 15:
+        
+        if data_size >= 10:
             try:
                 from predictor.ml_models import LSTMPredictor, ProphetPredictor
                 models_to_test.extend([
                     ('LSTM', LSTMPredictor()),
                     ('Prophet', ProphetPredictor()),
                 ])
+            except ImportError:
+                pass
+        
+        if data_size >= 12:
+            try:
+                from predictor.ml_models import ExponentialSmoothingPredictor, HoltWintersPredictor
+                models_to_test.extend([
+                    ('Exponential Smoothing', ExponentialSmoothingPredictor()),
+                    ('Holt-Winters', HoltWintersPredictor()),
+                ])
+            except ImportError:
+                pass
+        
+        # Advanced time series models
+        if data_size >= 15:
+            try:
+                from predictor.ml_models import VARPredictor, DynamicLinearModelPredictor
+                models_to_test.extend([
+                    ('VAR', VARPredictor()),
+                    ('Dynamic Linear Model', DynamicLinearModelPredictor()),
+                ])
+            except ImportError:
+                pass
+        
+        if data_size >= 20:
+            try:
+                from predictor.ml_models import SARIMAPredictor
+                models_to_test.append(('SARIMA', SARIMAPredictor()))
+            except ImportError:
+                pass
+        
+        # Advanced ensemble (use when we have enough models)
+        if data_size >= 25:
+            try:
+                from predictor.ml_models import AdvancedEnsemblePredictor
+                models_to_test.append(('Advanced Ensemble', AdvancedEnsemblePredictor()))
+            except ImportError:
+                pass
+        
+        # Clean ML models (no data leakage)
+        if data_size >= 6:
+            try:
+                from predictor.ml_models import CleanLinearRegressionPredictor
+                models_to_test.append(('Clean Linear Regression', CleanLinearRegressionPredictor()))
+            except ImportError:
+                pass
+        
+        if data_size >= 8:
+            try:
+                from predictor.ml_models import BayesianHierarchicalPredictor
+                models_to_test.append(('Bayesian Hierarchical', BayesianHierarchicalPredictor()))
+            except ImportError:
+                pass
+        
+        if data_size >= 10:
+            try:
+                from predictor.ml_models import GaussianProcessPredictor
+                models_to_test.append(('Gaussian Process', GaussianProcessPredictor()))
             except ImportError:
                 pass
         
@@ -663,14 +712,16 @@ class Command(BaseCommand):
             # Initialize CV scores
             cv_scores = []
             
-            # For models that use prepare_features, skip cross-validation due to data leakage issues
-            # These models create lag/rolling features that cause data leakage in CV
-            if model_name in ['Linear Regression', 'Random Forest', 'XGBoost', 'Neural Network']:
-                print(f"  ⚠️  Skipping CV for {model_name} (uses prepare_features - would cause data leakage)")
-                X = pd.DataFrame({'dummy': range(len(df_enhanced))})  # Dummy features for consistency
+            # All models are now scientifically valid - enable CV for ML models with clean features
+            if model_name in ['Clean Linear Regression', 'Bayesian Hierarchical', 'Gaussian Process']:
+                # These models use clean features - can do cross-validation
+                features = model.prepare_clean_features(df_enhanced)
+                exclude_cols = ['date', 'lowest_crs_score', 'invitations_issued', 'round_number', 'url', 'category']
+                feature_cols = [col for col in features.columns if col not in exclude_cols]
+                X = features[feature_cols].fillna(0)
                 y = df_enhanced[target_col]
             else:
-                # For time series models, prepare simple features
+                # For time series models, use simple time-based features
                 X = df_enhanced.drop(columns=[target_col]).select_dtypes(include=[np.number])
                 y = df_enhanced[target_col]
                 
@@ -678,44 +729,44 @@ class Command(BaseCommand):
                     # For time series models, use index as feature
                     X = pd.DataFrame({'time_index': range(len(df_enhanced))})
             
-            # Cross-validation evaluation (only for time series models)
-            if model_name not in ['Linear Regression', 'Random Forest', 'XGBoost', 'Neural Network']:
-                n_folds = min(3, len(df) // 2)  # Adaptive fold count
+            # Cross-validation evaluation (all models are now scientifically valid)
+            n_folds = min(3, len(df) // 2)  # Adaptive fold count
+            
+            if n_folds >= 2:
                 
-                if n_folds >= 2:
-                    from sklearn.model_selection import KFold
-                    kf = KFold(n_splits=n_folds, shuffle=False)  # No shuffle for time series
-                    
-                    for train_idx, val_idx in kf.split(X):
-                        try:
-                            X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
-                            y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
+                from sklearn.model_selection import KFold
+                kf = KFold(n_splits=n_folds, shuffle=False)  # No shuffle for time series
+                
+                for train_idx, val_idx in kf.split(X):
+                    try:
+                        X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
+                        y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
+                        
+                        # Train model
+                        train_df = df_enhanced.iloc[train_idx].copy()
+                        model_copy = self._copy_model(model)
+                        
+                        # Handle different train() method signatures
+                        if model_name in ['ARIMA', 'LSTM', 'Prophet', 'Exponential Smoothing', 'SARIMA', 'VAR', 'Holt-Winters', 'Dynamic Linear Model']:
+                            model_copy.train(train_df)  # These models don't take target_col
+                        else:
+                            model_copy.train(train_df, target_col)
+                        
+                        # Predict
+                        if hasattr(model_copy, 'predict'):
+                            pred = model_copy.predict(X_val)
+                            if isinstance(pred, (list, np.ndarray)):
+                                pred = pred[0] if len(pred) > 0 else y_val.mean()
                             
-                            # Train model
-                            train_df = df_enhanced.iloc[train_idx].copy()
-                            model_copy = self._copy_model(model)
+                            # Calculate score (negative MAE for cross-validation)
+                            mae = abs(pred - y_val.iloc[0]) if len(y_val) > 0 else 0
+                            cv_scores.append(-mae)
                             
-                            # Handle different train() method signatures
-                            if model_name in ['ARIMA', 'LSTM']:
-                                model_copy.train(train_df)  # These models don't take target_col
-                            else:
-                                model_copy.train(train_df, target_col)
-                            
-                            # Predict
-                            if hasattr(model_copy, 'predict'):
-                                pred = model_copy.predict(X_val)
-                                if isinstance(pred, (list, np.ndarray)):
-                                    pred = pred[0] if len(pred) > 0 else y_val.mean()
-                                
-                                # Calculate score (negative MAE for cross-validation)
-                                mae = abs(pred - y_val.iloc[0]) if len(y_val) > 0 else 0
-                                cv_scores.append(-mae)
-                                
-                        except Exception as e:
-                            continue
+                    except Exception as e:
+                        continue
             
             # Full model training for final metrics
-            if model_name in ['ARIMA', 'LSTM']:
+            if model_name in ['ARIMA', 'LSTM', 'Prophet', 'Exponential Smoothing', 'SARIMA', 'VAR', 'Holt-Winters', 'Dynamic Linear Model', 'Advanced Ensemble']:
                 model.train(df_enhanced)  # These models don't take target_col
             else:
                 model.train(df_enhanced, target_col)
