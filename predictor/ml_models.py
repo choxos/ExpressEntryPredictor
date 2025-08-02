@@ -1877,15 +1877,34 @@ class HoltWintersPredictor(BasePredictor):
                 
                 # Extract level and trend for fallback predictions
                 if hasattr(self.model, 'level'):
-                    self.last_level = self.model.level[-1] if hasattr(self.model.level, '__getitem__') else self.model.level
+                    level_val = self.model.level[-1] if hasattr(self.model.level, '__getitem__') else self.model.level
+                    self.last_level = float(level_val)
                 else:
-                    self.last_level = ts_data.iloc[-1]
+                    level_val = ts_data.iloc[-1]
+                    # Ensure scalar value (handle Series/DataFrame)
+                    if hasattr(level_val, 'iloc'):
+                        self.last_level = float(level_val.iloc[0])
+                    elif hasattr(level_val, 'values'):
+                        self.last_level = float(level_val.values[0])
+                    else:
+                        self.last_level = float(level_val)
                     
                 if hasattr(self.model, 'trend'):
-                    self.last_trend = self.model.trend[-1] if hasattr(self.model.trend, '__getitem__') else self.model.trend
+                    trend_val = self.model.trend[-1] if hasattr(self.model.trend, '__getitem__') else self.model.trend
+                    self.last_trend = float(trend_val)
                 else:
                     # Calculate simple trend from last few points
-                    self.last_trend = (ts_data.iloc[-1] - ts_data.iloc[-2]) if len(ts_data) >= 2 else 0
+                    if len(ts_data) >= 2:
+                        trend_calc = ts_data.iloc[-1] - ts_data.iloc[-2]
+                        # Ensure scalar value (handle Series/DataFrame)
+                        if hasattr(trend_calc, 'iloc'):
+                            self.last_trend = float(trend_calc.iloc[0])
+                        elif hasattr(trend_calc, 'values'):
+                            self.last_trend = float(trend_calc.values[0])
+                        else:
+                            self.last_trend = float(trend_calc)
+                    else:
+                        self.last_trend = 0.0
                 
                 # Calculate metrics
                 fitted_values = self.model.fittedvalues
@@ -1912,19 +1931,28 @@ class HoltWintersPredictor(BasePredictor):
         alpha = 0.3  # Level smoothing
         beta = 0.1   # Trend smoothing
         
-        level = ts_data.iloc[0]
-        trend = ts_data.iloc[1] - ts_data.iloc[0] if len(ts_data) > 1 else 0
+        level_val = ts_data.iloc[0]
+        level = float(level_val.iloc[0] if hasattr(level_val, 'iloc') else level_val)
+        
+        if len(ts_data) > 1:
+            trend_val = ts_data.iloc[1] - ts_data.iloc[0]
+            trend = float(trend_val.iloc[0] if hasattr(trend_val, 'iloc') else trend_val)
+        else:
+            trend = 0.0
+        
         smoothed = [level]
         
         for i in range(1, len(ts_data)):
             prev_level = level
-            level = alpha * ts_data.iloc[i] + (1 - alpha) * (level + trend)
+            data_val = ts_data.iloc[i]
+            data_point = float(data_val.iloc[0] if hasattr(data_val, 'iloc') else data_val)
+            level = alpha * data_point + (1 - alpha) * (level + trend)
             trend = beta * (level - prev_level) + (1 - beta) * trend
             smoothed.append(level + trend)
         
         self.smoothed_values = np.array(smoothed)
-        self.last_level = level
-        self.last_trend = trend
+        self.last_level = float(level)
+        self.last_trend = float(trend)
         
         # Calculate metrics
         self.metrics = self.evaluate(ts_data[1:], self.smoothed_values[1:])
