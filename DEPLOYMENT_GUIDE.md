@@ -8,7 +8,7 @@ Before starting, ensure you have:
 - ✅ **VPS Access**: SSH access to your server with sudo privileges
 - ✅ **Domain Setup**: DNS pointing `expressentry.xeradb.com` to your VPS IP
 - ✅ **Database Credentials**: Ready to use `eep_production`, `eep_user`, `Choxos10203040`
-- ✅ **Latest Code**: All recent fixes including NaN handling (commit: 1ad4430+)
+- ✅ **Latest Code**: All recent fixes including prediction bugs (commit: 5639741+)
 - ✅ **Port 8010**: Confirmed available for your application
 - ✅ **SSL Ready**: Plan to use Let's Encrypt for HTTPS certificates
 
@@ -192,33 +192,13 @@ sudo systemctl status expressentry
 
 ### 7. Nginx Configuration
 
+**Initial HTTP-only Configuration (before SSL):**
 ```bash
-# Create Nginx configuration
+# Create initial Nginx configuration (HTTP only)
 sudo tee /etc/nginx/sites-available/expressentry > /dev/null << EOF
 server {
     listen 80;
     server_name expressentry.xeradb.com www.expressentry.xeradb.com;
-    
-    # Redirect HTTP to HTTPS
-    return 301 https://\$server_name\$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name expressentry.xeradb.com www.expressentry.xeradb.com;
-    
-    # SSL Configuration (update with your SSL certificates)
-    ssl_certificate /etc/ssl/certs/expressentry.xeradb.com.crt;
-    ssl_certificate_key /etc/ssl/private/expressentry.xeradb.com.key;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384;
-    
-    # Security headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "no-referrer-when-downgrade" always;
-    add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
     
     # Static files
     location /static/ {
@@ -267,6 +247,8 @@ sudo nginx -t
 sudo systemctl enable nginx
 sudo systemctl restart nginx
 ```
+
+**Note**: After SSL setup with Certbot (step 8), the configuration will be automatically updated to include SSL redirects and security headers.
 
 ### 8. SSL Certificate Setup (Let's Encrypt)
 
@@ -432,24 +414,24 @@ chmod +x /var/www/eep/backup_db.sh
 2. **Update predictions when new draws published**:
    ```bash
    # Update CSV with new data, then:
-   python3 manage.py load_draw_data
-   python3 manage.py compute_predictions --force
+   python manage.py load_draw_data
+   python manage.py compute_predictions --force
    ```
 
 ### Weekly Tasks
 
 ```bash
 # 1. Backup database
-python3 manage.py dumpdata > backup_$(date +%Y%m%d).json
+python manage.py dumpdata > backup_$(date +%Y%m%d).json
 
-# 2. Check model performance
-python3 manage.py evaluate_models
-
-# 3. Update system
+# 2. Update system and code
 git pull origin main
 pip install -r requirements.txt --upgrade
-python3 manage.py migrate
-python3 manage.py compute_predictions --force
+python manage.py migrate
+python manage.py compute_predictions --force
+
+# 3. Sync latest IRCC draws
+python manage.py sync_ircc_draws --days-back 7
 ```
 
 ### Auto-Commit Workflow
@@ -480,54 +462,45 @@ pip install prophet==1.1.7 --upgrade --force-reinstall
 **2. No Predictions Generated:**
 ```bash
 # Check if data is loaded
-python3 manage.py shell -c "from predictor.models import ExpressEntryDraw; print(f'Draws: {ExpressEntryDraw.objects.count()}')"
+python manage.py shell -c "from predictor.models import ExpressEntryDraw; print(f'Draws: {ExpressEntryDraw.objects.count()}')"
 
-# Check if models exist
-python3 manage.py shell -c "from predictor.models import PredictionModel; print(f'Models: {PredictionModel.objects.count()}')"
+# Check if categories exist
+python manage.py shell -c "from predictor.models import DrawCategory; print(f'Categories: {DrawCategory.objects.count()}')"
 
 # Regenerate predictions
-python3 manage.py compute_predictions --force
+python manage.py compute_predictions --force
 ```
 
 **3. Database Issues:**
 ```bash
 # Reset migrations (if needed)
 rm predictor/migrations/000*.py
-python3 manage.py makemigrations predictor
-python3 manage.py migrate
+python manage.py makemigrations predictor
+python manage.py migrate
 ```
 
-**4. Memory Issues:**
+**4. Performance Issues:**
 ```bash
-# Use specific models for large datasets
-python3 manage.py compute_predictions --model linear  # Fastest
-python3 manage.py compute_predictions --model xgboost  # Good balance
+# Reduce prediction load for testing
+python manage.py compute_predictions --predictions 3 --force
+
+# Generate predictions for specific category only
+python manage.py compute_predictions --category "Canadian Experience Class" --force
 ```
 
 ### Performance Optimization
 
-**1. Enable Caching:**
-```python
-# In settings.py
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': 'redis://127.0.0.1:6379/1',
-    }
-}
-```
-
-**2. Database Optimization:**
+**Database Optimization:**
 ```bash
-# PostgreSQL recommended for production
-pip install psycopg2-binary
-# Set DATABASE_URL in environment
-```
+# Use PostgreSQL for production (already configured in this guide)
+# Database settings are in .env file: DATABASE_URL=postgresql://...
 
-**3. Static Files:**
-```bash
-# Collect static files for production
-python3 manage.py collectstatic
+# For Redis caching (optional enhancement):
+sudo apt install redis-server
+pip install django-redis
+
+# Add to .env:
+# CACHE_BACKEND=redis://127.0.0.1:6379/1
 ```
 
 ---
@@ -657,23 +630,24 @@ def health_check(request):
 
 ```bash
 # Data Management
-python3 manage.py load_draw_data           # Load historical data
-python3 manage.py compute_predictions      # Generate all predictions
-python3 manage.py setup_initial_data       # Setup ML models
+python manage.py load_draw_data           # Load historical data
+python manage.py compute_predictions      # Generate all predictions
+python manage.py setup_initial_data       # Setup ML models
 
-# Model Operations
-python3 manage.py evaluate_models          # Check model performance
-python3 manage.py run_predictions --model ensemble --steps 5
+# Enhanced Data Management
+python manage.py sync_ircc_draws          # Sync latest IRCC draws
+python manage.py populate_historical_data # Populate economic/political data
+python manage.py collect_economic_data    # Update economic indicators
 
 # System Management
-python3 manage.py check                    # System health check
-python3 manage.py migrate                  # Database updates
-python3 manage.py collectstatic           # Collect static files
+python manage.py check                    # System health check
+python manage.py migrate                  # Database updates
+python manage.py collectstatic           # Collect static files
 
 # Development
-python3 manage.py runserver 8002          # Development server
-python3 manage.py shell                   # Django shell
-python3 manage.py createsuperuser         # Create admin user
+python manage.py runserver 8002          # Development server
+python manage.py shell                   # Django shell
+python manage.py createsuperuser         # Create admin user
 ```
 
 ---
@@ -894,8 +868,8 @@ python manage.py shell -c "from django.conf import settings; print('STATIC_ROOT:
 cd /var/www/eep
 source venv/bin/activate
 
-# Clear problematic predictions
-python manage.py clear_predictions --category "Education" --confirm
+# Clear problematic predictions for specific category
+python manage.py clear_predictions --category "Education occupations (Version 1)" --confirm
 
 # Regenerate with enhanced NaN handling
 python manage.py compute_predictions --category "Education occupations (Version 1)" --force
