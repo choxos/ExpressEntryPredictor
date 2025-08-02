@@ -428,7 +428,13 @@ function createTimelineChart(predictions) {
             marker: {
                 size: 8,
                 opacity: 0.8
-            }
+            },
+            hovertemplate: '<b>%{fullData.name}</b><br>' +
+                          'Date: %{x}<br>' +
+                          'Predicted CRS: %{y}<br>' +
+                          'Confidence: %{customdata}%<br>' +
+                          '<extra></extra>',
+            customdata: points.map(p => Math.round(p.confidence))
         };
     });
     
@@ -446,7 +452,7 @@ function createTimelineChart(predictions) {
             title: 'CRS Score',
             range: [300, 900]
         },
-        hovermode: 'x unified',
+        hovermode: 'closest',
         showlegend: true,
         legend: {
             orientation: 'h',
