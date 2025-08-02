@@ -259,6 +259,12 @@ class DashboardStatsAPIView(APIView):
                 avg_invitations=Avg('invitations_issued')
             )
             
+            # Date range statistics
+            date_range = ExpressEntryDraw.objects.aggregate(
+                start_date=Min('date'),
+                end_date=Max('date')
+            )
+            
             stats = {
                 # Frontend expects these exact property names
                 'total_draws': total_draws,
@@ -268,6 +274,10 @@ class DashboardStatsAPIView(APIView):
                 'avg_invitations': round(crs_stats['avg_invitations'] or 0),
                 'min_crs_score': crs_stats['min_crs'] or 0,
                 'max_crs_score': crs_stats['max_crs'] or 0,
+                'date_range': {
+                    'start': date_range['start_date'].isoformat() if date_range['start_date'] else None,
+                    'end': date_range['end_date'].isoformat() if date_range['end_date'] else None
+                },
                 'recent_draws': [{
                     'id': draw.id,
                     'round_number': draw.round_number,

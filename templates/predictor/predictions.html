@@ -271,9 +271,9 @@ function displayModelPerformance(predictions) {
     
     // Calculate aggregate metrics
     const totalPredictions = predictions.length;
-    const avgConfidence = predictions.reduce((sum, p) => sum + p.confidence_metrics.overall_confidence, 0) / totalPredictions;
-    const avgR2Score = predictions.reduce((sum, p) => sum + (p.model_performance.r2_score || 0), 0) / totalPredictions;
-    const avgMAE = predictions.reduce((sum, p) => sum + (p.model_performance.mae || 0), 0) / totalPredictions;
+    const avgConfidence = predictions.reduce((sum, p) => sum + (p.confidence_score || 0), 0) / totalPredictions;
+    const avgR2Score = predictions.reduce((sum, p) => sum + (p.model_performance?.r2_score || 0), 0) / totalPredictions;
+    const avgMAE = predictions.reduce((sum, p) => sum + (p.model_performance?.mae || 0), 0) / totalPredictions;
     
     const metrics = [
         {

@@ -12,7 +12,7 @@
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Plotly.js -->
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
     
     <style>
         :root {
@@ -149,13 +149,13 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{% url 'predictor:api-docs' %}">
-                            <i class="fas fa-code"></i> API Docs
+                        <a class="nav-link" href="{% url 'predictor:analytics' %}">
+                            <i class="fas fa-chart-line"></i> Analytics
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{% url 'predictor:analytics' %}">
-                            <i class="fas fa-chart-line"></i> Analytics
+                        <a class="nav-link" href="{% url 'predictor:api-docs' %}">
+                            <i class="fas fa-code"></i> API Docs
                         </a>
                     </li>
                 </ul>
