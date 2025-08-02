@@ -157,7 +157,12 @@ class Command(BaseCommand):
                         
                         # Create model copy and train
                         model_copy = self._copy_model(model)
-                        model_copy.train(train_df, target_col)
+                        
+                        # Handle different train() method signatures
+                        if model_name in ['ARIMA', 'LSTM']:
+                            model_copy.train(train_df)  # These models don't take target_col
+                        else:
+                            model_copy.train(train_df, target_col)
                         
                         # Predict
                         if hasattr(model_copy, 'predict'):
@@ -174,7 +179,10 @@ class Command(BaseCommand):
                         continue
             
             # Train on full dataset
-            model.train(df, target_col)
+            if model_name in ['ARIMA', 'LSTM']:
+                model.train(df)  # These models don't take target_col
+            else:
+                model.train(df, target_col)
             
             # Get metrics
             if hasattr(model, 'metrics') and model.metrics:
