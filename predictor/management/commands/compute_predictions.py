@@ -36,11 +36,21 @@ class Command(BaseCommand):
             default=10,
             help='Number of future predictions to generate (default: 10)',
         )
+        parser.add_argument(
+            '--summary',
+            action='store_true',
+            help='Show detailed summary of successful and failed categories',
+        )
 
     def handle(self, *args, **options):
         category_filter = options.get('category')
         force_recompute = options.get('force')
         num_predictions = options.get('predictions')
+        show_summary = options.get('summary')
+        
+        # Track successful and failed categories for summary
+        successful_categories = []
+        failed_categories = []
         
         self.stdout.write(self.style.SUCCESS(
             f'🚀 Starting prediction computation for {num_predictions} future draws'
@@ -118,7 +128,7 @@ class Command(BaseCommand):
         self.stdout.write(f'\n📊 Processing {total_groups} unique IRCC categories...')
         
         successful_predictions = 0
-        failed_categories = []
+        local_failed_categories = []
         
         for i, (ircc_category, group_info) in enumerate(ircc_groups.items(), 1):
             representative_category = group_info['representative_category']
@@ -132,16 +142,33 @@ class Command(BaseCommand):
                 
                 if predictions_created > 0:
                     successful_predictions += 1
+                    successful_categories.append({
+                        'name': ircc_category,
+                        'representative': representative_category.name,
+                        'predictions': predictions_created
+                    })
                     self.stdout.write(self.style.SUCCESS(
                         f'✅ Created {predictions_created} predictions for {ircc_category}'
                     ))
                 else:
+                    failed_categories.append({
+                        'name': ircc_category,
+                        'representative': representative_category.name,
+                        'reason': 'No predictions created (insufficient data or already computed)',
+                        'predictions': 0
+                    })
                     self.stdout.write(self.style.WARNING(
                         f'⚠️  No predictions created for {ircc_category} (insufficient data or already computed)'
                     ))
                 
             except Exception as e:
-                failed_categories.append((ircc_category, str(e)))
+                local_failed_categories.append((ircc_category, str(e)))
+                failed_categories.append({
+                    'name': ircc_category,
+                    'representative': representative_category.name,
+                    'reason': f'Exception: {str(e)}',
+                    'predictions': 0
+                })
                 self.stdout.write(
                     self.style.ERROR(f'❌ Failed to process {ircc_category}: {str(e)}')
                 )
@@ -149,8 +176,24 @@ class Command(BaseCommand):
         # Summary
         self.stdout.write(f'\n📈 PREDICTION COMPUTATION SUMMARY')
         self.stdout.write(f'✅ Successful categories: {successful_predictions}/{total_groups}')
-        if failed_categories:
-            self.stdout.write(f'❌ Failed categories: {", ".join([f"{cat}: {err}" for cat, err in failed_categories])}')
+        if local_failed_categories:
+            self.stdout.write(f'❌ Failed categories: {", ".join([f"{cat}: {err}" for cat, err in local_failed_categories])}')
+        
+        # Detailed summary if requested
+        if show_summary:
+            self.stdout.write(f'\n📊 DETAILED CATEGORY STATUS:')
+            
+            if successful_categories:
+                self.stdout.write(f'\n✅ SUCCESSFUL CATEGORIES ({len(successful_categories)}):')
+                for cat in successful_categories:
+                    self.stdout.write(f'   • {cat["name"]:<40} | Rep: {cat["representative"]:<35} | Predictions: {cat["predictions"]}')
+            
+            if failed_categories:
+                self.stdout.write(f'\n❌ FAILED CATEGORIES ({len(failed_categories)}):')
+                for cat in failed_categories:
+                    self.stdout.write(f'   • {cat["name"]:<40} | Rep: {cat["representative"]:<35} | Reason: {cat["reason"]}')
+            
+            self.stdout.write(f'\n📈 OVERALL SUCCESS RATE: {len(successful_categories)}/{len(successful_categories) + len(failed_categories)} ({len(successful_categories)/(len(successful_categories) + len(failed_categories))*100:.1f}%)')
         
         # Cache dashboard stats
         self.cache_dashboard_stats()
