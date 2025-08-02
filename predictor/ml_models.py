@@ -162,9 +162,9 @@ class BasePredictor:
         
         # ENHANCED: Policy and external factors
         # Government fiscal year (April-March in Canada)
-        features['fiscal_year'] = features['month'].apply(lambda x: 'Q1' if x in [4,5,6] else 
-                                                                   'Q2' if x in [7,8,9] else
-                                                                   'Q3' if x in [10,11,12] else 'Q4')
+        features['fiscal_year'] = features['month'].apply(lambda x: 1 if x in [4,5,6] else 
+                                                                   2 if x in [7,8,9] else
+                                                                   3 if x in [10,11,12] else 4)  # Numerical encoding
         features['is_fiscal_year_end'] = (features['month'] == 3).astype(int)
         
         # Holiday proximity (affects processing)
@@ -1408,8 +1408,11 @@ class InvitationPredictor(BasePredictor):
                 max_depth=6,
                 learning_rate=0.1,
                 random_state=42,
-                objective='reg:squarederror'
+                objective='reg:squarederror',
+                enable_categorical=True  # Handle categorical features
             )
+            # XGBoost doesn't need scaling
+            self.use_scaler = False
         elif self.model_type == 'RF' and SKLEARN_AVAILABLE:
             from sklearn.ensemble import RandomForestRegressor
             self.model = RandomForestRegressor(
@@ -1417,17 +1420,26 @@ class InvitationPredictor(BasePredictor):
                 max_depth=10,
                 random_state=42
             )
+            # Random Forest doesn't need scaling
+            self.use_scaler = False
         else:
             # Fallback to simple linear model
             if SKLEARN_AVAILABLE:
                 from sklearn.linear_model import Ridge
                 self.model = Ridge(alpha=1.0)
+                self.use_scaler = True
                 X = self.scaler.fit_transform(X)
             else:
                 raise ImportError("No suitable libraries available for invitation prediction")
         
         # Train the model
-        self.model.fit(X, y)
+        if not hasattr(self, 'use_scaler') or not self.use_scaler:
+            self.model.fit(X, y)
+        else:
+            # For linear models that need scaling
+            X_scaled = self.scaler.fit_transform(X)
+            self.model.fit(X_scaled, y)
+        
         self.is_trained = True
         
         # Calculate feature importance
@@ -1450,7 +1462,7 @@ class InvitationPredictor(BasePredictor):
         
         # Make base prediction
         if SKLEARN_AVAILABLE and hasattr(self.model, 'predict'):
-            if hasattr(self, 'scaler') and hasattr(self.scaler, 'transform'):
+            if hasattr(self, 'use_scaler') and self.use_scaler and hasattr(self.scaler, 'transform'):
                 X_scaled = self.scaler.transform(X)
                 base_prediction = self.model.predict(X_scaled)
             else:
