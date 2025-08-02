@@ -1,0 +1,11 @@
+date,is_federal_holiday,is_provincial_holiday,is_long_weekend,days_to_next_holiday,is_system_maintenance,parliament_sitting,minister_announcement,policy_change
+2024-01-01,1,1,1,0,0,0,0,0
+2024-01-02,0,0,0,17,0,1,0,0
+2024-01-08,0,0,0,11,0,1,0,0
+2024-01-15,0,0,0,4,0,1,1,0
+2024-01-19,1,0,0,0,0,0,0,0
+2024-01-22,0,0,0,30,0,1,0,0
+2024-01-29,0,0,0,23,1,1,0,0
+2024-02-05,0,0,0,16,0,1,0,1
+2024-02-12,0,0,0,9,0,1,0,0
+2024-02-19,1,1,1,0,0,0,1,0 

@@ -1,0 +1,342 @@
+{% extends 'base.html' %}
+
+{% block title %}Express Entry Predictor - AI-Powered Draw Predictions{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="hero-section">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-lg-6">
+                <h1 class="display-4 fw-bold mb-4">
+                    Predict Your Express Entry Success
+                </h1>
+                <p class="lead mb-4">
+                    Get AI-powered predictions for Canadian Express Entry draws. Our advanced machine learning models analyze historical data to forecast draw dates and CRS scores.
+                </p>
+                <div class="d-flex gap-3">
+                    <a href="{% url 'predictor:predictions' %}" class="btn btn-light btn-lg">
+                        <i class="fas fa-magic me-2"></i>View Predictions
+                    </a>
+                    <a href="{% url 'predictor:dashboard' %}" class="btn btn-outline-light btn-lg">
+                        <i class="fas fa-chart-line me-2"></i>Dashboard
+                    </a>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="text-center">
+                    <i class="fas fa-brain" style="font-size: 8rem; opacity: 0.3;"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Quick Stats -->
+<section class="container mb-5">
+    <div class="row" id="quickStats">
+        <div class="col-md-3 mb-3">
+            <div class="stats-card text-center">
+                <i class="fas fa-chart-line fa-2x mb-2"></i>
+                <h4 id="totalDraws">-</h4>
+                <p class="mb-0">Total Draws</p>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="stats-card text-center">
+                <i class="fas fa-users fa-2x mb-2"></i>
+                <h4 id="avgInvitations">-</h4>
+                <p class="mb-0">Avg Invitations</p>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="stats-card text-center">
+                <i class="fas fa-trophy fa-2x mb-2"></i>
+                <h4 id="avgCRS">-</h4>
+                <p class="mb-0">Avg CRS Score</p>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="stats-card text-center">
+                <i class="fas fa-calendar fa-2x mb-2"></i>
+                <h4 id="activeCategories">-</h4>
+                <p class="mb-0">Active Categories</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Latest Predictions -->
+<section class="container mb-5">
+    <div class="row">
+        <div class="col-12">
+            <h2 class="text-center mb-4">
+                <i class="fas fa-crystal-ball me-2 text-primary"></i>
+                Latest Predictions
+            </h2>
+            <p class="text-center text-muted mb-5">
+                AI-powered forecasts for upcoming Express Entry draws
+            </p>
+        </div>
+    </div>
+    
+    <div class="row" id="predictionsContainer">
+        <div class="col-12">
+            <div class="loading-spinner" id="predictionsLoading">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading predictions...</span>
+                </div>
+                <p class="mt-2">Generating predictions...</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Recent Draws -->
+<section class="container mb-5">
+    <div class="row">
+        <div class="col-12">
+            <h2 class="text-center mb-4">
+                <i class="fas fa-history me-2 text-primary"></i>
+                Recent Draws
+            </h2>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="recentDrawsTable">
+                            <thead class="table-primary">
+                                <tr>
+                                    <th>Round</th>
+                                    <th>Date</th>
+                                    <th>Category</th>
+                                    <th>CRS Score</th>
+                                    <th>Invitations</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recentDrawsBody">
+                                <!-- Recent draws will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Features Section -->
+<section class="container mb-5">
+    <div class="row">
+        <div class="col-12">
+            <h2 class="text-center mb-5">Why Choose Our Predictor?</h2>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 text-center">
+                <div class="card-body">
+                    <i class="fas fa-robot fa-3x text-primary mb-3"></i>
+                    <h5 class="card-title">AI-Powered Models</h5>
+                    <p class="card-text">
+                        We use multiple machine learning algorithms including ARIMA, Random Forest, XGBoost, and LSTM neural networks.
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 text-center">
+                <div class="card-body">
+                    <i class="fas fa-database fa-3x text-primary mb-3"></i>
+                    <h5 class="card-title">Comprehensive Data</h5>
+                    <p class="card-text">
+                        Our models analyze over 350+ historical draws, economic indicators, and seasonal patterns.
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 text-center">
+                <div class="card-body">
+                    <i class="fas fa-chart-line fa-3x text-primary mb-3"></i>
+                    <h5 class="card-title">Real-time Updates</h5>
+                    <p class="card-text">
+                        Predictions are updated automatically as new draw data becomes available from IRCC.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Load dashboard stats
+    loadDashboardStats();
+    
+    // Load latest predictions
+    loadLatestPredictions();
+});
+
+async function loadDashboardStats() {
+    try {
+        const response = await axios.get('/api/stats/');
+        const data = response.data;
+        
+        // Update quick stats
+        document.getElementById('totalDraws').textContent = data.total_draws.toLocaleString();
+        document.getElementById('avgInvitations').textContent = Math.round(data.avg_invitations).toLocaleString();
+        document.getElementById('avgCRS').textContent = Math.round(data.avg_crs_score);
+        document.getElementById('activeCategories').textContent = data.categories_count;
+        
+        // Update recent draws table
+        const tbody = document.getElementById('recentDrawsBody');
+        tbody.innerHTML = '';
+        
+        data.recent_draws.forEach(draw => {
+            const row = document.createElement('tr');
+            const categoryClass = getCategoryClass(draw.category_name);
+            
+            row.innerHTML = `
+                <td><strong>#${draw.round_number}</strong></td>
+                <td>${formatDate(draw.date)}</td>
+                <td><span class="badge ${categoryClass}">${draw.category_name}</span></td>
+                <td><strong>${draw.lowest_crs_score}</strong></td>
+                <td>${draw.invitations_issued.toLocaleString()}</td>
+            `;
+            tbody.appendChild(row);
+        });
+        
+    } catch (error) {
+        console.error('Error loading dashboard stats:', error);
+    }
+}
+
+async function loadLatestPredictions() {
+    const container = document.getElementById('predictionsContainer');
+    const loading = document.getElementById('predictionsLoading');
+    
+    loading.style.display = 'block';
+    
+    try {
+        const response = await axios.get('/api/predict/');
+        const predictions = response.data;
+        
+        loading.style.display = 'none';
+        container.innerHTML = '';
+        
+        if (predictions.length === 0) {
+            container.innerHTML = `
+                <div class="col-12">
+                    <div class="alert alert-info text-center">
+                        <i class="fas fa-info-circle me-2"></i>
+                        No predictions available at the moment. Please check back later.
+                    </div>
+                </div>
+            `;
+            return;
+        }
+        
+        predictions.slice(0, 3).forEach(prediction => {
+            const nextPrediction = prediction.ensemble_prediction;
+            const confidence = prediction.confidence_metrics.overall_confidence;
+            
+            const col = document.createElement('div');
+            col.className = 'col-md-4 mb-4';
+            
+            col.innerHTML = `
+                <div class="prediction-card h-100">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <h5 class="mb-0">${prediction.category.name}</h5>
+                        <span class="confidence-badge bg-light text-dark">
+                            ${confidence}% confidence
+                        </span>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between">
+                            <span>Next Draw Date:</span>
+                            <strong>${formatDate(nextPrediction.next_draw_date)}</strong>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span>Predicted CRS:</span>
+                            <strong>${nextPrediction.next_crs_score}</strong>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-auto">
+                        <small class="opacity-75">
+                            Model Accuracy: R² = ${(prediction.model_performance.r2_score || 0).toFixed(3)}
+                        </small>
+                    </div>
+                </div>
+            `;
+            
+            container.appendChild(col);
+        });
+        
+        // Add "View All Predictions" card
+        const viewAllCol = document.createElement('div');
+        viewAllCol.className = 'col-12 text-center mt-3';
+        viewAllCol.innerHTML = `
+            <a href="/predictions/" class="btn btn-primary btn-lg">
+                <i class="fas fa-eye me-2"></i>
+                View All Predictions
+            </a>
+        `;
+        container.appendChild(viewAllCol);
+        
+    } catch (error) {
+        loading.style.display = 'none';
+        container.innerHTML = `
+            <div class="col-12">
+                <div class="alert alert-danger text-center">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Error loading predictions. Please try again later.
+                </div>
+            </div>
+        `;
+        console.error('Error loading predictions:', error);
+    }
+}
+
+function formatDate(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+    });
+}
+
+function getCategoryClass(categoryName) {
+    const categoryClasses = {
+        'Provincial Nominee Program': 'bg-primary',
+        'Canadian Experience Class': 'bg-success',
+        'Federal Skilled Worker': 'bg-info',
+        'General': 'bg-secondary',
+        'No Program Specified': 'bg-secondary',
+        'French language proficiency': 'bg-warning',
+        'Healthcare': 'bg-danger',
+        'STEM': 'bg-dark'
+    };
+    
+    for (const [key, className] of Object.entries(categoryClasses)) {
+        if (categoryName.includes(key)) {
+            return className;
+        }
+    }
+    
+    return 'bg-light text-dark';
+}
+</script>
+{% endblock %} 

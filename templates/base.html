@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Express Entry Predictor{% endblock %}</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    
+    <style>
+        :root {
+            --primary-color: #0d47a1;
+            --secondary-color: #1976d2;
+            --accent-color: #ff6b35;
+            --success-color: #28a745;
+            --warning-color: #ffc107;
+            --danger-color: #dc3545;
+            --light-bg: #f8f9fa;
+            --dark-text: #333;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--light-bg);
+            color: var(--dark-text);
+        }
+        
+        .navbar-brand {
+            font-weight: bold;
+            font-size: 1.5rem;
+        }
+        
+        .hero-section {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            padding: 4rem 0;
+            margin-bottom: 2rem;
+        }
+        
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+        
+        .btn-primary {
+            background: var(--primary-color);
+            border: none;
+            border-radius: 25px;
+            padding: 0.7rem 1.5rem;
+            font-weight: 500;
+        }
+        
+        .btn-primary:hover {
+            background: var(--secondary-color);
+        }
+        
+        .stats-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .prediction-card {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            border-radius: 15px;
+            padding: 1.5rem;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin: 1rem 0;
+        }
+        
+        .confidence-badge {
+            font-size: 0.9rem;
+            border-radius: 15px;
+            padding: 0.3rem 0.8rem;
+        }
+        
+        .footer {
+            background: var(--primary-color);
+            color: white;
+            padding: 2rem 0;
+            margin-top: 3rem;
+        }
+        
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+        }
+        
+        .prediction-timeline {
+            background: white;
+            border-radius: 15px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+        }
+        
+        .draw-category {
+            border-left: 4px solid var(--accent-color);
+            padding-left: 1rem;
+        }
+    </style>
+    
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark" style="background-color: var(--primary-color);">
+        <div class="container">
+            <a class="navbar-brand" href="{% url 'predictor:home' %}">
+                <i class="fas fa-chart-line me-2"></i>
+                Express Entry Predictor
+            </a>
+            
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'predictor:home' %}">
+                            <i class="fas fa-home me-1"></i>Home
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'predictor:predictions' %}">
+                            <i class="fas fa-crystal-ball me-1"></i>Predictions
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'predictor:dashboard' %}">
+                            <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'analytics:home' %}">
+                            <i class="fas fa-chart-bar me-1"></i>Analytics
+                        </a>
+                    </li>
+                </ul>
+                
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/admin/">
+                            <i class="fas fa-cog me-1"></i>Admin
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <h5>Express Entry Predictor</h5>
+                    <p class="mb-0">Advanced predictions for Canadian Express Entry draws using machine learning and statistical models.</p>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <h6>Data Sources</h6>
+                    <ul class="list-unstyled">
+                        <li><small><a href="https://www.canada.ca/en/immigration-refugees-citizenship.html" class="text-white-50">IRCC Official Data</a></small></li>
+                        <li><small><a href="https://www.statcan.gc.ca/" class="text-white-50">Statistics Canada</a></small></li>
+                    </ul>
+                </div>
+            </div>
+            <hr class="my-3">
+            <div class="row">
+                <div class="col-12 text-center">
+                    <small>&copy; 2024 Express Entry Predictor. For educational purposes only.</small>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Axios for API calls -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html> 

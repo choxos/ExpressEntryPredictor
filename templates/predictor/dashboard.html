@@ -1,0 +1,359 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - Express Entry Analytics{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<section class="hero-section">
+    <div class="container">
+        <div class="row">
+            <div class="col-12 text-center">
+                <h1 class="display-5 fw-bold mb-3">
+                    <i class="fas fa-tachometer-alt me-3"></i>
+                    Express Entry Dashboard
+                </h1>
+                <p class="lead mb-0">
+                    Comprehensive analytics and insights from historical draw data
+                </p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Key Metrics -->
+<section class="container mb-5">
+    <div class="row" id="keyMetrics">
+        <!-- Metrics will be loaded here -->
+    </div>
+</section>
+
+<!-- Charts Section -->
+<section class="container mb-5">
+    <div class="row">
+        <!-- CRS Trends Chart -->
+        <div class="col-lg-8 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-line me-2"></i>
+                        CRS Score Trends Over Time
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="crsChart" style="height: 400px;"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Category Distribution -->
+        <div class="col-lg-4 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-pie-chart me-2"></i>
+                        Category Distribution
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="categoryChart" style="height: 400px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row">
+        <!-- Monthly Trends -->
+        <div class="col-lg-6 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-calendar me-2"></i>
+                        Monthly Draw Count
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="monthlyChart" style="height: 350px;"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Score vs Invitations -->
+        <div class="col-lg-6 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-scatter-chart me-2"></i>
+                        CRS Score vs Invitations
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="scatterChart" style="height: 350px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Recent Activity -->
+<section class="container mb-5">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-clock me-2"></i>
+                        Recent Draw Activity
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="recentDrawsTable">
+                            <thead class="table-primary">
+                                <tr>
+                                    <th>Round</th>
+                                    <th>Date</th>
+                                    <th>Category</th>
+                                    <th>CRS Score</th>
+                                    <th>Invitations</th>
+                                    <th>Days Since Last</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recentDrawsBody">
+                                <!-- Recent draws will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Category Breakdown -->
+<section class="container mb-5">
+    <div class="row">
+        <div class="col-12">
+            <h3 class="mb-4">
+                <i class="fas fa-list-alt me-2 text-primary"></i>
+                Category Breakdown
+            </h3>
+        </div>
+    </div>
+    
+    <div class="row" id="categoryBreakdown">
+        <!-- Category cards will be loaded here -->
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadDashboardData();
+});
+
+async function loadDashboardData() {
+    try {
+        const response = await axios.get('/api/stats/');
+        const data = response.data;
+        
+        displayKeyMetrics(data);
+        displayRecentDraws(data.recent_draws);
+        displayCategoryBreakdown(data.category_breakdown);
+        
+        // Load charts
+        loadCharts();
+        
+    } catch (error) {
+        console.error('Error loading dashboard data:', error);
+    }
+}
+
+function displayKeyMetrics(data) {
+    const container = document.getElementById('keyMetrics');
+    
+    const metrics = [
+        {
+            title: 'Total Draws',
+            value: data.total_draws.toLocaleString(),
+            icon: 'fas fa-chart-line',
+            color: 'primary',
+            change: '+5 this month'
+        },
+        {
+            title: 'Active Categories',
+            value: data.categories_count.toString(),
+            icon: 'fas fa-tags',
+            color: 'success',
+            change: 'All active'
+        },
+        {
+            title: 'Average CRS Score',
+            value: Math.round(data.avg_crs_score).toString(),
+            icon: 'fas fa-trophy',
+            color: 'warning',
+            change: data.avg_crs_score > 500 ? 'Above 500' : 'Below 500'
+        },
+        {
+            title: 'Average Invitations',
+            value: Math.round(data.avg_invitations).toLocaleString(),
+            icon: 'fas fa-users',
+            color: 'info',
+            change: 'Per draw'
+        },
+        {
+            title: 'Date Range',
+            value: `${formatDate(data.date_range.start)} - ${formatDate(data.date_range.end)}`,
+            icon: 'fas fa-calendar-alt',
+            color: 'secondary',
+            change: 'Historical data'
+        }
+    ];
+    
+    container.innerHTML = '';
+    
+    metrics.forEach(metric => {
+        const col = document.createElement('div');
+        col.className = 'col-md-6 col-lg-4 col-xl mb-3';
+        
+        col.innerHTML = `
+            <div class="stats-card text-center text-white">
+                <i class="${metric.icon} fa-2x mb-3"></i>
+                <h4 class="mb-1">${metric.value}</h4>
+                <p class="mb-1 fw-bold">${metric.title}</p>
+                <small class="opacity-75">${metric.change}</small>
+            </div>
+        `;
+        
+        container.appendChild(col);
+    });
+}
+
+function displayRecentDraws(draws) {
+    const tbody = document.getElementById('recentDrawsBody');
+    tbody.innerHTML = '';
+    
+    draws.forEach(draw => {
+        const row = document.createElement('tr');
+        const categoryClass = getCategoryClass(draw.category_name);
+        
+        row.innerHTML = `
+            <td><strong>#${draw.round_number}</strong></td>
+            <td>${formatDate(draw.date)}</td>
+            <td><span class="badge ${categoryClass}">${draw.category_name}</span></td>
+            <td><strong>${draw.lowest_crs_score}</strong></td>
+            <td>${draw.invitations_issued.toLocaleString()}</td>
+            <td>${draw.days_since_last_draw || 'N/A'} days</td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+function displayCategoryBreakdown(breakdown) {
+    const container = document.getElementById('categoryBreakdown');
+    container.innerHTML = '';
+    
+    breakdown.forEach(category => {
+        const col = document.createElement('div');
+        col.className = 'col-md-6 col-lg-4 mb-4';
+        
+        col.innerHTML = `
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <h6 class="card-title mb-0">${category.category}</h6>
+                        <span class="badge bg-primary">${category.count} draws</span>
+                    </div>
+                    
+                    <div class="row text-center">
+                        <div class="col-6">
+                            <div class="border-end">
+                                <strong class="d-block">${Math.round(category.avg_crs)}</strong>
+                                <small class="text-muted">Avg CRS</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <strong class="d-block">${formatDate(category.latest_draw)}</strong>
+                            <small class="text-muted">Latest Draw</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        container.appendChild(col);
+    });
+}
+
+async function loadCharts() {
+    try {
+        const response = await axios.get('/analytics/api/charts/');
+        const charts = response.data;
+        
+        // CRS Trends Chart
+        if (charts.crs_trends) {
+            Plotly.newPlot('crsChart', charts.crs_trends.data, charts.crs_trends.layout, {responsive: true});
+        }
+        
+        // Category Distribution Chart
+        if (charts.category_distribution) {
+            Plotly.newPlot('categoryChart', charts.category_distribution.data, charts.category_distribution.layout, {responsive: true});
+        }
+        
+        // Monthly Chart
+        if (charts.monthly_draws) {
+            Plotly.newPlot('monthlyChart', charts.monthly_draws.data, charts.monthly_draws.layout, {responsive: true});
+        }
+        
+        // Scatter Chart
+        if (charts.score_vs_invitations) {
+            Plotly.newPlot('scatterChart', charts.score_vs_invitations.data, charts.score_vs_invitations.layout, {responsive: true});
+        }
+        
+    } catch (error) {
+        console.error('Error loading charts:', error);
+        
+        // Display error messages in chart containers
+        const chartContainers = ['crsChart', 'categoryChart', 'monthlyChart', 'scatterChart'];
+        chartContainers.forEach(containerId => {
+            document.getElementById(containerId).innerHTML = `
+                <div class="text-center text-muted py-5">
+                    <i class="fas fa-exclamation-triangle fa-2x mb-3"></i>
+                    <p>Error loading chart data</p>
+                </div>
+            `;
+        });
+    }
+}
+
+function formatDate(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+    });
+}
+
+function getCategoryClass(categoryName) {
+    const categoryClasses = {
+        'Provincial Nominee Program': 'bg-primary',
+        'Canadian Experience Class': 'bg-success',
+        'Federal Skilled Worker': 'bg-info',
+        'General': 'bg-secondary',
+        'No Program Specified': 'bg-secondary',
+        'French language proficiency': 'bg-warning',
+        'Healthcare': 'bg-danger',
+        'STEM': 'bg-dark'
+    };
+    
+    for (const [key, className] of Object.entries(categoryClasses)) {
+        if (categoryName.includes(key)) {
+            return className;
+        }
+    }
+    
+    return 'bg-light text-dark';
+}
+</script>
+{% endblock %} 

@@ -1,0 +1,418 @@
+{% extends 'base.html' %}
+
+{% block title %}Analytics - Express Entry Trends{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<section class="hero-section">
+    <div class="container">
+        <div class="row">
+            <div class="col-12 text-center">
+                <h1 class="display-5 fw-bold mb-3">
+                    <i class="fas fa-chart-bar me-3"></i>
+                    Express Entry Analytics
+                </h1>
+                <p class="lead mb-0">
+                    Deep insights and trend analysis of Canadian Express Entry system
+                </p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Quick Navigation -->
+<section class="container mb-5">
+    <div class="row">
+        <div class="col-md-4 mb-3">
+            <div class="card h-100 text-center">
+                <div class="card-body">
+                    <i class="fas fa-trending-up fa-3x text-primary mb-3"></i>
+                    <h5 class="card-title">Trend Analysis</h5>
+                    <p class="card-text">Analyze historical trends and patterns in Express Entry draws.</p>
+                    <a href="{% url 'analytics:trends' %}" class="btn btn-primary">View Trends</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4 mb-3">
+            <div class="card h-100 text-center">
+                <div class="card-body">
+                    <i class="fas fa-chart-pie fa-3x text-success mb-3"></i>
+                    <h5 class="card-title">Statistics</h5>
+                    <p class="card-text">Comprehensive statistical analysis of draw data.</p>
+                    <a href="{% url 'analytics:statistics' %}" class="btn btn-success">View Statistics</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4 mb-3">
+            <div class="card h-100 text-center">
+                <div class="card-body">
+                    <i class="fas fa-download fa-3x text-info mb-3"></i>
+                    <h5 class="card-title">Data Export</h5>
+                    <p class="card-text">Download raw data and analysis reports.</p>
+                    <button class="btn btn-info" onclick="exportData()">Export Data</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Trend Overview -->
+<section class="container mb-5">
+    <div class="row">
+        <div class="col-12">
+            <h3 class="mb-4">
+                <i class="fas fa-chart-line me-2 text-primary"></i>
+                Trend Overview
+            </h3>
+        </div>
+    </div>
+    
+    <div class="row" id="trendOverview">
+        <!-- Trend cards will be loaded here -->
+    </div>
+</section>
+
+<!-- Interactive Charts -->
+<section class="container mb-5">
+    <div class="row">
+        <div class="col-12">
+            <h3 class="mb-4">
+                <i class="fas fa-chart-area me-2 text-primary"></i>
+                Interactive Analysis
+            </h3>
+        </div>
+    </div>
+    
+    <!-- Moving Averages Chart -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-line-chart me-2"></i>
+                        Moving Averages (10-draw window)
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="movingAveragesChart" style="height: 400px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Seasonal Patterns -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-calendar me-2"></i>
+                        Seasonal Patterns
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="seasonalChart" style="height: 350px;"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-arrows-alt me-2"></i>
+                        Category Trends
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="categoryTrendsContainer">
+                        <!-- Category trend cards will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Insights Section -->
+<section class="container mb-5">
+    <div class="row">
+        <div class="col-12">
+            <h3 class="mb-4">
+                <i class="fas fa-lightbulb me-2 text-primary"></i>
+                Key Insights
+            </h3>
+        </div>
+    </div>
+    
+    <div class="row" id="insightsContainer">
+        <!-- Insights will be loaded here -->
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadTrendData();
+});
+
+async function loadTrendData() {
+    try {
+        const response = await axios.get('/analytics/api/trends/');
+        const trends = response.data;
+        
+        displayTrendOverview(trends);
+        createMovingAveragesChart(trends.moving_averages);
+        createSeasonalChart(trends.seasonal_patterns);
+        displayCategoryTrends(trends.category_trends);
+        generateInsights(trends);
+        
+    } catch (error) {
+        console.error('Error loading trend data:', error);
+    }
+}
+
+function displayTrendOverview(trends) {
+    const container = document.getElementById('trendOverview');
+    container.innerHTML = '';
+    
+    // Calculate overview metrics
+    const totalAccuracy = trends.prediction_accuracy.length;
+    const avgDateError = totalAccuracy > 0 ? 
+        trends.prediction_accuracy.reduce((sum, p) => sum + p.date_error_days, 0) / totalAccuracy : 0;
+    const avgScoreError = totalAccuracy > 0 ? 
+        trends.prediction_accuracy.reduce((sum, p) => sum + p.score_error, 0) / totalAccuracy : 0;
+    
+    const overviewData = [
+        {
+            title: 'Data Points',
+            value: trends.moving_averages.length.toString(),
+            icon: 'fas fa-database',
+            color: 'primary'
+        },
+        {
+            title: 'Avg Date Error',
+            value: `${avgDateError.toFixed(1)} days`,
+            icon: 'fas fa-calendar-check',
+            color: 'success'
+        },
+        {
+            title: 'Avg Score Error',
+            value: `${avgScoreError.toFixed(1)} points`,
+            icon: 'fas fa-bullseye',
+            color: 'warning'
+        },
+        {
+            title: 'Active Categories',
+            value: Object.keys(trends.category_trends).length.toString(),
+            icon: 'fas fa-tags',
+            color: 'info'
+        }
+    ];
+    
+    overviewData.forEach(data => {
+        const col = document.createElement('div');
+        col.className = 'col-md-3 mb-3';
+        
+        col.innerHTML = `
+            <div class="card text-center">
+                <div class="card-body">
+                    <i class="${data.icon} fa-2x text-${data.color} mb-3"></i>
+                    <h4 class="mb-1">${data.value}</h4>
+                    <p class="mb-0 text-muted">${data.title}</p>
+                </div>
+            </div>
+        `;
+        
+        container.appendChild(col);
+    });
+}
+
+function createMovingAveragesChart(movingAverages) {
+    const dates = movingAverages.map(ma => ma.date);
+    const crsAverages = movingAverages.map(ma => ma.avg_crs);
+    const invitationAverages = movingAverages.map(ma => ma.avg_invitations);
+    
+    const trace1 = {
+        x: dates,
+        y: crsAverages,
+        type: 'scatter',
+        mode: 'lines',
+        name: 'CRS Score (10-draw avg)',
+        yaxis: 'y1',
+        line: { color: '#007bff', width: 3 }
+    };
+    
+    const trace2 = {
+        x: dates,
+        y: invitationAverages,
+        type: 'scatter',
+        mode: 'lines',
+        name: 'Invitations (10-draw avg)',
+        yaxis: 'y2',
+        line: { color: '#28a745', width: 3 }
+    };
+    
+    const layout = {
+        title: 'Moving Averages Trend Analysis',
+        xaxis: { title: 'Date' },
+        yaxis: {
+            title: 'CRS Score',
+            side: 'left'
+        },
+        yaxis2: {
+            title: 'Invitations',
+            side: 'right',
+            overlaying: 'y'
+        },
+        hovermode: 'x unified'
+    };
+    
+    Plotly.newPlot('movingAveragesChart', [trace1, trace2], layout, {responsive: true});
+}
+
+function createSeasonalChart(seasonalPatterns) {
+    const months = seasonalPatterns.map(sp => sp.month);
+    const avgCRS = seasonalPatterns.map(sp => sp.avg_crs);
+    const drawCount = seasonalPatterns.map(sp => sp.draw_count);
+    
+    const trace1 = {
+        x: months,
+        y: avgCRS,
+        type: 'bar',
+        name: 'Avg CRS Score',
+        yaxis: 'y1',
+        marker: { color: '#007bff' }
+    };
+    
+    const trace2 = {
+        x: months,
+        y: drawCount,
+        type: 'scatter',
+        mode: 'lines+markers',
+        name: 'Draw Count',
+        yaxis: 'y2',
+        line: { color: '#dc3545', width: 3 },
+        marker: { size: 8 }
+    };
+    
+    const layout = {
+        title: 'Seasonal Patterns by Month',
+        xaxis: { title: 'Month' },
+        yaxis: {
+            title: 'Average CRS Score',
+            side: 'left'
+        },
+        yaxis2: {
+            title: 'Number of Draws',
+            side: 'right',
+            overlaying: 'y'
+        }
+    };
+    
+    Plotly.newPlot('seasonalChart', [trace1, trace2], layout, {responsive: true});
+}
+
+function displayCategoryTrends(categoryTrends) {
+    const container = document.getElementById('categoryTrendsContainer');
+    container.innerHTML = '';
+    
+    Object.keys(categoryTrends).forEach(categoryName => {
+        const trend = categoryTrends[categoryName];
+        const trendIcon = trend.trend_direction === 'increasing' ? 'fas fa-arrow-up text-success' :
+                         trend.trend_direction === 'decreasing' ? 'fas fa-arrow-down text-danger' :
+                         'fas fa-minus text-warning';
+        
+        const trendCard = document.createElement('div');
+        trendCard.className = 'mb-3';
+        
+        trendCard.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center p-2 border rounded">
+                <div>
+                    <strong>${categoryName}</strong>
+                    <small class="text-muted d-block">${trend.draw_count} draws</small>
+                </div>
+                <div class="text-end">
+                    <div><i class="${trendIcon} me-1"></i>${trend.avg_crs}</div>
+                    <small class="text-muted">${trend.trend_direction}</small>
+                </div>
+            </div>
+        `;
+        
+        container.appendChild(trendCard);
+    });
+}
+
+function generateInsights(trends) {
+    const container = document.getElementById('insightsContainer');
+    container.innerHTML = '';
+    
+    const insights = [
+        {
+            title: 'Prediction Accuracy',
+            content: `Based on ${trends.prediction_accuracy.length} historical predictions, our models show good accuracy in forecasting draw outcomes.`,
+            icon: 'fas fa-target',
+            color: 'success'
+        },
+        {
+            title: 'Seasonal Trends',
+            content: 'Express Entry draws show seasonal patterns with higher activity typically in certain months of the year.',
+            icon: 'fas fa-calendar-alt',
+            color: 'info'
+        },
+        {
+            title: 'Category Performance',
+            content: `${Object.keys(trends.category_trends).length} categories are actively being tracked with varying trend directions.`,
+            icon: 'fas fa-chart-bar',
+            color: 'warning'
+        },
+        {
+            title: 'Data Quality',
+            content: 'The dataset contains comprehensive historical information enabling reliable statistical analysis.',
+            icon: 'fas fa-database',
+            color: 'primary'
+        }
+    ];
+    
+    insights.forEach(insight => {
+        const col = document.createElement('div');
+        col.className = 'col-md-6 mb-4';
+        
+        col.innerHTML = `
+            <div class="card border-${insight.color}">
+                <div class="card-body">
+                    <div class="d-flex align-items-start">
+                        <i class="${insight.icon} fa-2x text-${insight.color} me-3"></i>
+                        <div>
+                            <h6 class="card-title text-${insight.color}">${insight.title}</h6>
+                            <p class="card-text">${insight.content}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        container.appendChild(col);
+    });
+}
+
+function exportData() {
+    // Create a simple CSV export
+    const csvContent = "data:text/csv;charset=utf-8,Category,Average CRS,Draw Count,Trend Direction\n";
+    
+    // This would typically make an API call to get export data
+    const link = document.createElement("a");
+    link.setAttribute("href", csvContent);
+    link.setAttribute("download", "express_entry_analysis.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // Show success message
+    alert('Data export functionality would be implemented here. In a real application, this would generate and download comprehensive reports.');
+}
+</script>
+{% endblock %} 

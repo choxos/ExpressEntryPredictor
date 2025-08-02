@@ -1,0 +1,414 @@
+{% extends 'base.html' %}
+
+{% block title %}Express Entry Predictions - AI Forecasts{% endblock %}
+
+{% block content %}
+<!-- Header Section -->
+<section class="hero-section">
+    <div class="container">
+        <div class="row">
+            <div class="col-12 text-center">
+                <h1 class="display-5 fw-bold mb-3">
+                    <i class="fas fa-crystal-ball me-3"></i>
+                    Express Entry Predictions
+                </h1>
+                <p class="lead mb-0">
+                    AI-powered forecasts for upcoming draws using advanced machine learning models
+                </p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Filter Section -->
+<section class="container mb-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-4">
+                            <label for="categoryFilter" class="form-label">Filter by Category:</label>
+                            <select class="form-select" id="categoryFilter">
+                                <option value="">All Categories</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="timeframe" class="form-label">Prediction Timeframe:</label>
+                            <select class="form-select" id="timeframe">
+                                <option value="next_month">Next Month</option>
+                                <option value="next_quarter">Next Quarter</option>
+                                <option value="rest_of_year" selected>Rest of Year</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                            <button class="btn btn-primary w-100" onclick="refreshPredictions()">
+                                <i class="fas fa-sync-alt me-2"></i>Refresh Predictions
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Predictions Grid -->
+<section class="container mb-5">
+    <div class="row" id="predictionsGrid">
+        <div class="col-12">
+            <div class="loading-spinner" id="predictionsLoading" style="display: block;">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading predictions...</span>
+                </div>
+                <p class="mt-2">Generating AI predictions...</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Model Performance Section -->
+<section class="container mb-5">
+    <div class="row">
+        <div class="col-12">
+            <h3 class="mb-4">
+                <i class="fas fa-cogs me-2 text-primary"></i>
+                Model Performance Overview
+            </h3>
+        </div>
+    </div>
+    
+    <div class="row" id="modelPerformance">
+        <!-- Model performance cards will be inserted here -->
+    </div>
+</section>
+
+<!-- Prediction Timeline Chart -->
+<section class="container mb-5">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-line me-2"></i>
+                        Prediction Timeline - Next 6 Months
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="timelineChart" style="height: 500px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let allPredictions = [];
+let categories = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadCategories();
+    loadPredictions();
+});
+
+async function loadCategories() {
+    try {
+        const response = await axios.get('/api/categories/');
+        categories = response.data.results || response.data;
+        
+        const categoryFilter = document.getElementById('categoryFilter');
+        categoryFilter.innerHTML = '<option value="">All Categories</option>';
+        
+        categories.forEach(category => {
+            const option = document.createElement('option');
+            option.value = category.id;
+            option.textContent = category.name;
+            categoryFilter.appendChild(option);
+        });
+        
+    } catch (error) {
+        console.error('Error loading categories:', error);
+    }
+}
+
+async function loadPredictions() {
+    const loading = document.getElementById('predictionsLoading');
+    const grid = document.getElementById('predictionsGrid');
+    
+    loading.style.display = 'block';
+    
+    try {
+        const response = await axios.get('/api/predict/');
+        allPredictions = response.data;
+        
+        loading.style.display = 'none';
+        displayPredictions(allPredictions);
+        displayModelPerformance(allPredictions);
+        createTimelineChart(allPredictions);
+        
+    } catch (error) {
+        loading.style.display = 'none';
+        grid.innerHTML = `
+            <div class="col-12">
+                <div class="alert alert-danger text-center">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Error loading predictions. Please try again later.
+                </div>
+            </div>
+        `;
+        console.error('Error loading predictions:', error);
+    }
+}
+
+function displayPredictions(predictions) {
+    const grid = document.getElementById('predictionsGrid');
+    grid.innerHTML = '';
+    
+    if (predictions.length === 0) {
+        grid.innerHTML = `
+            <div class="col-12">
+                <div class="alert alert-info text-center">
+                    <i class="fas fa-info-circle me-2"></i>
+                    No predictions available. Try adjusting your filters.
+                </div>
+            </div>
+        `;
+        return;
+    }
+    
+    predictions.forEach(prediction => {
+        const categoryColor = getCategoryColor(prediction.category.name);
+        const nextPrediction = prediction.ensemble_prediction;
+        const confidence = prediction.confidence_metrics.overall_confidence;
+        
+        const col = document.createElement('div');
+        col.className = 'col-lg-6 mb-4';
+        
+        col.innerHTML = `
+            <div class="card h-100">
+                <div class="card-header" style="background: ${categoryColor}; color: white;">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0">${prediction.category.name}</h6>
+                        <span class="badge bg-light text-dark">
+                            ${confidence}% Confidence
+                        </span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-6">
+                            <div class="text-center mb-3">
+                                <i class="fas fa-calendar-alt fa-2x text-primary mb-2"></i>
+                                <h5 class="mb-1">${formatDate(nextPrediction.next_draw_date)}</h5>
+                                <small class="text-muted">Next Draw Date</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-center mb-3">
+                                <i class="fas fa-trophy fa-2x text-warning mb-2"></i>
+                                <h5 class="mb-1">${nextPrediction.next_crs_score}</h5>
+                                <small class="text-muted">Predicted CRS</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <h6>Upcoming Predictions:</h6>
+                        <div class="prediction-timeline">
+                            ${prediction.prediction_timeline.slice(0, 4).map(pred => `
+                                <div class="d-flex justify-content-between py-1">
+                                    <span>${formatDate(pred.predicted_date)}</span>
+                                    <strong>CRS: ${pred.predicted_crs_score}</strong>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    
+                    <div class="row text-center">
+                        <div class="col-6">
+                            <small class="text-muted">Model R²</small>
+                            <div><strong>${(prediction.model_performance.r2_score || 0).toFixed(3)}</strong></div>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Data Quality</small>
+                            <div><strong>${prediction.confidence_metrics.data_quality}</strong></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        grid.appendChild(col);
+    });
+}
+
+function displayModelPerformance(predictions) {
+    const container = document.getElementById('modelPerformance');
+    container.innerHTML = '';
+    
+    // Calculate aggregate metrics
+    const totalPredictions = predictions.length;
+    const avgConfidence = predictions.reduce((sum, p) => sum + p.confidence_metrics.overall_confidence, 0) / totalPredictions;
+    const avgR2Score = predictions.reduce((sum, p) => sum + (p.model_performance.r2_score || 0), 0) / totalPredictions;
+    const avgMAE = predictions.reduce((sum, p) => sum + (p.model_performance.mae || 0), 0) / totalPredictions;
+    
+    const metrics = [
+        {
+            title: 'Average Confidence',
+            value: `${avgConfidence.toFixed(1)}%`,
+            icon: 'fas fa-thumbs-up',
+            color: 'success'
+        },
+        {
+            title: 'Model Accuracy (R²)',
+            value: avgR2Score.toFixed(3),
+            icon: 'fas fa-bullseye',
+            color: 'info'
+        },
+        {
+            title: 'Mean Absolute Error',
+            value: avgMAE.toFixed(1),
+            icon: 'fas fa-crosshairs',
+            color: 'warning'
+        },
+        {
+            title: 'Active Predictions',
+            value: totalPredictions.toString(),
+            icon: 'fas fa-chart-bar',
+            color: 'primary'
+        }
+    ];
+    
+    metrics.forEach(metric => {
+        const col = document.createElement('div');
+        col.className = 'col-md-3 mb-3';
+        
+        col.innerHTML = `
+            <div class="card text-center">
+                <div class="card-body">
+                    <i class="${metric.icon} fa-2x text-${metric.color} mb-3"></i>
+                    <h4 class="mb-1">${metric.value}</h4>
+                    <p class="mb-0 text-muted">${metric.title}</p>
+                </div>
+            </div>
+        `;
+        
+        container.appendChild(col);
+    });
+}
+
+function createTimelineChart(predictions) {
+    const chartData = [];
+    
+    predictions.forEach(prediction => {
+        prediction.prediction_timeline.forEach(pred => {
+            chartData.push({
+                x: pred.predicted_date,
+                y: pred.predicted_crs_score,
+                category: prediction.category.name,
+                confidence: pred.confidence || 75
+            });
+        });
+    });
+    
+    // Group by category
+    const categoryGroups = {};
+    chartData.forEach(point => {
+        if (!categoryGroups[point.category]) {
+            categoryGroups[point.category] = [];
+        }
+        categoryGroups[point.category].push(point);
+    });
+    
+    const traces = Object.keys(categoryGroups).map(category => {
+        const points = categoryGroups[category].sort((a, b) => new Date(a.x) - new Date(b.x));
+        
+        return {
+            x: points.map(p => p.x),
+            y: points.map(p => p.y),
+            mode: 'lines+markers',
+            name: category,
+            line: {
+                width: 3
+            },
+            marker: {
+                size: 8,
+                opacity: 0.8
+            }
+        };
+    });
+    
+    const layout = {
+        title: {
+            text: 'Predicted CRS Scores Timeline',
+            font: { size: 18 }
+        },
+        xaxis: {
+            title: 'Date',
+            type: 'date'
+        },
+        yaxis: {
+            title: 'CRS Score',
+            range: [300, 900]
+        },
+        hovermode: 'x unified',
+        showlegend: true,
+        legend: {
+            orientation: 'h',
+            y: -0.2
+        }
+    };
+    
+    Plotly.newPlot('timelineChart', traces, layout, {responsive: true});
+}
+
+function refreshPredictions() {
+    loadPredictions();
+}
+
+function formatDate(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+    });
+}
+
+function getCategoryColor(categoryName) {
+    const colors = {
+        'Provincial Nominee Program': '#0d47a1',
+        'Canadian Experience Class': '#28a745',
+        'Federal Skilled Worker': '#17a2b8',
+        'General': '#6c757d',
+        'No Program Specified': '#6c757d',
+        'French language proficiency': '#ffc107',
+        'Healthcare': '#dc3545',
+        'STEM': '#343a40'
+    };
+    
+    for (const [key, color] of Object.entries(colors)) {
+        if (categoryName.includes(key)) {
+            return color;
+        }
+    }
+    
+    return '#007bff';
+}
+
+// Filter functionality
+document.getElementById('categoryFilter').addEventListener('change', function() {
+    const selectedCategory = this.value;
+    let filteredPredictions = allPredictions;
+    
+    if (selectedCategory) {
+        filteredPredictions = allPredictions.filter(p => p.category.id == selectedCategory);
+    }
+    
+    displayPredictions(filteredPredictions);
+    createTimelineChart(filteredPredictions);
+});
+</script>
+{% endblock %} 

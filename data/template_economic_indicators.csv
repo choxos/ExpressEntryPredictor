@@ -1,0 +1,7 @@
+date,unemployment_rate_ca,unemployment_rate_on,unemployment_rate_bc,unemployment_rate_ab,unemployment_rate_sk,unemployment_rate_mb,job_vacancy_rate,gdp_growth_rate,bank_overnight_rate,cpi_inflation_rate
+2024-01-01,5.2,5.0,4.8,5.5,4.2,4.9,5.3,2.1,5.0,3.4
+2024-02-01,5.1,4.9,4.7,5.4,4.1,4.8,5.4,2.2,5.0,3.2
+2024-03-01,5.0,4.8,4.6,5.3,4.0,4.7,5.2,2.0,4.75,3.1
+2024-04-01,4.9,4.7,4.5,5.2,3.9,4.6,5.1,2.3,4.75,3.0
+2024-05-01,4.8,4.6,4.4,5.1,3.8,4.5,5.0,2.4,4.5,2.9
+2024-06-01,4.7,4.5,4.3,5.0,3.7,4.4,4.9,2.2,4.5,2.8 
