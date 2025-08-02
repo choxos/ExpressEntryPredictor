@@ -393,6 +393,22 @@ WantedBy=multi-user.target
 
 *Deploy to expressentry.xeradb.com with PostgreSQL and enhanced data management*
 
+### 🔍 **Pre-Deployment Checklist**
+
+Before starting, ensure you have:
+- ✅ **VPS Access**: SSH access to your server with sudo privileges
+- ✅ **Domain Setup**: DNS pointing `expressentry.xeradb.com` to your VPS IP
+- ✅ **Database Credentials**: Ready to use `eep_production`, `eep_user`, `Choxos10203040`
+- ✅ **Latest Code**: All recent fixes including NaN handling (commit: 1ad4430+)
+- ✅ **Port 8010**: Confirmed available for your application
+- ✅ **SSL Ready**: Plan to use Let's Encrypt for HTTPS certificates
+
+### ⚠️ **Security Requirements Met**:
+- ✅ **Strong Secret Key**: Auto-generated 50+ character key
+- ✅ **HTTPS Enforcement**: SSL redirect and HSTS headers
+- ✅ **Secure Cookies**: HTTPOnly and Secure flags enabled
+- ✅ **Environment Variables**: All secrets in `.env` file (chmod 600)
+
 ### 1. VPS Prerequisites
 
 **Server Requirements:**
@@ -472,16 +488,17 @@ cat > .env << EOF
 # Database Configuration
 DATABASE_URL=postgresql://eep_user:Choxos10203040@localhost:5432/eep_production
 
-# Django Settings
+# Django Settings - Generate secure secret key
 SECRET_KEY=$(python3 -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())")
 DEBUG=False
 ALLOWED_HOSTS=expressentry.xeradb.com,www.expressentry.xeradb.com
 
-# Security Settings
+# Security Settings (Production)
 SECURE_SSL_REDIRECT=True
 SECURE_PROXY_SSL_HEADER=HTTP_X_FORWARDED_PROTO,https
 CSRF_COOKIE_SECURE=True
 SESSION_COOKIE_SECURE=True
+SECURE_HSTS_SECONDS=31536000
 
 # Static Files
 STATIC_ROOT=/var/www/expressentry/staticfiles
@@ -648,6 +665,42 @@ sudo certbot renew --dry-run
 
 # The certbot will automatically update your nginx configuration
 ```
+
+### 9. **Post-Deployment Verification** ✅
+
+```bash
+# 1. Verify application is running
+sudo systemctl status expressentry
+curl -I http://localhost:8010/
+
+# 2. Test database connection
+cd /var/www/expressentry
+source venv/bin/activate
+python manage.py shell -c "from django.db import connection; connection.ensure_connection(); print('✅ Database connected')"
+
+# 3. Check predictions are working
+python manage.py shell -c "from predictor.models import PreComputedPrediction; print(f'Active predictions: {PreComputedPrediction.objects.filter(is_active=True).count()}')"
+
+# 4. Test website URLs
+curl -I https://expressentry.xeradb.com/
+curl -I https://expressentry.xeradb.com/api/stats/
+curl -I https://expressentry.xeradb.com/admin/
+
+# 5. Run security check
+python manage.py check --deploy
+
+# 6. Monitor logs
+sudo journalctl -u expressentry -f
+```
+
+### 🎯 **Expected Results**:
+- ✅ **Application Status**: Active and running
+- ✅ **Database**: Connected and populated with 358+ draws
+- ✅ **Predictions**: 150+ active predictions across categories  
+- ✅ **Website**: Loads at https://expressentry.xeradb.com
+- ✅ **API**: Returns stats and predictions
+- ✅ **Security**: No critical warnings in deployment check
+- ✅ **SSL**: A+ rating on SSL Labs test
 
 ---
 
