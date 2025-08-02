@@ -1,34 +1,16 @@
-# Django & Web Framework
-Django==4.2.16
-djangorestframework==3.14.0
+Django==4.2.7
 django-cors-headers==4.3.1
-psycopg2-binary==2.9.9
+djangorestframework==3.14.0
+pandas==2.1.3
+numpy==1.25.2
+scikit-learn==1.3.2
 python-decouple==3.8
-whitenoise==6.6.0
-dj-database-url==2.1.0
+xgboost==2.0.2
+pytz==2023.3
 gunicorn==21.2.0
+psycopg2-binary==2.9.9
 
-# Data Science & ML (Python 3.12 compatible)
-pandas==2.2.2
-numpy>=1.26.0
-scikit-learn==1.4.2
-xgboost==2.0.3
-tensorflow>=2.16.0
-statsmodels==0.14.5
-plotly==5.19.0
-seaborn==0.13.2
-matplotlib==3.8.4
-
-# Additional utilities
-requests==2.32.3
-python-dateutil==2.9.0
-holidays==0.45
-beautifulsoup4==4.12.3
-celery==5.3.6
-redis==5.0.4
-prophet==1.1.7
-
-# Development
-django-debug-toolbar==4.3.0
-black==24.4.2
-flake8==7.0.0 
+# Web scraping dependencies for IRCC sync
+requests==2.31.0
+beautifulsoup4==4.12.2
+lxml==4.9.3 
