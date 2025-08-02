@@ -9,7 +9,7 @@ This guide explains how to keep your Express Entry Predictor automatically updat
 # Install dependencies
 pip install requests beautifulsoup4 lxml
 
-# Set up weekly automation (runs every Monday at 9 AM)
+# Set up weekly automation (runs every Wednesday at 3 PM)
 chmod +x setup_weekly_sync.sh
 ./setup_weekly_sync.sh
 ```
@@ -32,7 +32,7 @@ python manage.py sync_ircc_draws --force
 ## 🔧 **How It Works**
 
 ### **1. Weekly Monitoring**
-- **Schedule**: Every Monday at 9:00 AM
+- **Schedule**: Every Wednesday at 3:00 PM
 - **Data Source**: Official IRCC website
 - **Process**: 
   1. Fetches the latest Express Entry rounds page
@@ -193,14 +193,14 @@ crontab -l | grep -v 'weekly_ircc_sync.sh' | crontab -
 
 ### **Manual Cron Setup**
 ```bash
-# Add this line to crontab (Monday 9 AM)
-0 9 * * 1 /path/to/project/weekly_ircc_sync.sh
+# Add this line to crontab (Wednesday 3 PM)
+0 15 * * 3 /path/to/project/weekly_ircc_sync.sh
 ```
 
 ## 🎯 **Best Practices**
 
 ### **1. Weekly Monitoring Routine**
-- ✅ Check logs every Monday after 10 AM
+- ✅ Check logs every Wednesday after 4 PM
 - ✅ Verify new draws were processed correctly
 - ✅ Confirm predictions were updated
 - ✅ Monitor for any error messages
@@ -279,14 +279,14 @@ python manage.py clear_predictions --older-than 30 --confirm
 
 ### **Expected Log Output**
 ```
-2025-08-09 09:00:01: Starting weekly IRCC synchronization...
+2025-08-13 15:00:01: Starting weekly IRCC synchronization...
 ✅ Successfully fetched IRCC page (145623 bytes)
 📊 Found 2 total draws, 1 recent draws
-✅ Created: Canadian Experience Class - 2025-08-08 (CRS: 462, Invitations: 3000)
+✅ Created: Canadian Experience Class - 2025-08-12 (CRS: 462, Invitations: 3000)
 🎯 Updating predictions for: Canadian Experience Class
 ✅ Predictions updated for: Canadian Experience Class
 📊 SYNCHRONIZATION SUMMARY: 1 categories updated
-2025-08-09 09:02:15: IRCC synchronization completed successfully
+2025-08-13 15:02:15: IRCC synchronization completed successfully
 ```
 
 ## 📞 **Support**

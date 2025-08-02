@@ -275,7 +275,7 @@ sudo systemctl restart nginx
 sudo apt install -y certbot python3-certbot-nginx
 
 # Obtain SSL certificate
-sudo certbot --nginx -d expressentry.xeradb.com -d www.expressentry.xeradb.com
+sudo certbot --nginx -d expressentry.xeradb.com
 
 # Test auto-renewal
 sudo certbot renew --dry-run

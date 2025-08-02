@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Setup script for automatic weekly IRCC Express Entry draws synchronization
-# This script creates a cron job that runs every Monday at 9:00 AM
+# This script creates a cron job that runs every Wednesday at 3:00 PM
 
 echo "🔧 Setting up weekly IRCC Express Entry draws synchronization..."
 
@@ -61,8 +61,8 @@ chmod +x "$SYNC_SCRIPT"
 
 echo "✅ Created sync script: $SYNC_SCRIPT"
 
-# Create the cron job entry
-CRON_ENTRY="0 9 * * 1 $SYNC_SCRIPT"
+# Create the cron job entry (Wednesday at 3:00 PM)
+CRON_ENTRY="0 15 * * 3 $SYNC_SCRIPT"
 
 # Check if cron job already exists
 if crontab -l 2>/dev/null | grep -q "$SYNC_SCRIPT"; then
@@ -72,7 +72,7 @@ if crontab -l 2>/dev/null | grep -q "$SYNC_SCRIPT"; then
 else
     # Add the cron job
     (crontab -l 2>/dev/null; echo "$CRON_ENTRY") | crontab -
-    echo "✅ Added weekly cron job: Every Monday at 9:00 AM"
+    echo "✅ Added weekly cron job: Every Wednesday at 3:00 PM"
 fi
 
 # Test the sync command
@@ -89,7 +89,7 @@ if [ $? -eq 0 ]; then
     echo "📋 SETUP SUMMARY:"
     echo "   ├─ Sync script: $SYNC_SCRIPT"
     echo "   ├─ Log file: $LOG_DIR/ircc_sync.log"
-    echo "   ├─ Schedule: Every Monday at 9:00 AM"
+    echo "   ├─ Schedule: Every Wednesday at 3:00 PM"
     echo "   └─ Command: python manage.py sync_ircc_draws"
     echo ""
     echo "💡 MANUAL COMMANDS:"
