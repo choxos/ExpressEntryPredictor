@@ -1,0 +1,1176 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Technical Documentation - Express Entry Predictor{% endblock %}
+
+{% block content %}
+<div class="hero-section">
+    <div class="container">
+        <div class="row">
+            <div class="col-12 text-center">
+                <h1 class="display-4 fw-bold">
+                    <i class="fas fa-cogs me-3"></i>
+                    Technical Documentation
+                </h1>
+                <p class="lead">
+                    Comprehensive technical analysis of datasets, machine learning models, and prediction methodologies
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container my-5">
+    <!-- Table of Contents -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card mb-5">
+                <div class="card-header bg-primary text-white">
+                    <h3 class="mb-0"><i class="fas fa-list me-2"></i>Table of Contents</h3>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <ul class="list-unstyled">
+                                <li><a href="#datasets" class="text-decoration-none">1. Datasets and Data Sources</a></li>
+                                <li><a href="#preprocessing" class="text-decoration-none">2. Data Preprocessing</a></li>
+                                <li><a href="#feature-engineering" class="text-decoration-none">3. Feature Engineering</a></li>
+                                <li><a href="#model-selection" class="text-decoration-none">4. Model Selection Strategy</a></li>
+                                <li><a href="#models" class="text-decoration-none">5. Machine Learning Models</a></li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <ul class="list-unstyled">
+                                <li><a href="#confidence" class="text-decoration-none">6. Confidence Scoring</a></li>
+                                <li><a href="#uncertainty" class="text-decoration-none">7. Uncertainty Quantification</a></li>
+                                <li><a href="#evaluation" class="text-decoration-none">8. Model Evaluation</a></li>
+                                <li><a href="#ensemble" class="text-decoration-none">9. Ensemble Methods</a></li>
+                                <li><a href="#limitations" class="text-decoration-none">10. Limitations and Future Work</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 1. Datasets and Data Sources -->
+    <section id="datasets" class="mb-5">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h2 class="mb-0"><i class="fas fa-database me-2"></i>1. Datasets and Data Sources</h2>
+            </div>
+            <div class="card-body">
+                <h4>1.1 Express Entry Draw Data</h4>
+                <p>Our primary dataset consists of historical Express Entry draw data sourced from Immigration, Refugees and Citizenship Canada (IRCC).</p>
+                
+                <div class="table-responsive mb-4">
+                    <table class="table table-striped">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Field</th>
+                                <th>Type</th>
+                                <th>Description</th>
+                                <th>Range/Format</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>round_number</code></td>
+                                <td>Integer</td>
+                                <td>Sequential draw number</td>
+                                <td>1 - 282+</td>
+                            </tr>
+                            <tr>
+                                <td><code>date</code></td>
+                                <td>Date</td>
+                                <td>Draw date</td>
+                                <td>YYYY-MM-DD</td>
+                            </tr>
+                            <tr>
+                                <td><code>category</code></td>
+                                <td>Categorical</td>
+                                <td>Express Entry category</td>
+                                <td>14 distinct categories</td>
+                            </tr>
+                            <tr>
+                                <td><code>lowest_crs_score</code></td>
+                                <td>Integer</td>
+                                <td>Minimum CRS score for invitation</td>
+                                <td>250 - 950</td>
+                            </tr>
+                            <tr>
+                                <td><code>invitations_issued</code></td>
+                                <td>Integer</td>
+                                <td>Number of invitations sent</td>
+                                <td>0 - 11,000+</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h4>1.2 Economic Indicators (Planned)</h4>
+                <p>Additional economic and demographic indicators to enhance prediction accuracy:</p>
+                <ul>
+                    <li><strong>Labor Market Indicators:</strong> Unemployment rates, job vacancy rates, wage growth</li>
+                    <li><strong>Economic Indicators:</strong> GDP growth, inflation rates, economic forecasts</li>
+                    <li><strong>Immigration Targets:</strong> Annual immigration targets by category</li>
+                    <li><strong>Seasonal Patterns:</strong> Holiday schedules, government fiscal periods</li>
+                </ul>
+
+                <h4>1.3 Data Coverage</h4>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title">Temporal Coverage</h6>
+                                <p class="card-text">
+                                    <strong>Start:</strong> January 31, 2015<br>
+                                    <strong>End:</strong> Present (continuously updated)<br>
+                                    <strong>Frequency:</strong> Bi-weekly (typically every 2 weeks)
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title">Category Coverage</h6>
+                                <p class="card-text">
+                                    <strong>Total Categories:</strong> 14<br>
+                                    <strong>Active Categories:</strong> 12<br>
+                                    <strong>Sufficient Data (10+ draws):</strong> 6 categories
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 2. Data Preprocessing -->
+    <section id="preprocessing" class="mb-5">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h2 class="mb-0"><i class="fas fa-filter me-2"></i>2. Data Preprocessing</h2>
+            </div>
+            <div class="card-body">
+                <h4>2.1 Data Cleaning</h4>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Quality Checks</h6>
+                        <ul>
+                            <li>Duplicate draw detection and removal</li>
+                            <li>Date validation and standardization</li>
+                            <li>CRS score range validation (250-950)</li>
+                            <li>Invitation count consistency checks</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Missing Data Handling</h6>
+                        <ul>
+                            <li>Forward fill for minor gaps</li>
+                            <li>Category-specific imputation</li>
+                            <li>Statistical interpolation for outliers</li>
+                            <li>Expert knowledge for anomalous periods</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <h4>2.2 Data Categorization</h4>
+                <p>Categories are grouped based on data availability and prediction viability:</p>
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead class="table-secondary">
+                            <tr>
+                                <th>Data Tier</th>
+                                <th>Draw Count</th>
+                                <th>Primary Model</th>
+                                <th>Confidence Range</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><span class="badge bg-success">Rich Data</span></td>
+                                <td>50+ draws</td>
+                                <td>XGBoost, LSTM</td>
+                                <td>70-90%</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-warning">Moderate Data</span></td>
+                                <td>10-49 draws</td>
+                                <td>Random Forest, ARIMA</td>
+                                <td>40-70%</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-info">Limited Data</span></td>
+                                <td>5-9 draws</td>
+                                <td>Bayesian Regression</td>
+                                <td>20-40%</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-secondary">Sparse Data</span></td>
+                                <td>1-4 draws</td>
+                                <td>Small Dataset Predictor</td>
+                                <td>5-25%</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 3. Feature Engineering -->
+    <section id="feature-engineering" class="mb-5">
+        <div class="card">
+            <div class="card-header bg-warning text-dark">
+                <h2 class="mb-0"><i class="fas fa-wrench me-2"></i>3. Feature Engineering</h2>
+            </div>
+            <div class="card-body">
+                <h4>3.1 Temporal Features</h4>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Time-based Features</h6>
+                        <ul>
+                            <li><code>days_since_epoch</code>: Linear time progression</li>
+                            <li><code>year</code>, <code>month</code>, <code>day_of_year</code>: Seasonal patterns</li>
+                            <li><code>quarter</code>: Government fiscal periods</li>
+                            <li><code>days_since_last_draw</code>: Frequency patterns</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Cyclical Encoding</h6>
+                        <ul>
+                            <li><code>month_sin</code>, <code>month_cos</code>: Seasonal cycles</li>
+                            <li><code>day_of_year_sin</code>, <code>day_of_year_cos</code>: Annual patterns</li>
+                            <li><code>quarter_sin</code>, <code>quarter_cos</code>: Quarterly cycles</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <h4>3.2 Lag Features</h4>
+                <p>Historical patterns captured through lagged variables:</p>
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Feature Type</th>
+                                <th>Lags</th>
+                                <th>Purpose</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>CRS Score Lags</td>
+                                <td>1, 2, 3, 5 draws back</td>
+                                <td>Recent score trends</td>
+                            </tr>
+                            <tr>
+                                <td>Invitation Lags</td>
+                                <td>1, 2, 3 draws back</td>
+                                <td>Volume patterns</td>
+                            </tr>
+                            <tr>
+                                <td>Frequency Lags</td>
+                                <td>1, 2, 4 periods back</td>
+                                <td>Draw timing patterns</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h4>3.3 Statistical Features</h4>
+                <div class="row">
+                    <div class="col-md-4">
+                        <h6>Rolling Statistics</h6>
+                        <ul>
+                            <li>3-draw rolling mean</li>
+                            <li>5-draw rolling mean</li>
+                            <li>Rolling standard deviation</li>
+                            <li>Rolling min/max</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-4">
+                        <h6>Trend Features</h6>
+                        <ul>
+                            <li>Linear trend slope</li>
+                            <li>Recent vs. historical mean</li>
+                            <li>Momentum indicators</li>
+                            <li>Change rate features</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-4">
+                        <h6>Category Features</h6>
+                        <ul>
+                            <li>Category-specific averages</li>
+                            <li>Relative category performance</li>
+                            <li>Category volatility metrics</li>
+                            <li>Cross-category correlations</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 4. Model Selection Strategy -->
+    <section id="model-selection" class="mb-5">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h2 class="mb-0"><i class="fas fa-chess me-2"></i>4. Model Selection Strategy</h2>
+            </div>
+            <div class="card-body">
+                <h4>4.1 Adaptive Model Selection</h4>
+                <p>Our system dynamically selects the most appropriate model based on data characteristics:</p>
+                
+                <div class="row">
+                    <div class="col-12">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6>Selection Criteria</h6>
+                                <div class="row">
+                                    <div class="col-md-3">
+                                        <strong>Data Size</strong>
+                                        <ul class="small">
+                                            <li>≤ 4 draws: Small Dataset Predictor</li>
+                                            <li>5-10 draws: Bayesian Regression</li>
+                                            <li>11-30 draws: ARIMA/Random Forest</li>
+                                            <li>31+ draws: XGBoost/LSTM</li>
+                                        </ul>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <strong>Data Stability</strong>
+                                        <ul class="small">
+                                            <li>High variance: Bayesian methods</li>
+                                            <li>Trend patterns: Time series models</li>
+                                            <li>Non-linear: XGBoost/Neural nets</li>
+                                            <li>Regular patterns: ARIMA</li>
+                                        </ul>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <strong>Seasonality</strong>
+                                        <ul class="small">
+                                            <li>Strong seasonal: Prophet/SARIMA</li>
+                                            <li>Weak seasonal: ARIMA</li>
+                                            <li>Complex patterns: LSTM</li>
+                                            <li>No seasonality: Random Forest</li>
+                                        </ul>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <strong>Recent Activity</strong>
+                                        <ul class="small">
+                                            <li>Recent draws: Boost recency</li>
+                                            <li>Long gaps: Adjust for frequency</li>
+                                            <li>Policy changes: Reset patterns</li>
+                                            <li>Stable activity: Use full history</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <h4>4.2 Performance Scoring</h4>
+                <p>Models are scored using a composite metric:</p>
+                <pre class="bg-light p-3 rounded"><code>Confidence Score = α × Data_Quality + β × Model_Accuracy + γ × Prediction_Stability + δ × Temporal_Relevance
+
+Where:
+- Data_Quality = f(sample_size, variance, completeness)
+- Model_Accuracy = f(historical_MAE, cross_validation_score)
+- Prediction_Stability = f(prediction_variance, sensitivity_analysis)
+- Temporal_Relevance = f(recency_weight, policy_changes)</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- 5. Machine Learning Models -->
+    <section id="models" class="mb-5">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <h2 class="mb-0"><i class="fas fa-brain me-2"></i>5. Machine Learning Models</h2>
+            </div>
+            <div class="card-body">
+                
+                <!-- ARIMA/SARIMA -->
+                <div class="model-section mb-4">
+                    <h4><span class="badge bg-info me-2">Time Series</span>ARIMA/SARIMA</h4>
+                    <div class="row">
+                        <div class="col-md-8">
+                            <p><strong>Mathematical Foundation:</strong> AutoRegressive Integrated Moving Average with Seasonal components</p>
+                            <p><strong>Model Equation:</strong> SARIMA(p,d,q)(P,D,Q)s</p>
+                            <ul>
+                                <li><strong>AR(p):</strong> Autoregressive terms - dependency on past values</li>
+                                <li><strong>I(d):</strong> Integration - differencing to achieve stationarity</li>
+                                <li><strong>MA(q):</strong> Moving average terms - dependency on past errors</li>
+                                <li><strong>Seasonal(P,D,Q)s:</strong> Seasonal patterns with period s</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h6>Best For:</h6>
+                                    <ul class="small">
+                                        <li>Regular draw patterns</li>
+                                        <li>Clear seasonality</li>
+                                        <li>Stationary time series</li>
+                                        <li>Medium-sized datasets</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-info">
+                        <strong>Interpretation:</strong> ARIMA models capture linear relationships and seasonal patterns in CRS scores. The model automatically identifies optimal parameters using AIC/BIC criteria and provides prediction intervals based on forecast uncertainty.
+                    </div>
+                </div>
+
+                <!-- Random Forest -->
+                <div class="model-section mb-4">
+                    <h4><span class="badge bg-success me-2">Ensemble</span>Random Forest</h4>
+                    <div class="row">
+                        <div class="col-md-8">
+                            <p><strong>Mathematical Foundation:</strong> Ensemble of decision trees with bootstrap aggregating</p>
+                            <p><strong>Prediction:</strong> ŷ = (1/B) Σ T_b(x) where T_b are individual trees</p>
+                            <ul>
+                                <li><strong>Bootstrap Sampling:</strong> Training on random subsets with replacement</li>
+                                <li><strong>Feature Randomness:</strong> Random feature selection at each split</li>
+                                <li><strong>Bagging:</strong> Averaging predictions to reduce overfitting</li>
+                                <li><strong>Feature Importance:</strong> Gini importance for interpretability</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h6>Best For:</h6>
+                                    <ul class="small">
+                                        <li>Non-linear patterns</li>
+                                        <li>Mixed data types</li>
+                                        <li>Feature interactions</li>
+                                        <li>Robust predictions</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-success">
+                        <strong>Interpretation:</strong> Random Forest excels at capturing complex interactions between temporal, seasonal, and categorical features. The model provides feature importance rankings and handles non-linear relationships naturally without extensive preprocessing.
+                    </div>
+                </div>
+
+                <!-- XGBoost -->
+                <div class="model-section mb-4">
+                    <h4><span class="badge bg-warning text-dark me-2">Gradient Boosting</span>XGBoost</h4>
+                    <div class="row">
+                        <div class="col-md-8">
+                            <p><strong>Mathematical Foundation:</strong> Gradient boosting with regularization and optimization</p>
+                            <p><strong>Objective Function:</strong> L(φ) = Σ l(ŷᵢ, yᵢ) + Σ Ω(fₖ)</p>
+                            <ul>
+                                <li><strong>Gradient Boosting:</strong> Sequential learning from residual errors</li>
+                                <li><strong>Regularization:</strong> L1 and L2 penalties to prevent overfitting</li>
+                                <li><strong>Tree Pruning:</strong> Max depth and complexity controls</li>
+                                <li><strong>Feature Importance:</strong> Gain-based importance metrics</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h6>Best For:</h6>
+                                    <ul class="small">
+                                        <li>Large datasets</li>
+                                        <li>Complex patterns</li>
+                                        <li>High accuracy requirements</li>
+                                        <li>Feature engineering</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-warning">
+                        <strong>Interpretation:</strong> XGBoost typically achieves the highest accuracy on categories with sufficient data. It automatically learns feature interactions and provides SHAP values for prediction explanations. The model excels at capturing subtle patterns in CRS score evolution.
+                    </div>
+                </div>
+
+                <!-- LSTM Neural Networks -->
+                <div class="model-section mb-4">
+                    <h4><span class="badge bg-danger me-2">Deep Learning</span>LSTM Neural Networks</h4>
+                    <div class="row">
+                        <div class="col-md-8">
+                            <p><strong>Mathematical Foundation:</strong> Long Short-Term Memory recurrent neural networks</p>
+                            <p><strong>Architecture:</strong> Input → LSTM Layer(s) → Dense → Output</p>
+                            <ul>
+                                <li><strong>Memory Cells:</strong> Selective information retention and forgetting</li>
+                                <li><strong>Gates:</strong> Input, forget, and output gates for flow control</li>
+                                <li><strong>Sequence Learning:</strong> Captures long-term dependencies</li>
+                                <li><strong>Backpropagation:</strong> Through time for gradient computation</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h6>Best For:</h6>
+                                    <ul class="small">
+                                        <li>Sequential patterns</li>
+                                        <li>Long-term dependencies</li>
+                                        <li>Complex temporal relationships</li>
+                                        <li>Large time series</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-danger">
+                        <strong>Interpretation:</strong> LSTM networks excel at learning complex temporal patterns that traditional models might miss. They automatically extract hierarchical features from sequences and can model non-stationary behavior in CRS scores over time.
+                    </div>
+                </div>
+
+                <!-- Bayesian Regression -->
+                <div class="model-section mb-4">
+                    <h4><span class="badge bg-purple text-white me-2" style="background-color: #6f42c1;">Bayesian</span>Bayesian Linear Regression</h4>
+                    <div class="row">
+                        <div class="col-md-8">
+                            <p><strong>Mathematical Foundation:</strong> Bayesian inference with conjugate priors</p>
+                            <p><strong>Posterior:</strong> p(w|D) ∝ p(D|w) × p(w)</p>
+                            <ul>
+                                <li><strong>Prior Distribution:</strong> Prior beliefs about parameters</li>
+                                <li><strong>Likelihood:</strong> Data likelihood given parameters</li>
+                                <li><strong>Posterior:</strong> Updated beliefs after observing data</li>
+                                <li><strong>Uncertainty:</strong> Natural uncertainty quantification</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h6>Best For:</h6>
+                                    <ul class="small">
+                                        <li>Small datasets</li>
+                                        <li>Uncertainty quantification</li>
+                                        <li>Credible intervals</li>
+                                        <li>Principled inference</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert" style="background-color: #e7e3ff; border-color: #6f42c1; color: #4e2a8e;">
+                        <strong>Interpretation:</strong> Bayesian regression provides natural uncertainty quantification, crucial for categories with limited data. The model outputs credible intervals and adapts predictions based on prior knowledge and observed data variance.
+                    </div>
+                </div>
+
+                <!-- Small Dataset Predictor -->
+                <div class="model-section mb-4">
+                    <h4><span class="badge bg-secondary me-2">Specialized</span>Small Dataset Predictor</h4>
+                    <div class="row">
+                        <div class="col-md-8">
+                            <p><strong>Mathematical Foundation:</strong> Cross-category learning with global patterns</p>
+                            <p><strong>Approach:</strong> Global Model + Category Adjustments</p>
+                            <ul>
+                                <li><strong>Global Patterns:</strong> Learn from all categories combined</li>
+                                <li><strong>Category Adjustments:</strong> Specific offsets for each category</li>
+                                <li><strong>Trend Analysis:</strong> Recent trend continuation</li>
+                                <li><strong>Uncertainty Scaling:</strong> Increased uncertainty for sparse data</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h6>Best For:</h6>
+                                    <ul class="small">
+                                        <li>1-4 data points</li>
+                                        <li>New categories</li>
+                                        <li>Cross-category learning</li>
+                                        <li>Wide confidence intervals</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-secondary">
+                        <strong>Interpretation:</strong> This specialized model enables predictions even for categories with minimal historical data by leveraging patterns from similar categories. It provides wide confidence intervals to reflect the high uncertainty inherent in sparse data scenarios.
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- 6. Confidence Scoring -->
+    <section id="confidence" class="mb-5">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h2 class="mb-0"><i class="fas fa-chart-bar me-2"></i>6. Confidence Scoring Methodology</h2>
+            </div>
+            <div class="card-body">
+                <h4>6.1 Multi-Factor Confidence Assessment</h4>
+                <p>Our confidence scoring system evaluates multiple factors to provide realistic accuracy estimates:</p>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Data Quality Factors (40% weight)</h6>
+                        <ul>
+                            <li><strong>Sample Size:</strong> More data → higher confidence</li>
+                            <li><strong>Data Recency:</strong> Recent draws weighted more heavily</li>
+                            <li><strong>Draw Regularity:</strong> Consistent patterns increase confidence</li>
+                            <li><strong>Missing Data:</strong> Gaps reduce confidence proportionally</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Model Performance Factors (35% weight)</h6>
+                        <ul>
+                            <li><strong>Historical Accuracy:</strong> Past prediction performance</li>
+                            <li><strong>Cross-validation Score:</strong> Out-of-sample validation</li>
+                            <li><strong>Residual Analysis:</strong> Error pattern assessment</li>
+                            <li><strong>Feature Importance:</strong> Model interpretability</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <h6>Temporal Factors (15% weight)</h6>
+                        <ul>
+                            <li><strong>Time Since Last Draw:</strong> Freshness penalty</li>
+                            <li><strong>Seasonal Alignment:</strong> Expected vs. predicted timing</li>
+                            <li><strong>Policy Changes:</strong> Recent immigration policy updates</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Stability Factors (10% weight)</h6>
+                        <ul>
+                            <li><strong>Prediction Variance:</strong> Consistency across runs</li>
+                            <li><strong>Feature Sensitivity:</strong> Robustness to input changes</li>
+                            <li><strong>Model Consensus:</strong> Agreement between different models</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <h4>6.2 Confidence Score Calculation</h4>
+                <pre class="bg-light p-3 rounded"><code>Confidence = min(95, max(5, 
+    0.4 × DataQuality + 
+    0.35 × ModelPerformance + 
+    0.15 × TemporalFactors + 
+    0.1 × StabilityFactors
+))
+
+Where each component is normalized to [0, 100] scale.</code></pre>
+
+                <div class="table-responsive mt-3">
+                    <table class="table table-striped">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Confidence Range</th>
+                                <th>Interpretation</th>
+                                <th>Typical Scenarios</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><span class="badge bg-success">80-95%</span></td>
+                                <td>Very High Confidence</td>
+                                <td>Regular categories with 50+ draws, stable patterns</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-info">60-79%</span></td>
+                                <td>High Confidence</td>
+                                <td>Categories with 20-49 draws, clear trends</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-warning">40-59%</span></td>
+                                <td>Moderate Confidence</td>
+                                <td>Categories with 10-19 draws, some irregularity</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-orange text-white" style="background-color: #fd7e14;">20-39%</span></td>
+                                <td>Low Confidence</td>
+                                <td>Categories with 5-9 draws, high variance</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-danger">5-19%</span></td>
+                                <td>Very Low Confidence</td>
+                                <td>Categories with 1-4 draws, experimental predictions</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 7. Uncertainty Quantification -->
+    <section id="uncertainty" class="mb-5">
+        <div class="card">
+            <div class="card-header bg-warning text-dark">
+                <h2 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>7. Uncertainty Quantification</h2>
+            </div>
+            <div class="card-body">
+                <h4>7.1 95% Confidence Intervals</h4>
+                <p>We provide 95% confidence intervals (CI) or credible intervals (CrI) for all predictions, calculated using model-specific approaches:</p>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Bayesian Models (Credible Intervals)</h6>
+                        <p>Natural uncertainty from posterior distributions:</p>
+                        <pre class="bg-light p-2 small"><code>CrI = [μ - 1.96σ, μ + 1.96σ]
+where μ = posterior mean
+      σ = posterior standard deviation</code></pre>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Frequentist Models (Confidence Intervals)</h6>
+                        <p>Bootstrap-based or analytical intervals:</p>
+                        <pre class="bg-light p-2 small"><code>CI = [ŷ - 1.96 × SE, ŷ + 1.96 × SE]
+where ŷ = point prediction
+      SE = standard error estimate</code></pre>
+                    </div>
+                </div>
+
+                <h4>7.2 Uncertainty Sources</h4>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="card bg-light h-100">
+                            <div class="card-body">
+                                <h6 class="card-title">Aleatoric Uncertainty</h6>
+                                <p class="card-text small">Inherent randomness in the data-generating process. Policy changes, economic factors, and administrative decisions introduce natural variability.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-light h-100">
+                            <div class="card-body">
+                                <h6 class="card-title">Epistemic Uncertainty</h6>
+                                <p class="card-text small">Model uncertainty due to limited knowledge. Reduced with more data and better feature engineering.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-light h-100">
+                            <div class="card-body">
+                                <h6 class="card-title">Distributional Uncertainty</h6>
+                                <p class="card-text small">Uncertainty about the true underlying distribution. Addressed through robust modeling approaches.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <h4>7.3 Adaptive Uncertainty Scaling</h4>
+                <p>Uncertainty ranges are adjusted based on data characteristics:</p>
+                
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead class="table-secondary">
+                            <tr>
+                                <th>Data Condition</th>
+                                <th>Uncertainty Multiplier</th>
+                                <th>Rationale</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Very Small Dataset (≤4 draws)</td>
+                                <td>3.0×</td>
+                                <td>Extremely wide intervals for sparse data</td>
+                            </tr>
+                            <tr>
+                                <td>Small Dataset (5-10 draws)</td>
+                                <td>2.0×</td>
+                                <td>Wide intervals for limited data</td>
+                            </tr>
+                            <tr>
+                                <td>High Variance Category</td>
+                                <td>1.5×</td>
+                                <td>Increased uncertainty for volatile categories</td>
+                            </tr>
+                            <tr>
+                                <td>Recent Policy Changes</td>
+                                <td>1.3×</td>
+                                <td>Higher uncertainty during transition periods</td>
+                            </tr>
+                            <tr>
+                                <td>Standard Conditions</td>
+                                <td>1.0×</td>
+                                <td>Normal statistical confidence intervals</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 8. Model Evaluation -->
+    <section id="evaluation" class="mb-5">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h2 class="mb-0"><i class="fas fa-check-circle me-2"></i>8. Model Evaluation Metrics</h2>
+            </div>
+            <div class="card-body">
+                <h4>8.1 Prediction Accuracy Metrics</h4>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Point Prediction Metrics</h6>
+                        <ul>
+                            <li><strong>MAE (Mean Absolute Error):</strong> Average prediction error in CRS points</li>
+                            <li><strong>RMSE (Root Mean Square Error):</strong> Penalizes large errors more heavily</li>
+                            <li><strong>MAPE (Mean Absolute Percentage Error):</strong> Relative error percentage</li>
+                            <li><strong>Direction Accuracy:</strong> Percentage of correct trend predictions</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Interval Prediction Metrics</h6>
+                        <ul>
+                            <li><strong>Coverage Rate:</strong> Percentage of actual values within CI</li>
+                            <li><strong>Interval Width:</strong> Average width of confidence intervals</li>
+                            <li><strong>Interval Score:</strong> Combined coverage and width penalty</li>
+                            <li><strong>Calibration:</strong> Reliability of uncertainty estimates</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <h4>8.2 Cross-Validation Strategy</h4>
+                <p>Time series cross-validation with forward chaining to prevent data leakage:</p>
+                
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h6>Validation Approach</h6>
+                        <ol>
+                            <li><strong>Train:</strong> Use first n draws for training</li>
+                            <li><strong>Validate:</strong> Predict next k draws</li>
+                            <li><strong>Expand:</strong> Add validated draws to training set</li>
+                            <li><strong>Repeat:</strong> Continue until all data is used</li>
+                        </ol>
+                        <p class="mb-0"><strong>Parameters:</strong> Initial training window = 10 draws, validation window = 3 draws, step size = 1 draw</p>
+                    </div>
+                </div>
+
+                <h4>8.3 Model Comparison Framework</h4>
+                <p>Models are compared using a standardized evaluation framework:</p>
+                
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Metric</th>
+                                <th>Weight</th>
+                                <th>Interpretation</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>MAE (CRS Points)</td>
+                                <td>30%</td>
+                                <td>Primary accuracy measure</td>
+                            </tr>
+                            <tr>
+                                <td>Direction Accuracy (%)</td>
+                                <td>25%</td>
+                                <td>Trend prediction capability</td>
+                            </tr>
+                            <tr>
+                                <td>95% CI Coverage (%)</td>
+                                <td>20%</td>
+                                <td>Uncertainty calibration</td>
+                            </tr>
+                            <tr>
+                                <td>Computational Efficiency</td>
+                                <td>15%</td>
+                                <td>Training and prediction speed</td>
+                            </tr>
+                            <tr>
+                                <td>Interpretability Score</td>
+                                <td>10%</td>
+                                <td>Model explainability</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 9. Ensemble Methods -->
+    <section id="ensemble" class="mb-5">
+        <div class="card">
+            <div class="card-header bg-purple text-white" style="background-color: #6f42c1;">
+                <h2 class="mb-0"><i class="fas fa-layer-group me-2"></i>9. Ensemble Methods</h2>
+            </div>
+            <div class="card-body">
+                <h4>9.1 Model Ensemble Strategy</h4>
+                <p>When multiple models show comparable performance, we employ ensemble methods to improve prediction robustness:</p>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Weighted Averaging</h6>
+                        <p>Combine predictions based on individual model performance:</p>
+                        <pre class="bg-light p-2 small"><code>ŷ_ensemble = Σ(wᵢ × ŷᵢ)
+where wᵢ = performance weight for model i
+      Σwᵢ = 1</code></pre>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Uncertainty-Weighted Ensemble</h6>
+                        <p>Weight models by their confidence levels:</p>
+                        <pre class="bg-light p-2 small"><code>wᵢ = confidenceᵢ / Σ(confidenceⱼ)
+Higher confidence → Higher weight</code></pre>
+                    </div>
+                </div>
+
+                <h4>9.2 Stacking Approach</h4>
+                <p>Meta-learning approach that learns optimal model combinations:</p>
+                
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h6>Stacking Architecture</h6>
+                        <ol>
+                            <li><strong>Level 0:</strong> Base models (ARIMA, Random Forest, XGBoost, etc.)</li>
+                            <li><strong>Level 1:</strong> Meta-learner (Linear Regression) learns optimal combinations</li>
+                            <li><strong>Features:</strong> Base model predictions + confidence scores + data characteristics</li>
+                            <li><strong>Output:</strong> Final prediction with enhanced accuracy</li>
+                        </ol>
+                    </div>
+                </div>
+
+                <h4>9.3 Ensemble Selection Criteria</h4>
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead class="table-secondary">
+                            <tr>
+                                <th>Condition</th>
+                                <th>Ensemble Strategy</th>
+                                <th>Rationale</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Multiple models within 5% performance</td>
+                                <td>Weighted averaging</td>
+                                <td>Leverage diversity for robustness</td>
+                            </tr>
+                            <tr>
+                                <td>High uncertainty scenario</td>
+                                <td>Conservative ensemble</td>
+                                <td>Increase prediction intervals</td>
+                            </tr>
+                            <tr>
+                                <td>Single dominant model</td>
+                                <td>Single model selection</td>
+                                <td>Avoid unnecessary complexity</td>
+                            </tr>
+                            <tr>
+                                <td>Seasonal vs. non-seasonal patterns</td>
+                                <td>Pattern-based ensemble</td>
+                                <td>Combine complementary strengths</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 10. Limitations and Future Work -->
+    <section id="limitations" class="mb-5">
+        <div class="card">
+            <div class="card-header bg-danger text-white">
+                <h2 class="mb-0"><i class="fas fa-exclamation-circle me-2"></i>10. Limitations and Future Work</h2>
+            </div>
+            <div class="card-body">
+                <h4>10.1 Current Limitations</h4>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Data Limitations</h6>
+                        <ul>
+                            <li>Limited historical data for newer categories</li>
+                            <li>Potential policy change disruptions not captured</li>
+                            <li>Missing external economic indicators</li>
+                            <li>Irregular draw timing in some periods</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Model Limitations</h6>
+                        <ul>
+                            <li>Assumption of historical pattern continuation</li>
+                            <li>Limited ability to predict policy changes</li>
+                            <li>Difficulty with unprecedented scenarios</li>
+                            <li>Computational constraints for real-time updates</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <h4>10.2 Planned Enhancements</h4>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="card bg-light h-100">
+                            <div class="card-body">
+                                <h6 class="card-title">Data Enhancement</h6>
+                                <ul class="small">
+                                    <li>Economic indicator integration</li>
+                                    <li>Immigration policy tracking</li>
+                                    <li>Provincial nomination data</li>
+                                    <li>Labor market indicators</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-light h-100">
+                            <div class="card-body">
+                                <h6 class="card-title">Model Improvements</h6>
+                                <ul class="small">
+                                    <li>Transformer-based models</li>
+                                    <li>Causal inference methods</li>
+                                    <li>Transfer learning approaches</li>
+                                    <li>Online learning capabilities</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-light h-100">
+                            <div class="card-body">
+                                <h6 class="card-title">System Enhancements</h6>
+                                <ul class="small">
+                                    <li>Real-time model updating</li>
+                                    <li>A/B testing framework</li>
+                                    <li>Automated feature engineering</li>
+                                    <li>Enhanced interpretability</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <h4>10.3 Research Directions</h4>
+                <div class="alert alert-info">
+                    <h6>Active Research Areas</h6>
+                    <ul class="mb-0">
+                        <li><strong>Causal Machine Learning:</strong> Understanding cause-effect relationships in immigration policy</li>
+                        <li><strong>Multi-objective Optimization:</strong> Balancing accuracy, uncertainty, and interpretability</li>
+                        <li><strong>Domain Adaptation:</strong> Transferring knowledge across different immigration programs</li>
+                        <li><strong>Federated Learning:</strong> Collaborative learning with international immigration data</li>
+                    </ul>
+                </div>
+
+                <h4>10.4 Disclaimer</h4>
+                <div class="alert alert-warning">
+                    <h6><i class="fas fa-warning me-2"></i>Important Notice</h6>
+                    <p class="mb-0">These predictions are statistical estimates based on historical patterns and should not be considered official immigration advice. Immigration policies can change without notice, and actual draw results may differ significantly from predictions. Always consult official IRCC sources for authoritative information.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+</div>
+
+<!-- Back to Top Button -->
+<button id="backToTop" class="btn btn-primary position-fixed bottom-0 end-0 m-4" style="display: none; z-index: 1000;">
+    <i class="fas fa-arrow-up"></i>
+</button>
+
+<script>
+// Smooth scrolling for anchor links
+document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+    anchor.addEventListener('click', function (e) {
+        e.preventDefault();
+        const target = document.querySelector(this.getAttribute('href'));
+        if (target) {
+            target.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start'
+            });
+        }
+    });
+});
+
+// Back to top button functionality
+window.addEventListener('scroll', function() {
+    const backToTop = document.getElementById('backToTop');
+    if (window.pageYOffset > 300) {
+        backToTop.style.display = 'block';
+    } else {
+        backToTop.style.display = 'none';
+    }
+});
+
+document.getElementById('backToTop').addEventListener('click', function() {
+    window.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+    });
+});
+
+// Add syntax highlighting for code blocks
+document.addEventListener('DOMContentLoaded', function() {
+    // Simple syntax highlighting for mathematical formulas
+    const codeBlocks = document.querySelectorAll('pre code');
+    codeBlocks.forEach(block => {
+        block.innerHTML = block.innerHTML
+            .replace(/(\b\w+\b)(\s*=)/g, '<span style="color: #0066cc;">$1</span>$2')
+            .replace(/(\d+\.?\d*)/g, '<span style="color: #cc6600;">$1</span>')
+            .replace(/(where|Where)/g, '<span style="color: #006600; font-weight: bold;">$1</span>');
+    });
+});
+</script>
+
+<style>
+.model-section {
+    border-left: 4px solid #007bff;
+    padding-left: 1rem;
+}
+
+.badge {
+    font-size: 0.75em;
+}
+
+pre {
+    font-size: 0.9em;
+    line-height: 1.4;
+}
+
+.alert {
+    border-left: 4px solid;
+}
+
+.alert-info {
+    border-left-color: #17a2b8;
+}
+
+.alert-success {
+    border-left-color: #28a745;
+}
+
+.alert-warning {
+    border-left-color: #ffc107;
+}
+
+.alert-danger {
+    border-left-color: #dc3545;
+}
+
+.alert-secondary {
+    border-left-color: #6c757d;
+}
+
+.card-header h2 {
+    font-size: 1.5rem;
+}
+
+.table th {
+    font-size: 0.9rem;
+}
+
+.table td {
+    font-size: 0.85rem;
+}
+
+@media (max-width: 768px) {
+    .hero-section h1 {
+        font-size: 2rem;
+    }
+    
+    .card-header h2 {
+        font-size: 1.25rem;
+    }
+}
+</style>
+
+{% endblock %} 

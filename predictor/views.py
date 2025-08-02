@@ -366,6 +366,10 @@ def api_docs(request):
     """API documentation page"""
     return render(request, 'predictor/api_docs.html')
 
+def technical_docs(request):
+    """Technical documentation page explaining datasets, models, and methodologies"""
+    return render(request, 'predictor/technical_docs.html')
+
 
 def category_detail(request, category_id):
     """Category detail page"""

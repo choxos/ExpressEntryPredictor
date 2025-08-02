@@ -14,10 +14,11 @@ app_name = 'predictor'
 urlpatterns = [
     # Web views
     path('', views.home, name='home'),
-    path('analytics/', views.analytics_page, name='analytics'),
     path('predictions/', views.predictions_page, name='predictions'),
+    path('analytics/', views.analytics_page, name='analytics'),
     path('api-docs/', views.api_docs, name='api-docs'),
-    path('category/<int:category_id>/', views.category_detail, name='category-detail'),
+    path('technical-docs/', views.technical_docs, name='technical-docs'),
+    path('category/<int:category_id>/', views.category_detail, name='category_detail'),
     
     # API endpoints
     path('api/', include(router.urls)),
