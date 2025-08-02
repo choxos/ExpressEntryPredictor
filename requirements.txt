@@ -25,7 +25,7 @@ holidays==0.45
 beautifulsoup4==4.12.3
 celery==5.3.6
 redis==5.0.4
-prophet==1.1.5
+prophet==1.1.7
 
 # Development
 django-debug-toolbar==4.3.0
