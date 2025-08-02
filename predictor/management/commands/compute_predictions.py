@@ -660,49 +660,59 @@ class Command(BaseCommand):
             # Calculate days_since_last_draw (required by prepare_features)
             df_enhanced['days_since_last_draw'] = df_enhanced['date'].diff().dt.days.fillna(14)
             
-            # Prepare data
-            X = df_enhanced.drop(columns=[target_col]).select_dtypes(include=[np.number])
-            y = df_enhanced[target_col]
-            
-            if X.empty or len(X.columns) == 0:
-                # For time series models, use index as feature
-                X = pd.DataFrame({'time_index': range(len(df_enhanced))})
-            
-            # Cross-validation evaluation
+            # Initialize CV scores
             cv_scores = []
-            n_folds = min(3, len(df) // 2)  # Adaptive fold count
             
-            if n_folds >= 2:
-                from sklearn.model_selection import KFold
-                kf = KFold(n_splits=n_folds, shuffle=False)  # No shuffle for time series
+            # For models that use prepare_features, skip cross-validation due to data leakage issues
+            # These models create lag/rolling features that cause data leakage in CV
+            if model_name in ['Linear Regression', 'Random Forest', 'XGBoost', 'Neural Network']:
+                print(f"  ⚠️  Skipping CV for {model_name} (uses prepare_features - would cause data leakage)")
+                X = pd.DataFrame({'dummy': range(len(df_enhanced))})  # Dummy features for consistency
+                y = df_enhanced[target_col]
+            else:
+                # For time series models, prepare simple features
+                X = df_enhanced.drop(columns=[target_col]).select_dtypes(include=[np.number])
+                y = df_enhanced[target_col]
                 
-                for train_idx, val_idx in kf.split(X):
-                    try:
-                        X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
-                        y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
-                        
-                        # Train model
-                        train_df = df_enhanced.iloc[train_idx].copy()
-                        model_copy = self._copy_model(model)
-                        
-                        # Handle different train() method signatures
-                        if model_name in ['ARIMA', 'LSTM']:
-                            model_copy.train(train_df)  # These models don't take target_col
-                        else:
-                            model_copy.train(train_df, target_col)
-                        
-                        # Predict
-                        if hasattr(model_copy, 'predict'):
-                            pred = model_copy.predict(X_val)
-                            if isinstance(pred, (list, np.ndarray)):
-                                pred = pred[0] if len(pred) > 0 else y_val.mean()
+                if X.empty or len(X.columns) == 0:
+                    # For time series models, use index as feature
+                    X = pd.DataFrame({'time_index': range(len(df_enhanced))})
+            
+            # Cross-validation evaluation (only for time series models)
+            if model_name not in ['Linear Regression', 'Random Forest', 'XGBoost', 'Neural Network']:
+                n_folds = min(3, len(df) // 2)  # Adaptive fold count
+                
+                if n_folds >= 2:
+                    from sklearn.model_selection import KFold
+                    kf = KFold(n_splits=n_folds, shuffle=False)  # No shuffle for time series
+                    
+                    for train_idx, val_idx in kf.split(X):
+                        try:
+                            X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
+                            y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
                             
-                            # Calculate score (negative MAE for cross-validation)
-                            mae = abs(pred - y_val.iloc[0]) if len(y_val) > 0 else 0
-                            cv_scores.append(-mae)
+                            # Train model
+                            train_df = df_enhanced.iloc[train_idx].copy()
+                            model_copy = self._copy_model(model)
                             
-                    except Exception as e:
-                        continue
+                            # Handle different train() method signatures
+                            if model_name in ['ARIMA', 'LSTM']:
+                                model_copy.train(train_df)  # These models don't take target_col
+                            else:
+                                model_copy.train(train_df, target_col)
+                            
+                            # Predict
+                            if hasattr(model_copy, 'predict'):
+                                pred = model_copy.predict(X_val)
+                                if isinstance(pred, (list, np.ndarray)):
+                                    pred = pred[0] if len(pred) > 0 else y_val.mean()
+                                
+                                # Calculate score (negative MAE for cross-validation)
+                                mae = abs(pred - y_val.iloc[0]) if len(y_val) > 0 else 0
+                                cv_scores.append(-mae)
+                                
+                        except Exception as e:
+                            continue
             
             # Full model training for final metrics
             if model_name in ['ARIMA', 'LSTM']:
@@ -815,26 +825,35 @@ class Command(BaseCommand):
         for name, result in model_results.items():
             score = 0
             
-            # CV Score (higher is better) - weight: 40%
+            # CV Score (higher is better) - weight: 40% if available, otherwise redistribute
             cv_score = result.get('cv_score', 0)
-            if not np.isfinite(cv_score):
-                cv_score = min(criteria_values['cv_score'])
-            cv_norm = self._normalize_score(cv_score, criteria_values['cv_score'], higher_better=True)
-            score += cv_norm * 0.4
+            n_cv_folds = result.get('n_cv_folds', 0)
             
-            # R² (higher is better) - weight: 25%
+            if n_cv_folds > 0 and np.isfinite(cv_score):
+                cv_norm = self._normalize_score(cv_score, criteria_values['cv_score'], higher_better=True)
+                score += cv_norm * 0.4
+                cv_weight_used = 0.4
+            else:
+                # No CV available, redistribute weight to other metrics
+                cv_weight_used = 0.0
+            
+            # Redistribute weights if CV not available
+            r2_weight = 0.25 + (cv_weight_used == 0.0) * 0.2  # 25% or 45% if no CV
+            mae_weight = 0.2 + (cv_weight_used == 0.0) * 0.2   # 20% or 40% if no CV
+            
+            # R² (higher is better)
             r2 = result.get('r2', 0)
             if not np.isfinite(r2):
                 r2 = min(criteria_values['r2'])
             r2_norm = self._normalize_score(r2, criteria_values['r2'], higher_better=True)
-            score += r2_norm * 0.25
+            score += r2_norm * r2_weight
             
-            # MAE (lower is better) - weight: 20%
+            # MAE (lower is better)
             mae = result.get('mae', np.inf)
             if not np.isfinite(mae):
                 mae = max(criteria_values['mae'])
             mae_norm = self._normalize_score(mae, criteria_values['mae'], higher_better=False)
-            score += mae_norm * 0.2
+            score += mae_norm * mae_weight
             
             # AIC (lower is better) - weight: 10%
             aic = result.get('aic', np.inf)
