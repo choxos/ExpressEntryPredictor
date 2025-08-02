@@ -1951,7 +1951,17 @@ class HoltWintersPredictor(BasePredictor):
                     return predictions
                 else:
                     # Emergency fallback: repeat last fitted value
-                    last_fitted = self.model.fittedvalues[-1] if len(self.model.fittedvalues) > 0 else 400
+                    if len(self.model.fittedvalues) > 0:
+                        last_fitted = self.model.fittedvalues[-1]
+                        # Ensure scalar value (handle Series/DataFrame)
+                        if hasattr(last_fitted, 'iloc'):
+                            last_fitted = float(last_fitted.iloc[0])
+                        elif hasattr(last_fitted, 'values'):
+                            last_fitted = float(last_fitted.values[0])
+                        else:
+                            last_fitted = float(last_fitted)
+                    else:
+                        last_fitted = 400.0  # Default fallback
                     return [last_fitted] * steps
         else:
             # Simple version - linear trend extrapolation
