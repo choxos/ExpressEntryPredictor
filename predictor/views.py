@@ -145,10 +145,10 @@ class DrawPredictionViewSet(viewsets.ModelViewSet):
 # =================== CUSTOM API VIEWS ===================
 
 class PredictionAPIView(APIView):
-    """Fast prediction API using pre-computed predictions"""
+    """Fast prediction API using pre-computed predictions with IRCC category grouping"""
     
     def get(self, request, category_id=None):
-        """Get pre-computed predictions for categories"""
+        """Get pre-computed predictions grouped by IRCC categories"""
         
         try:
             # Get cached predictions first
@@ -168,27 +168,64 @@ class PredictionAPIView(APIView):
                 # Filter for recent activity (draws within last 2 years)
                 categories = [cat for cat in all_categories if cat.has_recent_activity(24)]
             
+            # Group categories by IRCC category to avoid duplicates (like compute_predictions does)
+            ircc_groups = {}
+            for category in categories:
+                ircc_category, related_categories = DrawCategory.get_pooled_categories(category.name)
+                
+                # Use the IRCC category as the key
+                if ircc_category not in ircc_groups:
+                    # Find a representative category that has predictions
+                    representative_category = None
+                    for related_cat in related_categories:
+                        if PreComputedPrediction.objects.filter(category=related_cat, is_active=True).exists():
+                            representative_category = related_cat
+                            break
+                    
+                    # If no related category has predictions, use the first one
+                    if not representative_category and related_categories:
+                        representative_category = related_categories.first()
+                    
+                    if representative_category:
+                        # Get pooled data for better statistics
+                        pooled_draws, _, num_pooled = representative_category.get_pooled_data()
+                        
+                        ircc_groups[ircc_category] = {
+                            'representative_category': representative_category,
+                            'related_categories': list(related_categories),
+                            'pooled_draws': pooled_draws,
+                            'total_draws': pooled_draws.count(),
+                            'num_pooled': num_pooled
+                        }
+            
             results = []
             
-            for category in categories:
-                # Get pre-computed predictions
+            for ircc_category, group_info in ircc_groups.items():
+                representative_category = group_info['representative_category']
+                pooled_draws = group_info['pooled_draws']
+                
+                # Get pre-computed predictions (stored under representative category)
                 predictions = PreComputedPrediction.objects.filter(
-                    category=category,
+                    category=representative_category,
                     is_active=True
                 ).order_by('prediction_rank')[:20]  # Next 20 draws for full year coverage
                 
                 if not predictions.exists():
                     continue
                 
-                # Get recent draws for context
-                recent_draws = ExpressEntryDraw.objects.filter(
-                    category=category
-                ).order_by('-date')[:3]
+                # Get recent draws from ALL pooled categories for better context
+                recent_draws = pooled_draws.order_by('-date')[:3]
                 
+                # Build category data using IRCC category name
                 category_data = {
-                    'category_id': category.id,
-                    'category_name': category.name,
-                    'category_description': category.description,
+                    'category_id': representative_category.id,
+                    'category_name': ircc_category,  # Use IRCC category name instead of individual
+                    'category_description': f"Pooled data from {group_info['num_pooled']} category version(s)",
+                    'total_draws': group_info['total_draws'],
+                    'pooled_info': {
+                        'num_versions': group_info['num_pooled'],
+                        'related_categories': [cat.name for cat in group_info['related_categories']]
+                    } if group_info['num_pooled'] > 1 else None,
                     'last_updated': predictions.first().updated_at.isoformat() if predictions else None,
                     'recent_draws': [{
                         'date': draw.date.isoformat(),
@@ -210,12 +247,13 @@ class PredictionAPIView(APIView):
             
             response_data = {
                 'success': True,
+                'data': results,
                 'total_categories': len(results),
-                'generated_at': timezone.now().isoformat(),
-                'data': results
+                'timestamp': timezone.now().isoformat(),
+                'cache_duration': 3600  # Cache for 1 hour
             }
             
-            # Cache for 1 hour
+            # Cache the response
             PredictionCache.set_cache(cache_key, response_data, hours=1)
             
             return Response(response_data)
@@ -225,7 +263,7 @@ class PredictionAPIView(APIView):
                 'success': False,
                 'error': str(e),
                 'data': []
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            })
 
 
 class DashboardStatsAPIView(APIView):
@@ -243,17 +281,25 @@ class DashboardStatsAPIView(APIView):
             
             # Calculate fresh stats
             total_draws = ExpressEntryDraw.objects.count()
-            # Only count categories with recent activity (draws within last 2 years)
+            
+            # Count unique IRCC categories instead of individual categories
             all_active_categories = DrawCategory.objects.filter(is_active=True)
             active_with_recent_draws = [cat for cat in all_active_categories if cat.has_recent_activity(24)]
-            total_categories = len(active_with_recent_draws)
+            
+            # Group by IRCC category to get accurate count
+            ircc_categories = set()
+            for category in active_with_recent_draws:
+                ircc_category, _ = DrawCategory.get_pooled_categories(category.name)
+                ircc_categories.add(ircc_category)
+            
+            total_categories = len(ircc_categories)  # Count unique IRCC categories
             total_predictions = PreComputedPrediction.objects.filter(is_active=True).count()
             
-            # Recent draws
-            recent_draws = ExpressEntryDraw.objects.select_related('category').order_by('-date')[:10]
+            # Recent draws with IRCC category names
+            recent_draws_raw = ExpressEntryDraw.objects.select_related('category').order_by('-date')[:10]
             
-            # Next predicted draws
-            next_predictions = PreComputedPrediction.objects.filter(
+            # Next predicted draws with IRCC category names
+            next_predictions_raw = PreComputedPrediction.objects.filter(
                 is_active=True,
                 prediction_rank=1  # Only next draw for each category
             ).select_related('category').order_by('predicted_date')[:10]
@@ -289,16 +335,16 @@ class DashboardStatsAPIView(APIView):
                     'id': draw.id,
                     'round_number': draw.round_number,
                     'date': draw.date.isoformat(),
-                    'category_name': draw.category.name,
+                    'category_name': DrawCategory.get_pooled_categories(draw.category.name)[0],  # Use IRCC category name
                     'lowest_crs_score': draw.lowest_crs_score,
                     'invitations_issued': draw.invitations_issued
-                } for draw in recent_draws],
+                } for draw in recent_draws_raw],
                 'next_predictions': [{
-                    'category': pred.category.name,
+                    'category': DrawCategory.get_pooled_categories(pred.category.name)[0],  # Use IRCC category name
                     'predicted_date': pred.predicted_date.isoformat(),
                     'predicted_crs_score': pred.predicted_crs_score,
                     'confidence_score': round(pred.confidence_score * 100, 1)
-                } for pred in next_predictions],
+                } for pred in next_predictions_raw],
                 'last_updated': timezone.now().isoformat()
             }
             
