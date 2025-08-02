@@ -16,6 +16,7 @@ urlpatterns = [
     path('', views.home, name='home'),
     path('predictions/', views.predictions_page, name='predictions'),
     path('analytics/', views.analytics_page, name='analytics'),
+    path('draw-calculator/', views.draw_calculator, name='draw-calculator'),
     path('api-docs/', views.api_docs, name='api-docs'),
     path('technical-docs/', views.technical_docs, name='technical-docs'),
     path('category/<int:category_id>/', views.category_detail, name='category_detail'),

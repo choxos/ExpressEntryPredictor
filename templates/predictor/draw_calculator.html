@@ -1,0 +1,593 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Draw Time Calculator - Express Entry Predictor{% endblock %}
+
+{% block content %}
+<div class="hero-section">
+    <div class="container">
+        <div class="row">
+            <div class="col-12 text-center">
+                <h1 class="display-4 fw-bold">
+                    <i class="fas fa-calculator me-3"></i>
+                    Draw Time Calculator
+                </h1>
+                <p class="lead">
+                    Estimate when you might receive an Invitation to Apply (ITA) based on your CRS score and eligible categories
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container my-5">
+    <!-- CRS Calculator Link -->
+    <div class="row mb-5">
+        <div class="col-12">
+            <div class="alert alert-info border-0 shadow-sm">
+                <div class="row align-items-center">
+                    <div class="col-md-9">
+                        <h5 class="alert-heading mb-2">
+                            <i class="fas fa-external-link-alt me-2"></i>
+                            Don't know your CRS score?
+                        </h5>
+                        <p class="mb-0">Use the official Government of Canada CRS calculator to determine your Comprehensive Ranking System score first.</p>
+                    </div>
+                    <div class="col-md-3 text-md-end mt-3 mt-md-0">
+                        <a href="https://www.canada.ca/en/immigration-refugees-citizenship/services/immigrate-canada/express-entry/check-score.html" 
+                           target="_blank" 
+                           class="btn btn-primary btn-lg">
+                            <i class="fas fa-calculator me-2"></i>
+                            Calculate CRS Score
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Calculator Form -->
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <div class="card shadow-lg border-0">
+                <div class="card-header bg-primary text-white">
+                    <h3 class="mb-0">
+                        <i class="fas fa-user-clock me-2"></i>
+                        Your Draw Time Estimate
+                    </h3>
+                </div>
+                <div class="card-body p-4">
+                    <form id="drawCalculatorForm">
+                        <!-- CRS Score Input -->
+                        <div class="mb-4">
+                            <label for="crsScore" class="form-label fw-bold">
+                                <i class="fas fa-trophy me-2 text-warning"></i>
+                                Your CRS Score
+                            </label>
+                            <input type="number" 
+                                   class="form-control form-control-lg" 
+                                   id="crsScore" 
+                                   min="0" 
+                                   max="1200" 
+                                   placeholder="Enter your CRS score (0-1200)"
+                                   required>
+                            <div class="form-text">
+                                <i class="fas fa-info-circle me-1"></i>
+                                Enter the CRS score you calculated using the official calculator above
+                            </div>
+                        </div>
+
+                        <!-- Category Selection -->
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-tags me-2 text-success"></i>
+                                Eligible Categories
+                            </label>
+                            <div class="form-text mb-3">
+                                <i class="fas fa-info-circle me-1"></i>
+                                Select all Express Entry categories you're eligible for. You can be in multiple pools.
+                            </div>
+                            <div id="categorySelection" class="row">
+                                <!-- Categories will be loaded here -->
+                            </div>
+                        </div>
+
+                        <!-- Calculate Button -->
+                        <div class="text-center">
+                            <button type="submit" class="btn btn-success btn-lg px-5">
+                                <i class="fas fa-calculator me-2"></i>
+                                Calculate My Draw Time
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results Section -->
+    <div class="row mt-5" id="resultsSection" style="display: none;">
+        <div class="col-12">
+            <div class="card shadow-lg border-0">
+                <div class="card-header bg-success text-white">
+                    <h3 class="mb-0">
+                        <i class="fas fa-chart-line me-2"></i>
+                        Your Draw Time Estimates
+                    </h3>
+                </div>
+                <div class="card-body p-4">
+                    <div id="resultsContent">
+                        <!-- Results will be displayed here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- How It Works -->
+    <div class="row mt-5">
+        <div class="col-12">
+            <div class="card border-0">
+                <div class="card-body">
+                    <h3 class="mb-4">
+                        <i class="fas fa-question-circle me-2 text-info"></i>
+                        How This Calculator Works
+                    </h3>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h5><i class="fas fa-database me-2 text-primary"></i>Historical Analysis</h5>
+                            <p>We analyze historical draw data including CRS score trends, draw frequencies, and invitation patterns for each category.</p>
+                            
+                            <h5><i class="fas fa-brain me-2 text-warning"></i>AI Predictions</h5>
+                            <p>Our machine learning models predict future CRS score trends and draw patterns based on recent government policies and trends.</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h5><i class="fas fa-chart-trending-up me-2 text-success"></i>Current Trends</h5>
+                            <p>We factor in recent draw patterns, seasonal variations, and policy changes to provide realistic time estimates.</p>
+                            
+                            <h5><i class="fas fa-exclamation-triangle me-2 text-danger"></i>Important Note</h5>
+                            <p><strong>These are estimates only.</strong> Actual draw results depend on many factors including government priorities, economic conditions, and overall candidate pool composition.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Disclaimer -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="alert alert-warning border-0">
+                <h5 class="alert-heading">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Disclaimer
+                </h5>
+                <p class="mb-0">
+                    This calculator provides estimates based on historical data and current trends. Actual draw results may vary significantly due to changes in immigration policies, economic conditions, and candidate pool composition. Always refer to official IRCC sources for authoritative information. This tool is for guidance purposes only and does not guarantee invitation timing.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let availableCategories = [];
+let currentPredictions = {};
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadCategories();
+    
+    document.getElementById('drawCalculatorForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        calculateDrawTime();
+    });
+});
+
+async function loadCategories() {
+    try {
+        const response = await axios.get('/api/predict/');
+        const data = response.data;
+        
+        if (data.success && data.data) {
+            availableCategories = data.data;
+            currentPredictions = {};
+            
+            // Store predictions for quick lookup
+            data.data.forEach(categoryData => {
+                currentPredictions[categoryData.category_id] = categoryData;
+            });
+            
+            displayCategories();
+        }
+    } catch (error) {
+        console.error('Error loading categories:', error);
+        document.getElementById('categorySelection').innerHTML = `
+            <div class="col-12">
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Unable to load categories. Please refresh the page and try again.
+                </div>
+            </div>
+        `;
+    }
+}
+
+function displayCategories() {
+    const container = document.getElementById('categorySelection');
+    container.innerHTML = '';
+    
+    availableCategories.forEach(categoryData => {
+        const col = document.createElement('div');
+        col.className = 'col-md-6 mb-3';
+        
+        const recentDraw = categoryData.recent_draws[0];
+        const lastScore = recentDraw ? recentDraw.crs_score : 'N/A';
+        const daysSinceLastDraw = recentDraw ? Math.floor((new Date() - new Date(recentDraw.date)) / (1000 * 60 * 60 * 24)) : 'N/A';
+        
+        col.innerHTML = `
+            <div class="form-check">
+                <input class="form-check-input" 
+                       type="checkbox" 
+                       value="${categoryData.category_id}" 
+                       id="category${categoryData.category_id}">
+                <label class="form-check-label w-100" for="category${categoryData.category_id}">
+                    <div class="card h-100 category-card">
+                        <div class="card-body p-3">
+                            <h6 class="card-title mb-2">${categoryData.category_name}</h6>
+                            <div class="row text-center">
+                                <div class="col-6">
+                                    <small class="text-muted d-block">Last CRS</small>
+                                    <strong class="text-primary">${lastScore}</strong>
+                                </div>
+                                <div class="col-6">
+                                    <small class="text-muted d-block">Days Ago</small>
+                                    <strong class="text-secondary">${daysSinceLastDraw}</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </label>
+            </div>
+        `;
+        
+        container.appendChild(col);
+    });
+}
+
+async function calculateDrawTime() {
+    const crsScore = parseInt(document.getElementById('crsScore').value);
+    const selectedCategories = Array.from(document.querySelectorAll('input[type="checkbox"]:checked'))
+        .map(cb => parseInt(cb.value));
+    
+    if (!crsScore || crsScore < 0 || crsScore > 1200) {
+        alert('Please enter a valid CRS score between 0 and 1200.');
+        return;
+    }
+    
+    if (selectedCategories.length === 0) {
+        alert('Please select at least one category you are eligible for.');
+        return;
+    }
+    
+    // Show results section
+    document.getElementById('resultsSection').style.display = 'block';
+    document.getElementById('resultsContent').innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Calculating...</span>
+            </div>
+            <p class="mt-2">Analyzing your chances and calculating draw time estimates...</p>
+        </div>
+    `;
+    
+    // Scroll to results
+    document.getElementById('resultsSection').scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'start' 
+    });
+    
+    try {
+        const estimates = calculateEstimates(crsScore, selectedCategories);
+        displayResults(crsScore, estimates);
+    } catch (error) {
+        console.error('Error calculating estimates:', error);
+        document.getElementById('resultsContent').innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Error calculating estimates. Please try again.
+            </div>
+        `;
+    }
+}
+
+function calculateEstimates(userScore, selectedCategories) {
+    const estimates = [];
+    
+    selectedCategories.forEach(categoryId => {
+        const categoryData = currentPredictions[categoryId];
+        if (!categoryData) return;
+        
+        const recentDraws = categoryData.recent_draws;
+        const predictions = categoryData.predictions;
+        
+        // Calculate average CRS score from recent draws
+        const avgRecentScore = recentDraws.length > 0 
+            ? recentDraws.reduce((sum, draw) => sum + draw.crs_score, 0) / recentDraws.length 
+            : 500;
+        
+        // Get current predicted score
+        const currentPredictedScore = predictions[0] ? predictions[0].predicted_crs_score : avgRecentScore;
+        
+        // Calculate score difference
+        const scoreDifference = userScore - currentPredictedScore;
+        
+        // Estimate likelihood and timing
+        let likelihood, estimatedTime, recommendation;
+        
+        if (scoreDifference >= 50) {
+            likelihood = 'Very High';
+            estimatedTime = 'Next 1-2 draws';
+            recommendation = 'Excellent! You should receive an invitation very soon.';
+        } else if (scoreDifference >= 20) {
+            likelihood = 'High';
+            estimatedTime = 'Next 2-4 draws';
+            recommendation = 'Very good chances. Monitor upcoming draws closely.';
+        } else if (scoreDifference >= 0) {
+            likelihood = 'Moderate';
+            estimatedTime = 'Next 3-6 draws';
+            recommendation = 'Good chances. CRS scores may fluctuate in your favor.';
+        } else if (scoreDifference >= -20) {
+            likelihood = 'Low';
+            estimatedTime = '6-12 months';
+            recommendation = 'Consider improving your CRS score through additional education, work experience, or language training.';
+        } else if (scoreDifference >= -50) {
+            likelihood = 'Very Low';
+            estimatedTime = '12+ months';
+            recommendation = 'Significant improvements needed. Focus on increasing your CRS score substantially.';
+        } else {
+            likelihood = 'Unlikely';
+            estimatedTime = 'Not with current trends';
+            recommendation = 'Your score is significantly below recent trends. Consider alternative immigration pathways.';
+        }
+        
+        // Calculate rough draw frequency (days between draws)
+        const drawFrequency = calculateDrawFrequency(recentDraws);
+        
+        estimates.push({
+            categoryName: categoryData.category_name,
+            currentPredictedScore: currentPredictedScore,
+            userScore: userScore,
+            scoreDifference: scoreDifference,
+            likelihood: likelihood,
+            estimatedTime: estimatedTime,
+            recommendation: recommendation,
+            drawFrequency: drawFrequency,
+            recentDraws: recentDraws.length
+        });
+    });
+    
+    // Sort by likelihood (best chances first)
+    const likelihoodOrder = ['Very High', 'High', 'Moderate', 'Low', 'Very Low', 'Unlikely'];
+    estimates.sort((a, b) => {
+        return likelihoodOrder.indexOf(a.likelihood) - likelihoodOrder.indexOf(b.likelihood);
+    });
+    
+    return estimates;
+}
+
+function calculateDrawFrequency(recentDraws) {
+    if (recentDraws.length < 2) return 'Unknown';
+    
+    const dates = recentDraws.map(draw => new Date(draw.date)).sort((a, b) => b - a);
+    const intervals = [];
+    
+    for (let i = 0; i < dates.length - 1; i++) {
+        const daysDiff = Math.floor((dates[i] - dates[i + 1]) / (1000 * 60 * 60 * 24));
+        intervals.push(daysDiff);
+    }
+    
+    const avgInterval = intervals.reduce((sum, interval) => sum + interval, 0) / intervals.length;
+    return Math.round(avgInterval);
+}
+
+function displayResults(userScore, estimates) {
+    const container = document.getElementById('resultsContent');
+    
+    if (estimates.length === 0) {
+        container.innerHTML = `
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                No estimates available for the selected categories.
+            </div>
+        `;
+        return;
+    }
+    
+    // Overall summary
+    const bestEstimate = estimates[0];
+    const worstEstimate = estimates[estimates.length - 1];
+    
+    let summaryHtml = `
+        <div class="alert ${getSummaryAlertClass(bestEstimate.likelihood)} border-0 mb-4">
+            <h5 class="alert-heading">
+                <i class="fas ${getSummaryIcon(bestEstimate.likelihood)} me-2"></i>
+                Overall Assessment for CRS Score ${userScore}
+            </h5>
+            <p class="mb-2">
+                <strong>Best Category:</strong> ${bestEstimate.categoryName} 
+                <span class="badge bg-${getLikelihoodColor(bestEstimate.likelihood)} ms-2">${bestEstimate.likelihood} Likelihood</span>
+            </p>
+            <p class="mb-0">
+                <strong>Estimated Timeline:</strong> ${bestEstimate.estimatedTime}
+            </p>
+        </div>
+    `;
+    
+    // Individual category results
+    summaryHtml += `
+        <div class="row">
+    `;
+    
+    estimates.forEach(estimate => {
+        summaryHtml += `
+            <div class="col-lg-6 mb-4">
+                <div class="card h-100 border-${getLikelihoodColor(estimate.likelihood)}">
+                    <div class="card-header bg-${getLikelihoodColor(estimate.likelihood)} text-white">
+                        <h6 class="mb-0">
+                            <i class="fas fa-tag me-2"></i>
+                            ${estimate.categoryName}
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <small class="text-muted d-block">Your Score</small>
+                                <strong class="h5 text-primary">${estimate.userScore}</strong>
+                            </div>
+                            <div class="col-6">
+                                <small class="text-muted d-block">Predicted Cut-off</small>
+                                <strong class="h5 ${estimate.scoreDifference >= 0 ? 'text-success' : 'text-danger'}">
+                                    ${estimate.currentPredictedScore}
+                                </strong>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <small class="text-muted d-block">Score Difference</small>
+                            <strong class="${estimate.scoreDifference >= 0 ? 'text-success' : 'text-danger'}">
+                                ${estimate.scoreDifference >= 0 ? '+' : ''}${estimate.scoreDifference} points
+                            </strong>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <small class="text-muted">Likelihood</small>
+                                <span class="badge bg-${getLikelihoodColor(estimate.likelihood)}">${estimate.likelihood}</span>
+                            </div>
+                            <div class="progress">
+                                <div class="progress-bar bg-${getLikelihoodColor(estimate.likelihood)}" 
+                                     style="width: ${getLikelihoodPercentage(estimate.likelihood)}%"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <small class="text-muted d-block">Estimated Timeline</small>
+                            <strong>${estimate.estimatedTime}</strong>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <small class="text-muted d-block">Draw Frequency</small>
+                            <span>~${estimate.drawFrequency} days (${estimate.recentDraws} recent draws)</span>
+                        </div>
+                        
+                        <div class="alert alert-light border-0 small">
+                            <i class="fas fa-lightbulb me-2"></i>
+                            ${estimate.recommendation}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    summaryHtml += `
+        </div>
+        
+        <div class="mt-4 text-center">
+            <button type="button" class="btn btn-outline-primary me-2" onclick="location.reload()">
+                <i class="fas fa-redo me-2"></i>
+                Calculate Again
+            </button>
+            <a href="/predictions/" class="btn btn-outline-success">
+                <i class="fas fa-chart-line me-2"></i>
+                View All Predictions
+            </a>
+        </div>
+    `;
+    
+    container.innerHTML = summaryHtml;
+}
+
+function getSummaryAlertClass(likelihood) {
+    const classes = {
+        'Very High': 'alert-success',
+        'High': 'alert-info',
+        'Moderate': 'alert-warning',
+        'Low': 'alert-warning',
+        'Very Low': 'alert-danger',
+        'Unlikely': 'alert-danger'
+    };
+    return classes[likelihood] || 'alert-secondary';
+}
+
+function getSummaryIcon(likelihood) {
+    const icons = {
+        'Very High': 'fa-check-circle',
+        'High': 'fa-thumbs-up',
+        'Moderate': 'fa-clock',
+        'Low': 'fa-exclamation-triangle',
+        'Very Low': 'fa-times-circle',
+        'Unlikely': 'fa-ban'
+    };
+    return icons[likelihood] || 'fa-question-circle';
+}
+
+function getLikelihoodColor(likelihood) {
+    const colors = {
+        'Very High': 'success',
+        'High': 'info',
+        'Moderate': 'warning',
+        'Low': 'warning',
+        'Very Low': 'danger',
+        'Unlikely': 'danger'
+    };
+    return colors[likelihood] || 'secondary';
+}
+
+function getLikelihoodPercentage(likelihood) {
+    const percentages = {
+        'Very High': 90,
+        'High': 75,
+        'Moderate': 60,
+        'Low': 35,
+        'Very Low': 15,
+        'Unlikely': 5
+    };
+    return percentages[likelihood] || 0;
+}
+</script>
+
+<style>
+.category-card {
+    border: 2px solid #e9ecef;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.form-check-input:checked + .form-check-label .category-card {
+    border-color: #0d6efd;
+    background-color: #f8f9ff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.category-card:hover {
+    border-color: #6c757d;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.progress {
+    height: 8px;
+}
+
+.card {
+    transition: transform 0.2s ease;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+}
+</style>
+
+{% endblock %} 

@@ -377,6 +377,10 @@ def technical_docs(request):
     """Technical documentation page explaining datasets, models, and methodologies"""
     return render(request, 'predictor/technical_docs.html')
 
+def draw_calculator(request):
+    """Draw time calculator page for users to estimate their ITA timing"""
+    return render(request, 'predictor/draw_calculator.html')
+
 
 def category_detail(request, category_id):
     """Category detail page"""
