@@ -29,7 +29,8 @@
 #### **📈 Advanced Enhancement (Phase 2):**
 - **LSTM** → Multi-variable complex modeling
 - **Ensemble** → Combine top performers
-- **Linear Regression** → Interpretable baselines
+- **Linear Regression** → Interpretable baselines ✅ **Included**
+- **Neural Network (MLP)** → Non-linear pattern recognition ✅ **Included**
 
 #### **🔮 Production Optimization (Phase 3):**
 - **Advanced Ensembles** → Dynamic weighting

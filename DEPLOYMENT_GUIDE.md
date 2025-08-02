@@ -14,7 +14,7 @@ git clone https://github.com/your-username/ExpressEntryPredictor.git
 cd ExpressEntryPredictor
 
 # Install minimal dependencies
-pip install django djangorestframework django-cors-headers pandas numpy
+pip install django djangorestframework django-cors-headers pandas numpy plotly seaborn matplotlib statsmodels xgboost tensorflow scikit-learn prophet
 
 # Setup database
 python manage.py migrate

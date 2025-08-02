@@ -41,9 +41,9 @@ except ImportError:
 try:
     from prophet import Prophet
     PROPHET_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError) as e:
     PROPHET_AVAILABLE = False
-    print("Warning: Prophet not available. Prophet model will be disabled.")
+    print(f"Warning: Prophet not available. Prophet model will be disabled. Error: {e}")
 
 
 class BasePredictor:
@@ -477,6 +477,79 @@ class ProphetPredictor(BasePredictor):
         
         # Return predictions for the forecasted periods
         return forecast['yhat'].tail(periods).values.tolist()
+
+
+class NeuralNetworkPredictor(BasePredictor):
+    """Multi-Layer Perceptron Neural Network for EE prediction"""
+    
+    def __init__(self, hidden_layer_sizes=(100, 50), random_state=42, max_iter=1000):
+        super().__init__("Neural Network (MLP)", "MLP")
+        if not SKLEARN_AVAILABLE:
+            raise ImportError("scikit-learn is required for Neural Network model")
+        self.hidden_layer_sizes = hidden_layer_sizes
+        self.random_state = random_state
+        self.max_iter = max_iter
+        self.model = None
+        self.scaler = None
+    
+    def train(self, df, target_col='lowest_crs_score'):
+        """Train Neural Network model"""
+        features = self.prepare_features(df)
+        
+        # Define feature columns (exclude target and non-feature columns)
+        exclude_cols = ['date', 'lowest_crs_score', 'round_number', 'url', 'category']
+        feature_cols = [col for col in features.columns if col not in exclude_cols]
+        
+        X = features[feature_cols].fillna(0)
+        y = features[target_col]
+        
+        # Remove rows with NaN in target
+        mask = ~y.isna()
+        X = X[mask]
+        y = y[mask]
+        
+        # Scale features for neural network
+        from sklearn.preprocessing import StandardScaler
+        self.scaler = StandardScaler()
+        X_scaled = self.scaler.fit_transform(X)
+        
+        # Train neural network
+        from sklearn.neural_network import MLPRegressor
+        self.model = MLPRegressor(
+            hidden_layer_sizes=self.hidden_layer_sizes,
+            random_state=self.random_state,
+            max_iter=self.max_iter,
+            activation='relu',
+            solver='adam',
+            early_stopping=True,
+            validation_fraction=0.1,
+            n_iter_no_change=10
+        )
+        
+        self.model.fit(X_scaled, y)
+        
+        # Calculate feature importance (average absolute weights from first layer)
+        if hasattr(self.model, 'coefs_'):
+            first_layer_weights = np.abs(self.model.coefs_[0])
+            self.feature_importance = dict(zip(
+                feature_cols, 
+                np.mean(first_layer_weights, axis=1)
+            ))
+        
+        # Calculate metrics
+        predictions = self.model.predict(X_scaled)
+        self.metrics = self.evaluate(y, predictions)
+        self.is_trained = True
+        
+        return self.metrics
+    
+    def predict(self, X):
+        """Make predictions"""
+        if not self.is_trained:
+            raise ValueError("Model must be trained before prediction")
+        
+        X_scaled = self.scaler.transform(X)
+        return self.model.predict(X_scaled)
 
 
 class EnsemblePredictor(BasePredictor):

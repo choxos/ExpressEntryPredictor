@@ -42,13 +42,20 @@ class Command(BaseCommand):
                 'description': 'Simple linear regression baseline model',
                 'is_active': True
             },
-                                {
-                        'name': 'Prophet Time Series',
-                        'model_type': 'PROPHET',
-                        'version': '1.0',
-                        'description': 'Facebook Prophet model for seasonal time series prediction',
-                        'is_active': True
-                    },
+            {
+                'name': 'Neural Network (MLP)',
+                'model_type': 'MLP',
+                'version': '1.0',
+                'description': 'Multi-Layer Perceptron neural network for non-linear pattern recognition',
+                'is_active': True
+            },
+            {
+                'name': 'Prophet Time Series',
+                'model_type': 'PROPHET',
+                'version': '1.0',
+                'description': 'Facebook Prophet model for seasonal time series prediction',
+                'is_active': True
+            },
                     {
                         'name': 'Ensemble Predictor',
                         'model_type': 'ENSEMBLE',
