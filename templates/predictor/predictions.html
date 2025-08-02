@@ -152,23 +152,34 @@ async function loadPredictions() {
         const response = await axios.get(`/api/predict/?t=${timestamp}`);
         const apiData = response.data;
         
-        if (apiData.success && apiData.data) {
+        if (apiData.success && apiData.data && Array.isArray(apiData.data)) {
+            console.log('Raw API data:', apiData.data);
+            
             // Transform API data to match expected structure
-            allPredictions = apiData.data.map(categoryData => ({
-                id: categoryData.category_id,
-                category: {
+            allPredictions = apiData.data.map(categoryData => {
+                // Ensure predictions array exists and has data
+                const predictions = categoryData.predictions || [];
+                const firstPrediction = predictions[0] || {};
+                
+                return {
                     id: categoryData.category_id,
-                    name: categoryData.category_name,
-                    description: categoryData.category_description
-                },
-                predictions: categoryData.predictions,
-                recent_draws: categoryData.recent_draws,
-                last_updated: categoryData.last_updated,
-                model_performance: {
-                    accuracy: categoryData.predictions[0] ? categoryData.predictions[0].confidence_score : 0,
-                    model_used: categoryData.predictions[0] ? categoryData.predictions[0].model_used : 'Unknown'
-                }
-            }));
+                    category_name: categoryData.category_name,
+                    category: {
+                        id: categoryData.category_id,
+                        name: categoryData.category_name,
+                        description: categoryData.category_description
+                    },
+                    predictions: predictions,
+                    recent_draws: categoryData.recent_draws || [],
+                    last_updated: categoryData.last_updated,
+                    model_performance: {
+                        accuracy: firstPrediction.confidence_score || 0,
+                        model_used: firstPrediction.model_used || 'Unknown'
+                    }
+                };
+            });
+            
+            console.log('Transformed predictions:', allPredictions);
             
             loading.style.display = 'none';
             displayPredictions(allPredictions);
@@ -352,14 +363,24 @@ function createTimelineChart(predictions) {
     const chartData = [];
     
     predictions.forEach(prediction => {
-        prediction.prediction_timeline.forEach(pred => {
-            chartData.push({
-                x: pred.predicted_date,
-                y: pred.predicted_crs_score,
-                category: prediction.category.name,
-                confidence: pred.confidence || 75
+        // Debug logging for data structure
+        console.log('Chart prediction data:', prediction);
+        
+        // Use the correct property name: predictions instead of prediction_timeline
+        const categoryName = prediction.category?.name || prediction.category_name || 'Unknown';
+        
+        if (prediction.predictions && Array.isArray(prediction.predictions)) {
+            prediction.predictions.forEach(pred => {
+                chartData.push({
+                    x: pred.predicted_date,
+                    y: pred.predicted_crs_score,
+                    category: categoryName,
+                    confidence: pred.confidence_score || 75
+                });
             });
-        });
+        } else {
+            console.warn('No predictions array found for category:', categoryName);
+        }
     });
     
     // Group by category
