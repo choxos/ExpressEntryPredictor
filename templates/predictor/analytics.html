@@ -29,22 +29,25 @@
 
 <!-- Charts Section -->
 <section class="container mb-5">
+    <!-- CRS Trends Chart - Full Width -->
     <div class="row">
-        <!-- CRS Trends Chart -->
-        <div class="col-lg-8 mb-4">
+        <div class="col-12 mb-4">
             <div class="card">
                 <div class="card-header">
                     <h5 class="mb-0">
                         <i class="fas fa-chart-line me-2"></i>
-                        CRS Score Trends Over Time
+                        CRS Score Trends Over Time - All Categories
                     </h5>
                 </div>
                 <div class="card-body">
-                    <div id="crsChart" style="height: 400px;"></div>
+                    <div id="crsChart" style="height: 500px;"></div>
                 </div>
             </div>
         </div>
-        
+    </div>
+    
+    <!-- Second Row Charts -->
+    <div class="row">
         <!-- Category Distribution -->
         <div class="col-lg-4 mb-4">
             <div class="card">
@@ -59,11 +62,9 @@
                 </div>
             </div>
         </div>
-    </div>
-    
-    <div class="row">
+        
         <!-- Monthly Trends -->
-        <div class="col-lg-6 mb-4">
+        <div class="col-lg-4 mb-4">
             <div class="card">
                 <div class="card-header">
                     <h5 class="mb-0">
@@ -72,13 +73,13 @@
                     </h5>
                 </div>
                 <div class="card-body">
-                    <div id="monthlyChart" style="height: 350px;"></div>
+                    <div id="monthlyChart" style="height: 400px;"></div>
                 </div>
             </div>
         </div>
         
         <!-- Score vs Invitations -->
-        <div class="col-lg-6 mb-4">
+        <div class="col-lg-4 mb-4">
             <div class="card">
                 <div class="card-header">
                     <h5 class="mb-0">
@@ -87,7 +88,7 @@
                     </h5>
                 </div>
                 <div class="card-body">
-                    <div id="scatterChart" style="height: 350px;"></div>
+                    <div id="scatterChart" style="height: 400px;"></div>
                 </div>
             </div>
         </div>
@@ -298,27 +299,124 @@ function displayCategoryBreakdown(breakdown) {
     });
 }
 
+async function loadCRSTrendsByCategory() {
+    try {
+        // Get comprehensive historical draws data
+        const response = await axios.get('/api/draws/?limit=200'); // Get more historical data
+        const drawsData = response.data.results || response.data;
+        
+        if (!drawsData || drawsData.length === 0) {
+            console.warn('No draws data available for CRS trends');
+            return;
+        }
+        
+        // Group draws by category
+        const categoriesData = {};
+        drawsData.forEach(draw => {
+            const categoryName = draw.category_name || 'Unknown';
+            if (!categoriesData[categoryName]) {
+                categoriesData[categoryName] = [];
+            }
+            categoriesData[categoryName].push({
+                date: draw.date,
+                crs_score: draw.lowest_crs_score,
+                invitations: draw.invitations_issued,
+                round: draw.round_number
+            });
+        });
+        
+        // Sort each category's data by date
+        Object.keys(categoriesData).forEach(category => {
+            categoriesData[category].sort((a, b) => new Date(a.date) - new Date(b.date));
+        });
+        
+        // Create traces for each category
+        const traces = Object.keys(categoriesData).map((categoryName, index) => {
+            const categoryDraws = categoriesData[categoryName];
+            const color = getCategoryColor(categoryName);
+            
+            return {
+                x: categoryDraws.map(draw => draw.date),
+                y: categoryDraws.map(draw => draw.crs_score),
+                type: 'scatter',
+                mode: 'lines+markers',
+                name: categoryName,
+                line: { 
+                    color: color, 
+                    width: 3 
+                },
+                marker: { 
+                    size: 8,
+                    color: color,
+                    opacity: 0.8
+                },
+                hovertemplate: '<b>%{fullData.name}</b><br>' +
+                             'Date: %{x}<br>' +
+                             'CRS Score: %{y}<br>' +
+                             '<extra></extra>'
+            };
+        });
+        
+        const layout = {
+            title: {
+                text: 'Historical CRS Score Trends by Category',
+                font: { size: 20 }
+            },
+            xaxis: { 
+                title: 'Date',
+                type: 'date',
+                gridcolor: 'rgba(128,128,128,0.2)'
+            },
+            yaxis: { 
+                title: 'CRS Score',
+                gridcolor: 'rgba(128,128,128,0.2)',
+                range: [300, 650] // Reasonable range for CRS scores
+            },
+            hovermode: 'closest',
+            showlegend: true,
+            legend: {
+                orientation: 'h',
+                x: 0.5,
+                xanchor: 'center',
+                y: -0.15,
+                yanchor: 'top',
+                bgcolor: 'rgba(255, 255, 255, 0.8)',
+                bordercolor: 'rgba(0, 0, 0, 0.1)',
+                borderwidth: 1
+            },
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            margin: {
+                l: 60,
+                r: 40,
+                t: 80,
+                b: 120
+            }
+        };
+        
+        Plotly.newPlot('crsChart', traces, layout, {responsive: true, displayModeBar: false});
+        
+    } catch (error) {
+        console.error('Error loading CRS trends by category:', error);
+        
+        // Fallback to simple chart
+        document.getElementById('crsChart').innerHTML = `
+            <div class="alert alert-warning text-center">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Unable to load detailed CRS trends. Please try refreshing the page.
+            </div>
+        `;
+    }
+}
+
 async function loadCharts(data) {
     try {
-        // Simple chart with available data
+        // Load comprehensive CRS trends by category
+        await loadCRSTrendsByCategory();
+        
+        // Keep existing recent draws simple visualization for other charts
         if (data.recent_draws && data.recent_draws.length > 0) {
-            const crsData = {
-                data: [{
-                    x: data.recent_draws.map(draw => draw.date),
-                    y: data.recent_draws.map(draw => draw.lowest_crs_score),
-                    type: 'scatter',
-                    mode: 'lines+markers',
-                    name: 'CRS Score',
-                    line: { color: '#007bff' }
-                }],
-                layout: {
-                    title: 'Recent CRS Score Trends',
-                    xaxis: { title: 'Date' },
-                    yaxis: { title: 'CRS Score' },
-                    hovermode: 'x unified'
-                }
-            };
-            Plotly.newPlot('crsChart', crsData.data, crsData.layout);
+            // Note: CRS chart is now handled by loadCRSTrendsByCategory()
         }
         
         // Category distribution based on recent draws
