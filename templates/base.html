@@ -16,14 +16,16 @@
     
     <style>
         :root {
-            --primary-color: #0d47a1;
-            --secondary-color: #1976d2;
-            --accent-color: #ff6b35;
-            --success-color: #28a745;
-            --warning-color: #ffc107;
-            --danger-color: #dc3545;
-            --light-bg: #f8f9fa;
-            --dark-text: #333;
+            --primary-color: #DC143C;      /* Canadian Red (Crimson) */
+            --secondary-color: #8B0000;    /* Dark Red */
+            --accent-color: #CD212A;       /* Official Canada Red */
+            --success-color: #228B22;      /* Forest Green */
+            --warning-color: #FF8C00;      /* Dark Orange */
+            --danger-color: #B22222;       /* Fire Brick Red */
+            --light-bg: #f8f9fa;           /* Light Gray */
+            --dark-text: #2F2F2F;          /* Charcoal */
+            --maple-red: #FF0000;          /* Pure Red (Maple Leaf) */
+            --canada-white: #FFFFFF;       /* Pure White */
         }
         
         body {
@@ -42,6 +44,28 @@
             color: white;
             padding: 4rem 0;
             margin-bottom: 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .hero-section::before {
+            content: '🍁';
+            position: absolute;
+            top: 20px;
+            right: 50px;
+            font-size: 3rem;
+            opacity: 0.1;
+            transform: rotate(-15deg);
+        }
+        
+        .hero-section::after {
+            content: '🍁';
+            position: absolute;
+            bottom: 20px;
+            left: 50px;
+            font-size: 2.5rem;
+            opacity: 0.1;
+            transform: rotate(15deg);
         }
         
         .card {
@@ -69,7 +93,7 @@
         }
         
         .stats-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
             color: white;
             border-radius: 15px;
             padding: 1.5rem;
@@ -77,7 +101,7 @@
         }
         
         .prediction-card {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            background: linear-gradient(135deg, var(--accent-color) 0%, var(--primary-color) 100%);
             color: white;
             border-radius: 15px;
             padding: 1.5rem;
@@ -119,6 +143,36 @@
             border-left: 4px solid var(--accent-color);
             padding-left: 1rem;
         }
+        
+        /* Canadian-themed additional styles */
+        .text-primary { color: var(--primary-color) !important; }
+        .bg-primary { background-color: var(--primary-color) !important; }
+        .border-primary { border-color: var(--primary-color) !important; }
+        
+        a { color: var(--primary-color); }
+        a:hover { color: var(--secondary-color); }
+        
+        .btn-outline-primary {
+            color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+        
+        .btn-outline-primary:hover {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+        
+        .table-primary th {
+            background-color: var(--primary-color) !important;
+            border-color: var(--primary-color) !important;
+        }
+        
+        /* Canadian maple leaf accent */
+        .canada-accent::before {
+            content: '🍁';
+            margin-right: 0.5rem;
+            opacity: 0.7;
+        }
     </style>
     
     {% block extra_css %}{% endblock %}
@@ -128,7 +182,7 @@
     <nav class="navbar navbar-expand-lg navbar-dark" style="background-color: var(--primary-color);">
         <div class="container">
             <a class="navbar-brand" href="{% url 'predictor:home' %}">
-                <i class="fas fa-chart-line me-2"></i>
+                🇨🇦 <i class="fas fa-chart-line me-2"></i>
                 Express Entry Predictor
             </a>
             
@@ -186,8 +240,8 @@
         <div class="container">
             <div class="row">
                 <div class="col-md-6">
-                    <h5>Express Entry Predictor</h5>
-                    <p class="mb-0">Advanced predictions for Canadian Express Entry draws using machine learning and statistical models.</p>
+                    <h5>🇨🇦 Express Entry Predictor</h5>
+                    <p class="mb-0">Advanced predictions for Canadian Express Entry draws using machine learning and statistical models. Proudly helping newcomers achieve their Canadian dream.</p>
                 </div>
                 <div class="col-md-6 text-md-end">
                     <h6>Data Sources</h6>
