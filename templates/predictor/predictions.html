@@ -308,11 +308,29 @@ function displayModelPerformance(predictions) {
     const container = document.getElementById('modelPerformance');
     container.innerHTML = '';
     
-    // Calculate aggregate metrics
-    const totalPredictions = predictions.length;
-    const avgConfidence = predictions.reduce((sum, p) => sum + (p.confidence_score || 0), 0) / totalPredictions;
-    const avgR2Score = predictions.reduce((sum, p) => sum + (p.model_performance?.r2_score || 0), 0) / totalPredictions;
-    const avgMAE = predictions.reduce((sum, p) => sum + (p.model_performance?.mae || 0), 0) / totalPredictions;
+    // Calculate aggregate metrics from all individual predictions across categories
+    let allPredictions = [];
+    let totalConfidence = 0;
+    let totalCategories = predictions.length;
+    
+    predictions.forEach(categoryData => {
+        if (categoryData.predictions && Array.isArray(categoryData.predictions)) {
+            allPredictions.push(...categoryData.predictions);
+            
+            // Use the first prediction's confidence as category confidence
+            if (categoryData.predictions[0]) {
+                totalConfidence += categoryData.predictions[0].confidence_score || 0;
+            }
+        }
+    });
+    
+    const avgConfidence = totalCategories > 0 ? totalConfidence / totalCategories : 0;
+    const totalPredictions = allPredictions.length;
+    
+    // Calculate model diversity
+    const modelTypes = new Set(allPredictions.map(p => p.model_used || 'Unknown'));
+    const avgModelConfidence = allPredictions.length > 0 ? 
+        allPredictions.reduce((sum, p) => sum + (p.confidence_score || 0), 0) / allPredictions.length : 0;
     
     const metrics = [
         {
@@ -322,19 +340,19 @@ function displayModelPerformance(predictions) {
             color: 'success'
         },
         {
-            title: 'Model Accuracy (R²)',
-            value: avgR2Score.toFixed(3),
-            icon: 'fas fa-bullseye',
+            title: 'Model Diversity',
+            value: `${modelTypes.size} Models`,
+            icon: 'fas fa-cogs',
             color: 'info'
         },
         {
-            title: 'Mean Absolute Error',
-            value: avgMAE.toFixed(1),
-            icon: 'fas fa-crosshairs',
+            title: 'Overall Confidence',
+            value: `${avgModelConfidence.toFixed(1)}%`,
+            icon: 'fas fa-chart-line',
             color: 'warning'
         },
         {
-            title: 'Active Predictions',
+            title: 'Total Predictions',
             value: totalPredictions.toString(),
             icon: 'fas fa-chart-bar',
             color: 'primary'
@@ -412,8 +430,9 @@ function createTimelineChart(predictions) {
     
     const layout = {
         title: {
-            text: 'Predicted CRS Scores Timeline',
-            font: { size: 18 }
+            text: 'Predicted CRS Scores Timeline - Next 6 Months',
+            font: { size: 18 },
+            y: 0.95
         },
         xaxis: {
             title: 'Date',
@@ -427,8 +446,21 @@ function createTimelineChart(predictions) {
         showlegend: true,
         legend: {
             orientation: 'h',
-            y: -0.2
-        }
+            x: 0.5,
+            xanchor: 'center',
+            y: -0.15,
+            yanchor: 'top',
+            bgcolor: 'rgba(255, 255, 255, 0.8)',
+            bordercolor: 'rgba(0, 0, 0, 0.1)',
+            borderwidth: 1
+        },
+        margin: {
+            l: 60,
+            r: 40,
+            t: 80,
+            b: 120
+        },
+        height: 450
     };
     
     Plotly.newPlot('timelineChart', traces, layout, {responsive: true});
