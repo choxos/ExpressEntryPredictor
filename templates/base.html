@@ -42,7 +42,32 @@
         
         .navbar-brand {
             font-weight: bold;
-            font-size: 1.5rem;
+            font-size: 1.2rem; /* Reduced from 1.5rem */
+        }
+        
+        /* Smaller, narrower navigation bar */
+        .navbar {
+            padding: 0.25rem 0; /* Reduced from default 0.5rem 1rem */
+        }
+        
+        .navbar-nav .nav-link {
+            padding: 0.4rem 0.8rem; /* Reduced padding */
+            font-size: 0.9rem; /* Slightly smaller font */
+        }
+        
+        .navbar-brand {
+            padding: 0.4rem 0; /* Reduced padding */
+        }
+        
+        .navbar-toggler {
+            padding: 0.2rem 0.5rem; /* Smaller toggle button */
+            font-size: 1rem;
+        }
+        
+        /* Compact dropdown */
+        .dropdown-menu .dropdown-item {
+            padding: 0.3rem 1rem;
+            font-size: 0.9rem;
         }
         
         .hero-section {
@@ -205,7 +230,7 @@
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'predictor:predictions' %}">
-                            <i class="fas fa-crystal-ball me-1"></i>Predictions
+                            <i class="fas fa-magic me-1"></i>Predictions
                         </a>
                     </li>
                     <li class="nav-item">
