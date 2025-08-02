@@ -287,15 +287,39 @@ class Command(BaseCommand):
                     base_std = max(score_std, 15)  # Minimum 15 point uncertainty
                     margin_of_error = z_score_95 * base_std * uncertainty_multiplier
                 
-                # Calculate 95% confidence interval bounds
+                # Calculate 95% confidence interval bounds for CRS score
                 ci_lower = max(250, int(predicted_score - margin_of_error))
                 ci_upper = min(950, int(predicted_score + margin_of_error))
                 
+                # Calculate date confidence interval (± days around predicted date)
+                base_date_margin = 7  # Base uncertainty of ±7 days
+                
+                # Adjust date uncertainty based on model confidence and data quality
+                if data_size <= 4:
+                    date_margin_days = min(21, base_date_margin * 3)  # Up to ±21 days for very small data
+                elif data_size <= 10:
+                    date_margin_days = min(14, base_date_margin * 2)  # Up to ±14 days for small data
+                elif confidence < 0.5:
+                    date_margin_days = min(10, base_date_margin * 1.5)  # ±10 days for low confidence
+                else:
+                    date_margin_days = base_date_margin  # ±7 days for good confidence
+                
+                # Calculate date range
+                date_lower = next_date - timedelta(days=date_margin_days)
+                date_upper = next_date + timedelta(days=date_margin_days)
+                
+                # Ensure date range doesn't go into the past
+                if date_lower < today_eastern:
+                    date_lower = today_eastern
+                
                 uncertainty_range = {
-                    'min': ci_lower,
-                    'max': ci_upper,
-                    'confidence_level': 95,
-                    'margin_of_error': round(margin_of_error, 1)
+                    'crs_min': ci_lower,
+                    'crs_max': ci_upper,
+                    'crs_margin_of_error': round(margin_of_error, 1),
+                    'date_earliest': date_lower.isoformat(),
+                    'date_latest': date_upper.isoformat(),
+                    'date_margin_days': date_margin_days,
+                    'confidence_level': 95
                 }
                 
                 # Adjust confidence score based on uncertainty

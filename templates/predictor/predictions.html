@@ -261,7 +261,7 @@ function displayPredictions(predictions) {
                         <div class="col-6">
                             <div class="text-center mb-3">
                                 <i class="fas fa-calendar-alt fa-2x text-primary mb-2"></i>
-                                <h5 class="mb-1">${formatDate(nextPrediction.predicted_date)}</h5>
+                                <h5 class="mb-1">${formatDateWithCI(nextPrediction.predicted_date, nextPrediction.uncertainty_range)}</h5>
                                 <small class="text-muted">Next Draw Date</small>
                             </div>
                         </div>
@@ -279,7 +279,7 @@ function displayPredictions(predictions) {
                         <div class="prediction-timeline">
                             ${prediction.predictions.slice(0, 4).map(pred => `
                                 <div class="d-flex justify-content-between py-1">
-                                    <span>${formatDate(pred.predicted_date)}</span>
+                                    <span>${formatDateWithCI(pred.predicted_date, pred.uncertainty_range)}</span>
                                     <strong>CRS: ${formatCRSWithCI(pred.predicted_crs_score, pred.uncertainty_range)}</strong>
                                 </div>
                             `).join('')}
@@ -448,10 +448,46 @@ function formatDate(dateString) {
 }
 
 function formatCRSWithCI(score, uncertaintyRange) {
-    if (uncertaintyRange && uncertaintyRange.min !== undefined && uncertaintyRange.max !== undefined) {
-        return `${score} (${uncertaintyRange.min}–${uncertaintyRange.max})`;
+    // Handle both old format (min/max) and new format (crs_min/crs_max)
+    const minScore = uncertaintyRange?.crs_min || uncertaintyRange?.min;
+    const maxScore = uncertaintyRange?.crs_max || uncertaintyRange?.max;
+    
+    if (minScore !== undefined && maxScore !== undefined) {
+        return `${score} (${minScore}–${maxScore})`;
     }
     return score.toString();
+}
+
+function formatDateWithCI(predictedDate, uncertaintyRange) {
+    if (!predictedDate) return 'N/A';
+    
+    // Format the main predicted date
+    const mainDate = new Date(predictedDate);
+    const formattedMain = mainDate.toLocaleDateString('en-CA', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+    });
+    
+    // Check if we have date uncertainty range
+    if (uncertaintyRange && uncertaintyRange.date_earliest && uncertaintyRange.date_latest) {
+        const earliestDate = new Date(uncertaintyRange.date_earliest);
+        const latestDate = new Date(uncertaintyRange.date_latest);
+        
+        // Format the range dates
+        const formattedEarliest = earliestDate.toLocaleDateString('en-CA', {
+            month: 'short',
+            day: 'numeric'
+        });
+        const formattedLatest = latestDate.toLocaleDateString('en-CA', {
+            month: 'short', 
+            day: 'numeric'
+        });
+        
+        return `${formattedMain} (${formattedEarliest}–${formattedLatest})`;
+    }
+    
+    return formattedMain;
 }
 
 function getCategoryColor(categoryName) {
