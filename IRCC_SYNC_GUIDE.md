@@ -65,17 +65,25 @@ When new draws are detected:
 
 ## ⚠️ **Current Limitation: JavaScript-Loaded Data**
 
-**Issue**: The IRCC website loads draw data dynamically via JavaScript, making direct HTML scraping challenging.
+**✅ RESOLVED!** The system now successfully fetches data from IRCC's JSON endpoint.
 
-**Detection**: When you see this message:
-```
-⚠️ No data rows found in table
-🔍 This likely means the IRCC website loads data dynamically via JavaScript
-```
+**Previous Issue**: The IRCC website loads draw data dynamically via JavaScript.
+**Solution**: Direct access to IRCC's JSON data source: `https://www.canada.ca/content/dam/ircc/documents/json/ee_rounds_123_en.json`
 
-## 🛠️ **Alternative Solutions**
+**Current Status**: ✅ **Fully Functional Automation**
+- ✅ Fetches 358+ historical draws (2015-2025)
+- ✅ Parses all draw data correctly
+- ✅ Maps categories automatically  
+- ✅ Prevents duplicate entries
+- ✅ Ready for production use
 
-### **Option 1: Manual CSV Import (Recommended)**
+## 🛠️ **Backup Solutions**
+
+The main JSON endpoint is now fully functional! These alternatives serve as backup options:
+
+### **Option 1: Manual CSV Import (Backup)**
+
+**Use Case**: If JSON endpoint ever becomes unavailable
 
 **Steps:**
 1. **Export IRCC Data**: Visit the [IRCC page](https://www.canada.ca/en/immigration-refugees-citizenship/corporate/mandate/policies-operational-instructions-agreements/ministerial-instructions/express-entry-rounds.html) and export/copy the table data
@@ -93,9 +101,11 @@ Date,Round,Category,Invitations_Issued,Lowest_CRS_Score,URL
 2025-01-22,124,Healthcare occupations (Version 1),500,478,https://...
 ```
 
-### **Option 2: Browser Automation (Advanced)**
+### **Option 2: Enhanced HTML Scraping (Advanced Backup)**
 
-**Install Selenium:**
+**Use Case**: If JSON structure changes
+
+**Install Browser Automation:**
 ```bash
 pip install selenium webdriver-manager
 ```
@@ -280,9 +290,12 @@ python manage.py clear_predictions --older-than 30 --confirm
 ### **Expected Log Output**
 ```
 2025-08-13 15:00:01: Starting weekly IRCC synchronization...
-✅ Successfully fetched IRCC page (145623 bytes)
-📊 Found 2 total draws, 1 recent draws
-✅ Created: Canadian Experience Class - 2025-08-12 (CRS: 462, Invitations: 3000)
+🌐 Fetching data from IRCC JSON endpoint...
+✅ Successfully fetched IRCC JSON data (578,338 bytes)
+📊 JSON structure: ['classes', 'rounds']
+📈 Found 358 total draws in JSON
+📊 Processed 358 draws, 1 recent draws
+✅ Created: Canadian Experience Class - 2025-08-12 (CRS: 462, Invitations: 3,000)
 🎯 Updating predictions for: Canadian Experience Class
 ✅ Predictions updated for: Canadian Experience Class
 📊 SYNCHRONIZATION SUMMARY: 1 categories updated

@@ -48,8 +48,115 @@ class Command(BaseCommand):
             raise
 
     def fetch_ircc_draws(self):
-        """Fetch latest draws from IRCC website"""
-        self.stdout.write('\n🌐 Fetching data from IRCC website...')
+        """Fetch latest draws from IRCC JSON endpoint"""
+        self.stdout.write('\n🌐 Fetching data from IRCC JSON endpoint...')
+        
+        # Direct JSON endpoint discovered by user
+        json_url = "https://www.canada.ca/content/dam/ircc/documents/json/ee_rounds_123_en.json"
+        
+        try:
+            # Add headers to mimic a real browser
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Connection': 'keep-alive',
+                'Referer': 'https://www.canada.ca/en/immigration-refugees-citizenship/corporate/mandate/policies-operational-instructions-agreements/ministerial-instructions/express-entry-rounds.html',
+            }
+            
+            response = requests.get(json_url, headers=headers, timeout=30)
+            response.raise_for_status()
+            
+            self.stdout.write(f'✅ Successfully fetched IRCC JSON data ({len(response.content)} bytes)')
+            
+            # Parse JSON data
+            try:
+                json_data = response.json()
+                self.stdout.write(f'📊 JSON structure: {list(json_data.keys()) if isinstance(json_data, dict) else "Array with " + str(len(json_data)) + " items"}')
+                
+                # Extract rounds data
+                rounds_data = json_data.get('rounds', json_data) if isinstance(json_data, dict) else json_data
+                
+                if not isinstance(rounds_data, list):
+                    raise ValueError(f"Expected rounds data to be a list, got {type(rounds_data)}")
+                
+                self.stdout.write(f'📈 Found {len(rounds_data)} total draws in JSON')
+                
+                # Parse the JSON draws
+                draws_data = self.parse_json_draws(rounds_data)
+                
+                # Filter for recent draws only
+                cutoff_date = timezone.now().date() - timedelta(days=self.days_back)
+                recent_draws = [
+                    draw for draw in draws_data 
+                    if draw.get('date') and draw['date'] >= cutoff_date
+                ]
+                
+                self.stdout.write(f'📊 Processed {len(draws_data)} draws, {len(recent_draws)} are recent')
+                
+                return recent_draws
+                
+            except ValueError as e:
+                raise ValueError(f"Failed to parse JSON data: {e}")
+                
+        except requests.RequestException as e:
+            # Fallback to HTML scraping if JSON fails
+            self.stdout.write(f'⚠️  JSON endpoint failed: {e}')
+            self.stdout.write('🔄 Falling back to HTML scraping...')
+            return self.fetch_ircc_draws_html()
+        except Exception as e:
+            raise ValueError(f"Failed to fetch IRCC JSON data: {e}")
+
+    def parse_json_draws(self, rounds_data):
+        """Parse draws from IRCC JSON data"""
+        draws = []
+        
+        for round_data in rounds_data:
+            try:
+                # Extract data from JSON structure (exact field names from IRCC)
+                draw_number = int(round_data.get('drawNumber', 0))
+                draw_date_str = round_data.get('drawDate', '')  # YYYY-MM-DD format
+                draw_name = round_data.get('drawName', '')
+                draw_size_str = round_data.get('drawSize', '0')
+                draw_crs_str = round_data.get('drawCRS', '0')
+                
+                # Parse date (already in YYYY-MM-DD format)
+                draw_date = self.parse_date(draw_date_str)
+                if not draw_date:
+                    self.stdout.write(f'⚠️  Skipping draw due to invalid date: {draw_date_str}')
+                    continue
+                
+                # Parse numbers (remove commas)
+                invitations = int(draw_size_str.replace(',', '')) if draw_size_str.replace(',', '').isdigit() else 0
+                crs_score = int(draw_crs_str.replace(',', '')) if draw_crs_str.replace(',', '').isdigit() else 0
+                
+                # Determine category from draw name
+                category_name = self.determine_category(draw_name)
+                
+                draws.append({
+                    'round_number': draw_number,
+                    'date': draw_date,
+                    'category_name': category_name,
+                    'round_type': draw_name,
+                    'invitations_issued': invitations,
+                    'lowest_crs_score': crs_score
+                })
+                
+                # Log successful parsing for recent draws
+                if self.days_back <= 7:  # Only log recent draws for verbosity
+                    self.stdout.write(f'✅ Parsed: Round {draw_number} - {draw_date} - {category_name} - {invitations:,} invitations - CRS {crs_score}')
+                
+            except Exception as e:
+                self.stdout.write(f'⚠️  Skipping round due to parsing error: {e}')
+                self.stdout.write(f'    Round data keys: {list(round_data.keys()) if isinstance(round_data, dict) else type(round_data)}')
+                continue
+        
+        return draws
+
+    def fetch_ircc_draws_html(self):
+        """Fallback HTML scraping method (original implementation)"""
+        self.stdout.write('\n🌐 Fetching data from IRCC website (HTML fallback)...')
         
         url = "https://www.canada.ca/en/immigration-refugees-citizenship/corporate/mandate/policies-operational-instructions-agreements/ministerial-instructions/express-entry-rounds.html"
         
