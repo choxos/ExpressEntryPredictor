@@ -308,8 +308,14 @@ class Command(BaseCommand):
                             # Fallback for legacy models (with warning)
                             features_df = best_model.prepare_features(df)
                         
-                        exclude_cols = ['date', 'lowest_crs_score', 'round_number', 'url', 'category']
-                        feature_cols = [col for col in features_df.columns if col not in exclude_cols]
+                        exclude_cols = ['date', 'lowest_crs_score', 'invitations_issued', 'round_number', 'url', 'category']
+                        
+                        # For Bayesian Hierarchical models, also exclude category dummy variables to match training
+                        if hasattr(best_model, 'category_effects'):  # BayesianHierarchicalPredictor
+                            feature_cols = [col for col in features_df.columns 
+                                          if col not in exclude_cols and not col.startswith('category_')]
+                        else:
+                            feature_cols = [col for col in features_df.columns if col not in exclude_cols]
                         X = features_df[feature_cols].fillna(0).tail(1)  # Use last row
                         prediction_result = best_model.predict(X)
                         predicted_score = prediction_result[0] if hasattr(prediction_result, '__len__') else prediction_result
