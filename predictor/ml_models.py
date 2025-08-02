@@ -1551,8 +1551,8 @@ class InvitationPredictor(BasePredictor):
         
         return int(predicted_value)
     
-    def predict_with_uncertainty(self, X, category=None):
-        """Predict invitations with confidence intervals"""
+    def predict_with_uncertainty(self, X, category=None, prediction_horizon=1):
+        """Predict invitations with confidence intervals, scaled by prediction horizon"""
         base_prediction = self.predict(X, category)
         
         # Estimate uncertainty based on historical volatility
@@ -1568,12 +1568,17 @@ class InvitationPredictor(BasePredictor):
         if pd.isna(std_dev) or np.isnan(std_dev):
             std_dev = 800
         
+        # SCIENTIFIC FIX: Scale uncertainty by prediction horizon
+        # Uncertainty should increase as we predict further into the future
+        horizon_scaling = 1 + (0.15 * (prediction_horizon - 1))  # 15% increase per horizon step
+        scaled_std_dev = std_dev * horizon_scaling
+        
         # 95% confidence interval
-        margin_of_error = 1.96 * std_dev
+        margin_of_error = 1.96 * scaled_std_dev
         
         # Ensure all calculations are valid numbers
         if pd.isna(margin_of_error) or np.isnan(margin_of_error):
-            margin_of_error = 1568  # 1.96 * 800
+            margin_of_error = 1568 * horizon_scaling  # 1.96 * 800 * scaling
         
         lower_bound = max(500, int(base_prediction - margin_of_error))
         upper_bound = min(7000, int(base_prediction + margin_of_error))
@@ -1589,5 +1594,6 @@ class InvitationPredictor(BasePredictor):
             'lower_bound': int(lower_bound),
             'upper_bound': int(upper_bound),
             'confidence': 95,
-            'std_dev': float(std_dev)
+            'std_dev': float(scaled_std_dev),
+            'horizon': prediction_horizon
         } 
