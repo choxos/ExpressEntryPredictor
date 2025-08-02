@@ -175,7 +175,7 @@ class PredictionAPIView(APIView):
                 predictions = PreComputedPrediction.objects.filter(
                     category=category,
                     is_active=True
-                ).order_by('prediction_rank')[:5]  # Next 5 draws
+                ).order_by('prediction_rank')[:20]  # Next 20 draws for full year coverage
                 
                 if not predictions.exists():
                     continue

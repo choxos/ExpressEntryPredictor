@@ -118,6 +118,10 @@ let categories = [];
 document.addEventListener('DOMContentLoaded', function() {
     loadCategories();
     loadPredictions();
+    
+    // Add event listeners for filtering
+    document.getElementById('categoryFilter').addEventListener('change', filterPredictions);
+    document.getElementById('timeframe').addEventListener('change', filterPredictions);
 });
 
 async function loadCategories() {
@@ -543,17 +547,67 @@ function getCategoryColor(categoryName) {
     return '#007bff';
 }
 
-// Filter functionality
-document.getElementById('categoryFilter').addEventListener('change', function() {
-    const selectedCategory = this.value;
+// Comprehensive filter functionality
+function filterPredictions() {
+    const selectedCategory = document.getElementById('categoryFilter').value;
+    const selectedTimeframe = document.getElementById('timeframe').value;
+    
     let filteredPredictions = allPredictions;
     
+    // Filter by category
     if (selectedCategory) {
-        filteredPredictions = allPredictions.filter(p => p.category.id == selectedCategory);
+        filteredPredictions = filteredPredictions.filter(p => p.category.id == selectedCategory);
+    }
+    
+    // Filter by timeframe
+    if (selectedTimeframe) {
+        filteredPredictions = filteredPredictions.map(categoryData => {
+            const filteredCategoryPredictions = filterPredictionsByTimeframe(
+                categoryData.predictions || [], 
+                selectedTimeframe
+            );
+            
+            return {
+                ...categoryData,
+                predictions: filteredCategoryPredictions
+            };
+        }).filter(categoryData => categoryData.predictions.length > 0);
     }
     
     displayPredictions(filteredPredictions);
+    displayModelPerformance(filteredPredictions);
     createTimelineChart(filteredPredictions);
-});
+}
+
+function filterPredictionsByTimeframe(predictions, timeframe) {
+    if (!timeframe) return predictions;
+    
+    const now = new Date();
+    let endDate;
+    
+    switch (timeframe) {
+        case 'next_month':
+            // Next month (until end of next month)
+            endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            break;
+        case 'next_quarter':
+            // Next quarter (until end of current quarter + 1)
+            const currentQuarter = Math.floor(now.getMonth() / 3);
+            const nextQuarterEndMonth = (currentQuarter + 1) * 3;
+            endDate = new Date(now.getFullYear(), nextQuarterEndMonth, 0);
+            break;
+        case 'rest_of_year':
+            // Rest of year (until December 31)
+            endDate = new Date(now.getFullYear(), 11, 31);
+            break;
+        default:
+            return predictions;
+    }
+    
+    return predictions.filter(pred => {
+        const predDate = new Date(pred.predicted_date);
+        return predDate <= endDate;
+    });
+}
 </script>
 {% endblock %} 
