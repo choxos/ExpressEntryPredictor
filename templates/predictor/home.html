@@ -138,7 +138,7 @@
     </div>
     
     <div class="row">
-        <div class="col-md-4 mb-4">
+        <div class="col-md-3 mb-4">
             <div class="card h-100 text-center">
                 <div class="card-body">
                     <i class="fas fa-robot fa-3x text-primary mb-3"></i>
@@ -150,7 +150,7 @@
             </div>
         </div>
         
-        <div class="col-md-4 mb-4">
+        <div class="col-md-3 mb-4">
             <div class="card h-100 text-center">
                 <div class="card-body">
                     <i class="fas fa-database fa-3x text-primary mb-3"></i>
@@ -162,7 +162,7 @@
             </div>
         </div>
         
-        <div class="col-md-4 mb-4">
+        <div class="col-md-3 mb-4">
             <div class="card h-100 text-center">
                 <div class="card-body">
                     <i class="fas fa-chart-line fa-3x text-primary mb-3"></i>
@@ -170,6 +170,21 @@
                     <p class="card-text">
                         Predictions are updated automatically as new draw data becomes available from IRCC.
                     </p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3 mb-4">
+            <div class="card h-100 text-center">
+                <div class="card-body">
+                    <i class="fas fa-code fa-3x text-primary mb-3"></i>
+                    <h5 class="card-title">Developer API</h5>
+                    <p class="card-text">
+                        Access all data programmatically through our REST API for integration with your applications.
+                    </p>
+                    <a href="{% url 'predictor:api-docs' %}" class="btn btn-primary btn-sm mt-2">
+                        <i class="fas fa-book"></i> View API Docs
+                    </a>
                 </div>
             </div>
         </div>
@@ -229,12 +244,12 @@ async function loadLatestPredictions() {
     
     try {
         const response = await axios.get('/api/predict/');
-        const predictions = response.data;
+        const apiData = response.data;
         
         loading.style.display = 'none';
         container.innerHTML = '';
         
-        if (predictions.length === 0) {
+        if (!apiData.success || !apiData.data || apiData.data.length === 0) {
             container.innerHTML = `
                 <div class="col-12">
                     <div class="alert alert-info text-center">
@@ -246,9 +261,9 @@ async function loadLatestPredictions() {
             return;
         }
         
-        predictions.slice(0, 3).forEach(prediction => {
-            const nextPrediction = prediction.ensemble_prediction;
-            const confidence = prediction.confidence_metrics.overall_confidence;
+        apiData.data.slice(0, 3).forEach(categoryData => {
+            const prediction = categoryData.predictions[0]; // Get first prediction
+            const confidence = prediction.confidence_score;
             
             const col = document.createElement('div');
             col.className = 'col-md-4 mb-4';
@@ -256,7 +271,7 @@ async function loadLatestPredictions() {
             col.innerHTML = `
                 <div class="prediction-card h-100">
                     <div class="d-flex justify-content-between align-items-start mb-3">
-                        <h5 class="mb-0">${prediction.category.name}</h5>
+                        <h5 class="mb-0">${categoryData.category_name}</h5>
                         <span class="confidence-badge bg-light text-dark">
                             ${confidence}% confidence
                         </span>
@@ -265,17 +280,17 @@ async function loadLatestPredictions() {
                     <div class="mb-3">
                         <div class="d-flex justify-content-between">
                             <span>Next Draw Date:</span>
-                            <strong>${formatDate(nextPrediction.next_draw_date)}</strong>
+                            <strong>${formatDate(prediction.predicted_date)}</strong>
                         </div>
                         <div class="d-flex justify-content-between">
                             <span>Predicted CRS:</span>
-                            <strong>${nextPrediction.next_crs_score}</strong>
+                            <strong id="crs-with-ci">${formatCRSWithCI(prediction.predicted_crs_score, prediction.uncertainty_range)}</strong>
                         </div>
                     </div>
                     
                     <div class="mt-auto">
                         <small class="opacity-75">
-                            Model Accuracy: R² = ${(prediction.model_performance.r2_score || 0).toFixed(3)}
+                            Model: ${prediction.model_used} | Rank: ${prediction.rank}
                         </small>
                     </div>
                 </div>
@@ -337,6 +352,14 @@ function getCategoryClass(categoryName) {
     }
     
     return 'bg-light text-dark';
+}
+
+// Format CRS score with 95% confidence interval
+function formatCRSWithCI(score, uncertaintyRange) {
+    if (uncertaintyRange && uncertaintyRange.min !== undefined && uncertaintyRange.max !== undefined) {
+        return `${score} (${uncertaintyRange.min}–${uncertaintyRange.max})`;
+    }
+    return score.toString();
 }
 </script>
 {% endblock %} 

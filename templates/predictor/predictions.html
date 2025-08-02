@@ -141,12 +141,33 @@ async function loadPredictions() {
     
     try {
         const response = await axios.get('/api/predict/');
-        allPredictions = response.data;
+        const apiData = response.data;
         
-        loading.style.display = 'none';
-        displayPredictions(allPredictions);
-        displayModelPerformance(allPredictions);
-        createTimelineChart(allPredictions);
+        if (apiData.success && apiData.data) {
+            // Transform API data to match expected structure
+            allPredictions = apiData.data.map(categoryData => ({
+                id: categoryData.category_id,
+                category: {
+                    id: categoryData.category_id,
+                    name: categoryData.category_name,
+                    description: categoryData.category_description
+                },
+                predictions: categoryData.predictions,
+                recent_draws: categoryData.recent_draws,
+                last_updated: categoryData.last_updated,
+                model_performance: {
+                    accuracy: categoryData.predictions[0] ? categoryData.predictions[0].confidence_score : 0,
+                    model_used: categoryData.predictions[0] ? categoryData.predictions[0].model_used : 'Unknown'
+                }
+            }));
+            
+            loading.style.display = 'none';
+            displayPredictions(allPredictions);
+            displayModelPerformance(allPredictions);
+            createTimelineChart(allPredictions);
+        } else {
+            throw new Error('No prediction data available');
+        }
         
     } catch (error) {
         loading.style.display = 'none';
@@ -154,7 +175,7 @@ async function loadPredictions() {
             <div class="col-12">
                 <div class="alert alert-danger text-center">
                     <i class="fas fa-exclamation-triangle me-2"></i>
-                    Error loading predictions. Please try again later.
+                    Error loading predictions: ${error.message}. Please try again later.
                 </div>
             </div>
         `;
@@ -220,7 +241,7 @@ function displayPredictions(predictions) {
                             ${prediction.prediction_timeline.slice(0, 4).map(pred => `
                                 <div class="d-flex justify-content-between py-1">
                                     <span>${formatDate(pred.predicted_date)}</span>
-                                    <strong>CRS: ${pred.predicted_crs_score}</strong>
+                                    <strong>CRS: ${formatCRSWithCI(pred.predicted_crs_score, pred.uncertainty_range)}</strong>
                                 </div>
                             `).join('')}
                         </div>
@@ -375,6 +396,13 @@ function formatDate(dateString) {
         month: 'short',
         day: 'numeric'
     });
+}
+
+function formatCRSWithCI(score, uncertaintyRange) {
+    if (uncertaintyRange && uncertaintyRange.min !== undefined && uncertaintyRange.max !== undefined) {
+        return `${score} (${uncertaintyRange.min}–${uncertaintyRange.max})`;
+    }
+    return score.toString();
 }
 
 function getCategoryColor(categoryName) {

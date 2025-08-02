@@ -185,15 +185,15 @@ class PredictionAPIView(APIView):
                     'category_id': category.id,
                     'category_name': category.name,
                     'category_description': category.description,
-                    'last_updated': predictions.first().updated_at if predictions else None,
+                    'last_updated': predictions.first().updated_at.isoformat() if predictions else None,
                     'recent_draws': [{
-                        'date': draw.date,
+                        'date': draw.date.isoformat(),
                         'crs_score': draw.lowest_crs_score,
                         'invitations': draw.invitations_issued
                     } for draw in recent_draws],
                     'predictions': [{
                         'rank': pred.prediction_rank,
-                        'predicted_date': pred.predicted_date,
+                        'predicted_date': pred.predicted_date.isoformat(),
                         'predicted_crs_score': pred.predicted_crs_score,
                         'predicted_invitations': pred.predicted_invitations,
                         'confidence_score': round(pred.confidence_score * 100, 1),
@@ -207,7 +207,7 @@ class PredictionAPIView(APIView):
             response_data = {
                 'success': True,
                 'total_categories': len(results),
-                'generated_at': timezone.now(),
+                'generated_at': timezone.now().isoformat(),
                 'data': results
             }
             
@@ -251,38 +251,38 @@ class DashboardStatsAPIView(APIView):
                 prediction_rank=1  # Only next draw for each category
             ).select_related('category').order_by('predicted_date')[:10]
             
-            # CRS score statistics
+            # CRS score and invitation statistics
             crs_stats = ExpressEntryDraw.objects.aggregate(
                 avg_crs=Avg('lowest_crs_score'),
                 min_crs=Min('lowest_crs_score'),
-                max_crs=Max('lowest_crs_score')
+                max_crs=Max('lowest_crs_score'),
+                avg_invitations=Avg('invitations_issued')
             )
             
             stats = {
-                'totals': {
-                    'draws': total_draws,
-                    'categories': total_categories,
-                    'predictions': total_predictions
-                },
-                'crs_statistics': {
-                    'average': round(crs_stats['avg_crs'] or 0, 1),
-                    'minimum': crs_stats['min_crs'] or 0,
-                    'maximum': crs_stats['max_crs'] or 0
-                },
+                # Frontend expects these exact property names
+                'total_draws': total_draws,
+                'categories_count': total_categories,
+                'total_predictions': total_predictions,
+                'avg_crs_score': round(crs_stats['avg_crs'] or 0, 1),
+                'avg_invitations': round(crs_stats['avg_invitations'] or 0),
+                'min_crs_score': crs_stats['min_crs'] or 0,
+                'max_crs_score': crs_stats['max_crs'] or 0,
                 'recent_draws': [{
                     'id': draw.id,
-                    'date': draw.date,
-                    'category': draw.category.name,
-                    'crs_score': draw.lowest_crs_score,
-                    'invitations': draw.invitations_issued
+                    'round_number': draw.round_number,
+                    'date': draw.date.isoformat(),
+                    'category_name': draw.category.name,
+                    'lowest_crs_score': draw.lowest_crs_score,
+                    'invitations_issued': draw.invitations_issued
                 } for draw in recent_draws],
                 'next_predictions': [{
                     'category': pred.category.name,
-                    'predicted_date': pred.predicted_date,
+                    'predicted_date': pred.predicted_date.isoformat(),
                     'predicted_crs_score': pred.predicted_crs_score,
                     'confidence_score': round(pred.confidence_score * 100, 1)
                 } for pred in next_predictions],
-                'last_updated': timezone.now()
+                'last_updated': timezone.now().isoformat()
             }
             
             # Cache for 30 minutes
@@ -295,6 +295,44 @@ class DashboardStatsAPIView(APIView):
                 'error': str(e),
                 'totals': {'draws': 0, 'categories': 0, 'predictions': 0}
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class APIHealthCheckView(APIView):
+    """Simple health check endpoint for API status"""
+    
+    def get(self, request):
+        """Check API health and return system status"""
+        try:
+            # Quick database check
+            total_draws = ExpressEntryDraw.objects.count()
+            total_categories = DrawCategory.objects.filter(is_active=True).count()
+            total_predictions = PreComputedPrediction.objects.filter(is_active=True).count()
+            
+            return Response({
+                'status': 'healthy',
+                'timestamp': timezone.now().isoformat(),
+                'version': '1.0',
+                'database': {
+                    'connected': True,
+                    'draws_count': total_draws,
+                    'categories_count': total_categories,
+                    'predictions_count': total_predictions
+                },
+                'endpoints': {
+                    'predictions': '/api/predict/',
+                    'categories': '/api/categories/',
+                    'draws': '/api/draws/',
+                    'statistics': '/api/stats/',
+                    'documentation': '/api-docs/'
+                }
+            })
+            
+        except Exception as e:
+            return Response({
+                'status': 'unhealthy',
+                'timestamp': timezone.now().isoformat(),
+                'error': str(e)
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
 # =================== WEB VIEWS ===================
@@ -312,6 +350,11 @@ def predictions_page(request):
 def analytics_page(request):
     """Analytics page"""
     return render(request, 'predictor/analytics.html')
+
+
+def api_docs(request):
+    """API documentation page"""
+    return render(request, 'predictor/api_docs.html')
 
 
 def category_detail(request, category_id):

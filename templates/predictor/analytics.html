@@ -159,13 +159,26 @@ async function loadAnalyticsData() {
         
         displayKeyMetrics(data);
         displayRecentDraws(data.recent_draws);
-        displayCategoryBreakdown(data.category_breakdown);
+        // Remove category_breakdown since it's not available in our API
+        displayNextPredictions(data.next_predictions);
         
-        // Load charts
-        loadCharts();
+        // Load charts with actual data
+        loadCharts(data);
         
     } catch (error) {
         console.error('Error loading analytics data:', error);
+        // Show error message to user
+        const container = document.getElementById('keyMetrics');
+        if (container) {
+            container.innerHTML = `
+                <div class="col-12">
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Error loading analytics data: ${error.message}
+                    </div>
+                </div>
+            `;
+        }
     }
 }
 
@@ -285,45 +298,74 @@ function displayCategoryBreakdown(breakdown) {
     });
 }
 
-async function loadCharts() {
+async function loadCharts(data) {
     try {
-        const response = await axios.get('/analytics/api/charts/');
-        const charts = response.data;
-        
-        // CRS Trends Chart
-        if (charts.crs_trends) {
-            Plotly.newPlot('crsChart', charts.crs_trends.data, charts.crs_trends.layout, {responsive: true});
+        // Simple chart with available data
+        if (data.recent_draws && data.recent_draws.length > 0) {
+            const crsData = {
+                data: [{
+                    x: data.recent_draws.map(draw => draw.date),
+                    y: data.recent_draws.map(draw => draw.lowest_crs_score),
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    name: 'CRS Score',
+                    line: { color: '#007bff' }
+                }],
+                layout: {
+                    title: 'Recent CRS Score Trends',
+                    xaxis: { title: 'Date' },
+                    yaxis: { title: 'CRS Score' },
+                    hovermode: 'x unified'
+                }
+            };
+            Plotly.newPlot('crs-trends-chart', crsData.data, crsData.layout);
         }
         
-        // Category Distribution Chart
-        if (charts.category_distribution) {
-            Plotly.newPlot('categoryChart', charts.category_distribution.data, charts.category_distribution.layout, {responsive: true});
-        }
-        
-        // Monthly Chart
-        if (charts.monthly_draws) {
-            Plotly.newPlot('monthlyChart', charts.monthly_draws.data, charts.monthly_draws.layout, {responsive: true});
-        }
-        
-        // Scatter Chart
-        if (charts.score_vs_invitations) {
-            Plotly.newPlot('scatterChart', charts.score_vs_invitations.data, charts.score_vs_invitations.layout, {responsive: true});
+        // Category distribution based on recent draws
+        if (data.recent_draws && data.recent_draws.length > 0) {
+            const categoryCount = {};
+            data.recent_draws.forEach(draw => {
+                categoryCount[draw.category_name] = (categoryCount[draw.category_name] || 0) + 1;
+            });
+            
+            const categoryData = {
+                data: [{
+                    labels: Object.keys(categoryCount),
+                    values: Object.values(categoryCount),
+                    type: 'pie',
+                    hole: 0.4
+                }],
+                layout: {
+                    title: 'Category Distribution (Recent Draws)',
+                    showlegend: true
+                }
+            };
+            Plotly.newPlot('category-chart', categoryData.data, categoryData.layout);
         }
         
     } catch (error) {
         console.error('Error loading charts:', error);
-        
-        // Display error messages in chart containers
-        const chartContainers = ['crsChart', 'categoryChart', 'monthlyChart', 'scatterChart'];
-        chartContainers.forEach(containerId => {
-            document.getElementById(containerId).innerHTML = `
-                <div class="text-center text-muted py-5">
-                    <i class="fas fa-exclamation-triangle fa-2x mb-3"></i>
-                    <p>Error loading chart data</p>
-                </div>
-            `;
-        });
     }
+}
+
+function displayNextPredictions(predictions) {
+    const container = document.getElementById('nextPredictions');
+    if (!container || !predictions || predictions.length === 0) return;
+    
+    container.innerHTML = predictions.slice(0, 5).map(pred => `
+        <div class="col-md-4 mb-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="card-title">${pred.category}</h6>
+                    <p class="card-text">
+                        <strong>Date:</strong> ${formatDate(pred.predicted_date)}<br>
+                        <strong>CRS:</strong> ${formatCRSWithCI(pred.predicted_crs_score, pred.uncertainty_range)}<br>
+                        <strong>Confidence:</strong> ${pred.confidence_score}%
+                    </p>
+                </div>
+            </div>
+        </div>
+    `).join('');
 }
 
 function formatDate(dateString) {
@@ -354,6 +396,28 @@ function getCategoryClass(categoryName) {
     }
     
     return 'bg-light text-dark';
+}
+
+// Format CRS score with 95% confidence interval
+function formatCRSWithCI(score, uncertaintyRange) {
+    if (uncertaintyRange && uncertaintyRange.min !== undefined && uncertaintyRange.max !== undefined) {
+        return `${score} (${uncertaintyRange.min}–${uncertaintyRange.max})`;
+    }
+    return score.toString();
+}
+
+function getCategoryColor(categoryName) {
+    const categoryColors = {
+        'Provincial Nominee Program': '#007bff', // Blue
+        'Canadian Experience Class': '#28a745', // Green
+        'Federal Skilled Worker': '#17a2b8', // Teal
+        'General': '#6c757d', // Gray
+        'No Program Specified': '#6c757d', // Gray
+        'French language proficiency': '#ffc107', // Yellow
+        'Healthcare': '#dc3545', // Red
+        'STEM': '#343a40' // Dark
+    };
+    return categoryColors[categoryName] || '#6c757d'; // Default to gray
 }
 </script>
 {% endblock %} 

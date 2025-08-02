@@ -37,20 +37,20 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # 3. Setup database with fresh schema
-python3 manage.py migrate
+python manage.py migrate
 
 # 4. Load initial data and models
-python3 manage.py setup_initial_data
-python3 manage.py load_draw_data
+python manage.py setup_initial_data
+python manage.py load_draw_data
 
 # 5. Generate pre-computed predictions
-python3 manage.py compute_predictions
+python manage.py compute_predictions
 
 # 6. Create admin user (optional)
-python3 manage.py createsuperuser
+python manage.py createsuperuser
 
 # 7. Start server
-python3 manage.py runserver 8002
+python manage.py runserver 8002
 ```
 
 ### 3. Access Your Application

@@ -2,6 +2,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 from datetime import date, timedelta
 import pandas as pd
+import numpy as np
 
 from predictor.models import (
     DrawCategory, ExpressEntryDraw, PreComputedPrediction, 
@@ -9,7 +10,8 @@ from predictor.models import (
 )
 from predictor.ml_models import (
     ARIMAPredictor, RandomForestPredictor, XGBoostPredictor, 
-    LinearRegressionPredictor, NeuralNetworkPredictor
+    LinearRegressionPredictor, NeuralNetworkPredictor,
+    BayesianPredictor, SmallDatasetPredictor
 )
 
 
@@ -106,8 +108,15 @@ class Command(BaseCommand):
         # Get historical data
         draws = ExpressEntryDraw.objects.filter(category=category).order_by('date')
         
-        if draws.count() < 5:  # Need minimum data
-            raise ValueError(f"Insufficient data: only {draws.count()} draws available")
+        if draws.count() < 1:  # Need at least one data point
+            raise ValueError(f"No data available: {draws.count()} draws found")
+        
+        # Log data availability for transparency  
+        data_count = draws.count()
+        if data_count <= 4:
+            print(f"⚠️  Small dataset: {category.name} has only {data_count} draws - using specialized predictor")
+        elif data_count <= 10:
+            print(f"🔄 Limited data: {category.name} has {data_count} draws - using Bayesian approach")
         
         # Convert to DataFrame
         df = pd.DataFrame([{
@@ -135,8 +144,33 @@ class Command(BaseCommand):
             raise ValueError(f"Failed to train model: {str(e)}")
         
         # Generate predictions
+        import pytz
+        eastern = pytz.timezone('America/Toronto')  # Ottawa/Eastern Time
+        
+        # Get current date in Eastern Time
+        now_eastern = timezone.now().astimezone(eastern)
+        today_eastern = now_eastern.date()
+        
+        # Get last draw date
         last_draw_date = draws.last().date
-        current_date = last_draw_date
+        
+        # Start predictions from today or 2 weeks after last draw, whichever is later
+        days_since_last_draw = (today_eastern - last_draw_date).days
+        if days_since_last_draw >= 14:
+            # If it's been 2+ weeks since last draw, next draw could be soon
+            next_draw_start = today_eastern + timedelta(days=7)  # Next week
+        else:
+            # Otherwise, wait for the normal 2-week interval
+            next_draw_start = last_draw_date + timedelta(days=14)
+            
+        # Ensure we don't predict in the past
+        current_date = max(next_draw_start, today_eastern)
+        
+        self.stdout.write(f"📅 Date calculation for {category.name}:")
+        self.stdout.write(f"   Today (Eastern): {today_eastern}")
+        self.stdout.write(f"   Last draw: {last_draw_date}")
+        self.stdout.write(f"   Days since last draw: {days_since_last_draw}")
+        self.stdout.write(f"   Starting predictions from: {current_date}")
         
         # Clear old predictions if force recompute
         if force_recompute:
@@ -145,11 +179,16 @@ class Command(BaseCommand):
         predictions_created = 0
         
         for rank in range(1, num_predictions + 1):
-            # Estimate next draw date (typically 2 weeks apart)
-            next_date = current_date + timedelta(days=14 * rank)
+            # Express Entry draws typically happen every 2 weeks (14 days)
+            # Add some variation: 12-16 days to make it more realistic
+            base_interval = 14
+            variation = (-2, -1, 0, 1, 2)[rank % 5]  # Cycle through variations
+            interval = base_interval + variation
             
-            # Skip if too far in the future (more than 1 year)
-            if next_date > last_draw_date + timedelta(days=365):
+            next_date = current_date + timedelta(days=interval * rank)
+            
+            # Skip if too far in the future (more than 1 year from today)
+            if next_date > today_eastern + timedelta(days=365):
                 break
             
             try:
@@ -170,9 +209,18 @@ class Command(BaseCommand):
                         exclude_cols = ['date', 'lowest_crs_score', 'round_number', 'url', 'category']
                         feature_cols = [col for col in features_df.columns if col not in exclude_cols]
                         X = features_df[feature_cols].fillna(0).tail(1)  # Use last row
-                        predicted_score = best_model.predict(X)[0] if hasattr(best_model.predict(X), '__len__') else best_model.predict(X)
+                        prediction_result = best_model.predict(X)
+                        predicted_score = prediction_result[0] if hasattr(prediction_result, '__len__') else prediction_result
                 else:
                     predicted_score = df['lowest_crs_score'].mean()  # Fallback
+                
+                # Handle NaN predictions
+                if pd.isna(predicted_score) or np.isnan(predicted_score):
+                    predicted_score = df['lowest_crs_score'].mean()
+                    print(f"⚠️  NaN prediction detected, using fallback: {predicted_score}")
+                
+                # Ensure prediction is a valid integer
+                predicted_score = int(np.clip(predicted_score, 250, 950))
                 
                 # Ensure reasonable bounds
                 predicted_score = max(300, min(900, int(predicted_score)))
@@ -181,12 +229,49 @@ class Command(BaseCommand):
                 avg_invitations = df['invitations_issued'].mean()
                 predicted_invitations = max(100, int(avg_invitations * (0.8 + 0.4 * (rank/num_predictions))))
                 
-                # Calculate uncertainty range
+                # Calculate uncertainty range with proper 95% confidence intervals
                 score_std = df['lowest_crs_score'].std()
+                
+                # For small datasets, increase uncertainty significantly
+                data_size = len(df)
+                if data_size <= 4:
+                    uncertainty_multiplier = 3.0  # Very wide confidence intervals
+                elif data_size <= 10:
+                    uncertainty_multiplier = 2.0  # Wide confidence intervals  
+                else:
+                    uncertainty_multiplier = 1.0  # Normal confidence intervals
+                
+                # Calculate 95% confidence intervals
+                # Using 1.96 as the z-score for 95% confidence interval
+                z_score_95 = 1.96
+                
+                # Use Bayesian uncertainty if available
+                if hasattr(best_model, 'predict_with_uncertainty') and hasattr(best_model, 'last_prediction_std'):
+                    # Use model's uncertainty estimation for Bayesian models
+                    model_std = getattr(best_model, 'last_prediction_std', [score_std])[0] if hasattr(best_model, 'last_prediction_std') else score_std
+                    # Apply z-score for 95% CI
+                    margin_of_error = z_score_95 * model_std * uncertainty_multiplier
+                else:
+                    # Fallback to data-based uncertainty with 95% CI
+                    base_std = max(score_std, 15)  # Minimum 15 point uncertainty
+                    margin_of_error = z_score_95 * base_std * uncertainty_multiplier
+                
+                # Calculate 95% confidence interval bounds
+                ci_lower = max(250, int(predicted_score - margin_of_error))
+                ci_upper = min(950, int(predicted_score + margin_of_error))
+                
                 uncertainty_range = {
-                    'min': max(300, int(predicted_score - score_std)),
-                    'max': min(900, int(predicted_score + score_std))
+                    'min': ci_lower,
+                    'max': ci_upper,
+                    'confidence_level': 95,
+                    'margin_of_error': round(margin_of_error, 1)
                 }
+                
+                # Adjust confidence score based on uncertainty
+                if data_size <= 4:
+                    confidence = min(confidence * 0.6, 0.4)  # Cap at 40% for very small data
+                elif data_size <= 10:
+                    confidence = min(confidence * 0.8, 0.6)  # Cap at 60% for small data
                 
                 # Create prediction
                 PreComputedPrediction.objects.update_or_create(
@@ -215,28 +300,80 @@ class Command(BaseCommand):
     def select_best_model(self, df, category):
         """Select the best model for a category based on data characteristics"""
         
-        models_to_try = [
-            (LinearRegressionPredictor(), 0.70),  # Always available, good baseline
-            (RandomForestPredictor(), 0.75),     # Good for non-linear patterns
-        ]
+        data_size = len(df)
         
-        # Add more sophisticated models if enough data
-        if len(df) >= 20:
+        # Handle very small datasets (1-4 data points)
+        if data_size <= 4:
             try:
-                models_to_try.append((ARIMAPredictor(), 0.80))
-            except ImportError:
-                pass
+                # Get global data for cross-category learning
+                from predictor.models import ExpressEntryDraw
+                global_draws = ExpressEntryDraw.objects.all().values(
+                    'date', 'lowest_crs_score', 'invitations_issued'
+                )
+                global_df = pd.DataFrame(global_draws)
+                
+                # Use specialized small dataset predictor
+                small_model = SmallDatasetPredictor(global_data=global_df)
+                confidence = 0.2 + (data_size * 0.1)  # 20-50% confidence for very small data
+                return small_model, confidence
+                
+            except Exception as e:
+                print(f"Error setting up small dataset predictor: {e}")
+                # Fallback to simple linear model with low confidence
+                return LinearRegressionPredictor(), 0.15
+        
+        # Small datasets (5-10 data points) - use Bayesian model
+        if data_size <= 10:
+            models_to_try = [
+                (BayesianPredictor(), 0.60),      # Great for small data with uncertainty
+                (LinearRegressionPredictor(), 0.50),  # Simple baseline
+            ]
             
+            # Add small dataset predictor as backup
             try:
-                models_to_try.append((XGBoostPredictor(), 0.85))
-            except ImportError:
+                from predictor.models import ExpressEntryDraw
+                global_draws = ExpressEntryDraw.objects.all().values(
+                    'date', 'lowest_crs_score', 'invitations_issued'  
+                )
+                global_df = pd.DataFrame(global_draws)
+                small_model = SmallDatasetPredictor(global_data=global_df)
+                models_to_try.append((small_model, 0.40))
+            except Exception:
                 pass
         
-        if len(df) >= 30:
-            try:
-                models_to_try.append((NeuralNetworkPredictor(), 0.78))
-            except ImportError:
-                pass
+        # Medium datasets (11-19 data points)
+        elif data_size <= 19:
+            models_to_try = [
+                (BayesianPredictor(), 0.75),         # Still good for medium data
+                (LinearRegressionPredictor(), 0.70),  # Reliable baseline
+                (RandomForestPredictor(), 0.65),     # May overfit with small data
+            ]
+        
+        # Larger datasets (20+ data points) - full model suite
+        else:
+            models_to_try = [
+                (LinearRegressionPredictor(), 0.70),  # Always available, good baseline
+                (BayesianPredictor(), 0.72),         # Great uncertainty quantification
+                (RandomForestPredictor(), 0.75),     # Good for non-linear patterns
+            ]
+            
+            # Add more sophisticated models if enough data
+            if data_size >= 20:
+                try:
+                    models_to_try.append((ARIMAPredictor(), 0.80))
+                except ImportError:
+                    pass
+                
+                try:
+                    models_to_try.append((XGBoostPredictor(), 0.85))
+                except ImportError:
+                    pass
+            
+            if data_size >= 30:
+                try:
+                    models_to_try.append((NeuralNetworkPredictor(), 0.78))
+                except ImportError:
+                    pass
         
         # Try models and pick the best one
         best_model = None
@@ -244,23 +381,33 @@ class Command(BaseCommand):
         
         for model, base_confidence in models_to_try:
             try:
-                # Quick validation
-                if len(df) < 5:
-                    continue
-                
                 # Adjust confidence based on data quality
-                data_quality_score = min(1.0, len(df) / 50)  # More data = higher confidence
+                data_quality_score = min(1.0, data_size / 50)  # More data = higher confidence
                 score_variance = df['lowest_crs_score'].std()
-                stability_score = max(0.5, min(1.0, 50 / score_variance)) if score_variance > 0 else 0.5
+                stability_score = max(0.3, min(1.0, 50 / score_variance)) if score_variance > 0 else 0.5
                 
-                confidence = base_confidence * data_quality_score * stability_score
+                # Penalty for very small datasets (but don't exclude completely)
+                size_penalty = 1.0 if data_size >= 10 else (0.5 + data_size * 0.05)
+                
+                confidence = base_confidence * data_quality_score * stability_score * size_penalty
+                
+                # For small datasets, add uncertainty bonus to Bayesian models
+                if data_size <= 10 and hasattr(model, 'predict_with_uncertainty'):
+                    confidence *= 1.1  # 10% bonus for uncertainty quantification
                 
                 if confidence > best_confidence:
                     best_model = model
                     best_confidence = confidence
                     
-            except Exception:
+            except Exception as e:
+                print(f"Error evaluating model {model.name}: {e}")
                 continue
+        
+        # Ensure we always return a model
+        if best_model is None:
+            print(f"No suitable model found, using fallback LinearRegression for {category.name}")
+            best_model = LinearRegressionPredictor()
+            best_confidence = 0.2
         
         return best_model, best_confidence
 

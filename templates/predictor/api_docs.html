@@ -1,0 +1,653 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}API Documentation - Express Entry Predictor{% endblock %}
+
+{% block extra_css %}
+<style>
+    .api-endpoint {
+        background: #f8f9fa;
+        border-left: 4px solid #0d6efd;
+        padding: 1rem;
+        margin: 1rem 0;
+        border-radius: 0.375rem;
+    }
+    .method-badge {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    .method-get { background: #d1ecf1; color: #0c5460; }
+    .method-post { background: #d4edda; color: #155724; }
+    .method-put { background: #fff3cd; color: #856404; }
+    .method-delete { background: #f8d7da; color: #721c24; }
+    
+    .code-block {
+        background: #2d3748;
+        color: #e2e8f0;
+        padding: 1rem;
+        border-radius: 0.375rem;
+        margin: 0.5rem 0;
+        overflow-x: auto;
+    }
+    .code-block pre {
+        margin: 0;
+        white-space: pre-wrap;
+    }
+    
+    .parameter-table {
+        font-size: 0.9rem;
+    }
+    .parameter-table th {
+        background: #f8f9fa;
+    }
+    
+    .response-example {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+        padding: 1rem;
+        margin: 0.5rem 0;
+    }
+    
+    .tab-content {
+        border: 1px solid #dee2e6;
+        border-top: none;
+        padding: 1rem;
+        border-radius: 0 0 0.375rem 0.375rem;
+    }
+    
+    .nav-tabs .nav-link.active {
+        border-bottom-color: transparent;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-lg-3">
+            <!-- API Navigation -->
+            <div class="card sticky-top" style="top: 100px;">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-code"></i> API Endpoints</h5>
+                </div>
+                <div class="card-body p-2">
+                    <nav class="nav nav-pills flex-column">
+                        <a class="nav-link py-1 px-2 mb-1" href="#overview">Overview</a>
+                        <a class="nav-link py-1 px-2 mb-1" href="#authentication">Authentication</a>
+                        <a class="nav-link py-1 px-2 mb-1" href="#health-check">Health Check</a>
+                        <a class="nav-link py-1 px-2 mb-1" href="#predictions">Predictions API</a>
+                        <a class="nav-link py-1 px-2 mb-1" href="#categories">Categories API</a>
+                        <a class="nav-link py-1 px-2 mb-1" href="#draws">Draws API</a>
+                        <a class="nav-link py-1 px-2 mb-1" href="#statistics">Statistics API</a>
+                        <a class="nav-link py-1 px-2 mb-1" href="#models">Models API</a>
+                        <a class="nav-link py-1 px-2 mb-1" href="#examples">Code Examples</a>
+                        <a class="nav-link py-1 px-2 mb-1" href="#rate-limits">Rate Limits</a>
+                    </nav>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-9">
+            <!-- API Documentation Content -->
+            
+            <!-- Overview Section -->
+            <section id="overview" class="mb-5">
+                <h1><i class="fas fa-code"></i> Express Entry Predictor API</h1>
+                <p class="lead">Access Express Entry draw data and predictions programmatically through our REST API.</p>
+                
+                <div class="alert alert-info">
+                    <h5><i class="fas fa-info-circle"></i> Base URL</h5>
+                    <code id="base-url">{{ request.scheme }}://{{ request.get_host }}/api/</code>
+                    <button class="btn btn-sm btn-outline-info ms-2" onclick="copyToClipboard('#base-url')">
+                        <i class="fas fa-copy"></i> Copy
+                    </button>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5>✨ Features</h5>
+                        <ul>
+                            <li>Real-time Express Entry draw data</li>
+                            <li>AI-powered predictions with confidence intervals</li>
+                            <li>Historical trends and statistics</li>
+                            <li>Category-specific filtering</li>
+                            <li>JSON responses for easy integration</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>🚀 Quick Start</h5>
+                        <div class="code-block">
+                            <pre>curl {{ request.scheme }}://{{ request.get_host }}/api/predict/</pre>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Authentication Section -->
+            <section id="authentication" class="mb-5">
+                <h2>🔐 Authentication</h2>
+                <p>Currently, all API endpoints are publicly accessible and do not require authentication. For production use, consider implementing API keys.</p>
+                
+                <div class="alert alert-warning">
+                    <strong>Note:</strong> This API is provided for educational and research purposes. Please use responsibly and respect rate limits.
+                </div>
+            </section>
+
+            <!-- Health Check Section -->
+            <section id="health-check" class="mb-5">
+                <h2>💪 Health Check</h2>
+                <p>Check if the API is running and accessible. This endpoint provides system status and basic statistics.</p>
+                <div class="api-endpoint">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h4>API Health Status</h4>
+                        <span class="method-badge method-get">GET</span>
+                    </div>
+                    <code>/api/health/</code>
+                    <p class="mt-2">Returns API health status, database connectivity, and basic system information.</p>
+                    
+                    <div class="response-example">
+                        <strong>Response:</strong>
+                        <div class="code-block">
+<pre>{
+  "status": "healthy",
+  "timestamp": "2025-08-02T12:08:32+00:00",
+  "version": "1.0",
+  "database": {
+    "connected": true,
+    "draws_count": 358,
+    "categories_count": 14,
+    "predictions_count": 37
+  },
+  "endpoints": {
+    "predictions": "/api/predict/",
+    "categories": "/api/categories/",
+    "draws": "/api/draws/",
+    "statistics": "/api/stats/",
+    "documentation": "/api-docs/"
+  }
+}</pre>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Predictions API Section -->
+            <section id="predictions" class="mb-5">
+                <h2>🔮 Predictions API</h2>
+                <p>Get AI-powered predictions for upcoming Express Entry draws with 95% confidence intervals.</p>
+                
+                <div class="alert alert-info">
+                    <h6><i class="fas fa-info-circle"></i> Understanding Confidence Intervals</h6>
+                    <p class="mb-1"><strong>95% Confidence Intervals:</strong> Each prediction includes a range showing where we're 95% confident the actual CRS score will fall.</p>
+                    <p class="mb-1"><strong>Display Format:</strong> <code>517 (420–613)</code> means the predicted score is 517, with 95% confidence it will be between 420-613.</p>
+                    <p class="mb-0"><strong>Interpretation:</strong> Wider intervals indicate higher uncertainty, typically for categories with limited historical data.</p>
+                </div>
+
+                <!-- Get All Predictions -->
+                <div class="api-endpoint">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h4>Get All Predictions</h4>
+                        <span class="method-badge method-get">GET</span>
+                    </div>
+                    <code>/api/predict/</code>
+                    <p class="mt-2">Retrieve predictions for all active categories with available data.</p>
+                    
+                    <ul class="nav nav-tabs" role="tablist">
+                        <li class="nav-item">
+                            <a class="nav-link active" data-bs-toggle="tab" href="#predict-all-response">Response</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" data-bs-toggle="tab" href="#predict-all-example">Example</a>
+                        </li>
+                    </ul>
+                    
+                    <div class="tab-content">
+                        <div id="predict-all-response" class="tab-pane active">
+                            <div class="code-block">
+<pre>{
+  "success": true,
+  "total_categories": 7,
+  "generated_at": "2025-08-02T12:08:32+00:00",
+  "data": [
+    {
+      "category_id": 3,
+      "category_name": "Canadian Experience Class",
+      "category_description": null,
+      "last_updated": "2025-08-02T12:05:32+00:00",
+      "recent_draws": [
+        {
+          "date": "2025-07-08",
+          "crs_score": 518,
+          "invitations": 3000
+        }
+      ],
+      "predictions": [
+        {
+          "rank": 1,
+          "predicted_date": "2025-08-16",
+          "predicted_crs_score": 517,
+          "predicted_invitations": 2800,
+          "confidence_score": 75.2,
+          "model_used": "Bayesian Regression",
+          "uncertainty_range": {
+            "min": 420,
+            "max": 613,
+            "confidence_level": 95,
+            "margin_of_error": 96.5
+          }
+        }
+      ]
+    }
+  ]
+}</pre>
+                            </div>
+                        </div>
+                        <div id="predict-all-example" class="tab-pane">
+                            <div class="code-block">
+<pre># Python example
+import requests
+
+response = requests.get('{{ request.scheme }}://{{ request.get_host }}/api/predict/')
+data = response.json()
+
+if data['success']:
+    for category in data['data']:
+        print(f"Category: {category['category_name']}")
+        for pred in category['predictions'][:3]:  # First 3 predictions
+            print(f"  {pred['predicted_date']}: CRS {pred['predicted_crs_score']} (±{pred['confidence_score']:.1f}%)")
+
+# JavaScript example
+fetch('{{ request.scheme }}://{{ request.get_host }}/api/predict/')
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      data.data.forEach(category => {
+        console.log(`${category.category_name}: ${category.predictions[0].predicted_crs_score}`);
+      });
+    }
+  });</pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Get Category-Specific Predictions -->
+                <div class="api-endpoint">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h4>Get Category-Specific Predictions</h4>
+                        <span class="method-badge method-get">GET</span>
+                    </div>
+                    <code>/api/predict/{category_id}/</code>
+                    <p class="mt-2">Get predictions for a specific category.</p>
+                    
+                    <table class="table table-sm parameter-table">
+                        <thead>
+                            <tr>
+                                <th>Parameter</th>
+                                <th>Type</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>category_id</code></td>
+                                <td>integer</td>
+                                <td>ID of the Express Entry category</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Categories API Section -->
+            <section id="categories" class="mb-5">
+                <h2>📂 Categories API</h2>
+                <p>Manage and retrieve Express Entry draw categories.</p>
+
+                <!-- List Categories -->
+                <div class="api-endpoint">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h4>List All Categories</h4>
+                        <span class="method-badge method-get">GET</span>
+                    </div>
+                    <code>/api/categories/</code>
+                    <p class="mt-2">Retrieve all active Express Entry categories.</p>
+                    
+                    <div class="response-example">
+                        <strong>Response:</strong>
+                        <div class="code-block">
+<pre>[
+  {
+    "id": 3,
+    "name": "Canadian Experience Class",
+    "description": null,
+    "is_active": true,
+    "created_at": "2024-01-01T00:00:00Z",
+    "total_draws": 45,
+    "avg_crs_score": 519.2,
+    "latest_draw_date": "2025-07-08"
+  }
+]</pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Category Statistics -->
+                <div class="api-endpoint">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h4>Get Category Statistics</h4>
+                        <span class="method-badge method-get">GET</span>
+                    </div>
+                    <code>/api/categories/{id}/statistics/</code>
+                    <p class="mt-2">Get detailed statistics for a specific category.</p>
+                </div>
+
+                <!-- Category Predictions -->
+                <div class="api-endpoint">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h4>Get Category Predictions</h4>
+                        <span class="method-badge method-get">GET</span>
+                    </div>
+                    <code>/api/categories/{id}/predictions/</code>
+                    <p class="mt-2">Get all predictions for a specific category.</p>
+                </div>
+            </section>
+
+            <!-- Draws API Section -->
+            <section id="draws" class="mb-5">
+                <h2>📊 Draws API</h2>
+                <p>Access historical Express Entry draw data.</p>
+
+                <!-- List Draws -->
+                <div class="api-endpoint">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h4>List All Draws</h4>
+                        <span class="method-badge method-get">GET</span>
+                    </div>
+                    <code>/api/draws/</code>
+                    <p class="mt-2">Retrieve Express Entry draws with optional filtering.</p>
+                    
+                    <table class="table table-sm parameter-table">
+                        <thead>
+                            <tr>
+                                <th>Parameter</th>
+                                <th>Type</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>category</code></td>
+                                <td>integer</td>
+                                <td>Filter by category ID</td>
+                            </tr>
+                            <tr>
+                                <td><code>start_date</code></td>
+                                <td>date</td>
+                                <td>Filter draws after this date (YYYY-MM-DD)</td>
+                            </tr>
+                            <tr>
+                                <td><code>end_date</code></td>
+                                <td>date</td>
+                                <td>Filter draws before this date (YYYY-MM-DD)</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    
+                    <div class="response-example">
+                        <strong>Example Request:</strong>
+                        <div class="code-block">
+                            <pre>GET /api/draws/?category=3&start_date=2024-01-01</pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Draws -->
+                <div class="api-endpoint">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h4>Get Recent Draws</h4>
+                        <span class="method-badge method-get">GET</span>
+                    </div>
+                    <code>/api/draws/recent/</code>
+                    <p class="mt-2">Get draws from the last 30 days.</p>
+                </div>
+            </section>
+
+            <!-- Statistics API Section -->
+            <section id="statistics" class="mb-5">
+                <h2>📈 Statistics API</h2>
+                <p>Get comprehensive statistics and dashboard data.</p>
+
+                <div class="api-endpoint">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h4>Get Dashboard Statistics</h4>
+                        <span class="method-badge method-get">GET</span>
+                    </div>
+                    <code>/api/stats/</code>
+                    <p class="mt-2">Retrieve overall system statistics including totals, averages, and recent activity.</p>
+                    
+                    <div class="response-example">
+                        <strong>Response:</strong>
+                        <div class="code-block">
+<pre>{
+  "total_draws": 358,
+  "categories_count": 14,
+  "total_predictions": 37,
+  "avg_crs_score": 529.6,
+  "avg_invitations": 2247,
+  "min_crs_score": 75,
+  "max_crs_score": 818,
+  "recent_draws": [...],
+  "next_predictions": [...],
+  "last_updated": "2025-08-02T12:05:35+00:00"
+}</pre>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Models API Section -->
+            <section id="models" class="mb-5">
+                <h2>🤖 Models API</h2>
+                <p>Information about the AI prediction models used in the system.</p>
+
+                <div class="api-endpoint">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h4>List Prediction Models</h4>
+                        <span class="method-badge method-get">GET</span>
+                    </div>
+                    <code>/api/models/</code>
+                    <p class="mt-2">Get information about available prediction models and their performance.</p>
+                </div>
+            </section>
+
+            <!-- Code Examples Section -->
+            <section id="examples" class="mb-5">
+                <h2>💻 Code Examples</h2>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <h4>Python (requests)</h4>
+                        <div class="code-block">
+<pre>import requests
+import json
+
+# Base URL
+base_url = "{{ request.scheme }}://{{ request.get_host }}/api"
+
+# Get all predictions
+def get_predictions():
+    response = requests.get(f"{base_url}/predict/")
+    return response.json()
+
+# Get category statistics
+def get_category_stats(category_id):
+    response = requests.get(f"{base_url}/categories/{category_id}/statistics/")
+    return response.json()
+
+# Get recent draws
+def get_recent_draws():
+    response = requests.get(f"{base_url}/draws/recent/")
+    return response.json()
+
+# Example usage
+predictions = get_predictions()
+if predictions['success']:
+    for category in predictions['data']:
+        print(f"{category['category_name']}: {category['predictions'][0]['predicted_crs_score']}")
+</pre>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <h4>JavaScript (fetch)</h4>
+                        <div class="code-block">
+<pre>const BASE_URL = "{{ request.scheme }}://{{ request.get_host }}/api";
+
+// Get all predictions
+async function getPredictions() {
+    const response = await fetch(`${BASE_URL}/predict/`);
+    return await response.json();
+}
+
+// Get category statistics
+async function getCategoryStats(categoryId) {
+    const response = await fetch(`${BASE_URL}/categories/${categoryId}/statistics/`);
+    return await response.json();
+}
+
+// Get recent draws
+async function getRecentDraws() {
+    const response = await fetch(`${BASE_URL}/draws/recent/`);
+    return await response.json();
+}
+
+// Example usage
+getPredictions().then(data => {
+    if (data.success) {
+        data.data.forEach(category => {
+            console.log(`${category.category_name}: ${category.predictions[0].predicted_crs_score}`);
+        });
+    }
+});
+</pre>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <h4>cURL Commands</h4>
+                    <div class="code-block">
+<pre># Get all predictions
+curl -X GET "{{ request.scheme }}://{{ request.get_host }}/api/predict/"
+
+# Get predictions for specific category
+curl -X GET "{{ request.scheme }}://{{ request.get_host }}/api/predict/3/"
+
+# Get dashboard statistics
+curl -X GET "{{ request.scheme }}://{{ request.get_host }}/api/stats/"
+
+# Get draws with filters
+curl -X GET "{{ request.scheme }}://{{ request.get_host }}/api/draws/?category=3&start_date=2024-01-01"
+
+# Get category statistics
+curl -X GET "{{ request.scheme }}://{{ request.get_host }}/api/categories/3/statistics/"
+</pre>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Rate Limits Section -->
+            <section id="rate-limits" class="mb-5">
+                <h2>⚡ Rate Limits & Best Practices</h2>
+                
+                <div class="alert alert-info">
+                    <h5>Current Limits</h5>
+                    <ul class="mb-0">
+                        <li>No rate limiting currently implemented</li>
+                        <li>Cached responses for better performance</li>
+                        <li>Please use responsibly</li>
+                    </ul>
+                </div>
+
+                <h4>Best Practices</h4>
+                <ul>
+                    <li><strong>Cache responses:</strong> Data updates daily, so cache for at least 1 hour</li>
+                    <li><strong>Use filters:</strong> Filter by date range and category to reduce response size</li>
+                    <li><strong>Error handling:</strong> Always check the `success` field in responses</li>
+                    <li><strong>Respect the system:</strong> Don't make excessive requests</li>
+                </ul>
+
+                <h4>Error Responses</h4>
+                <div class="code-block">
+<pre>{
+  "success": false,
+  "error": "Error description",
+  "data": []
+}</pre>
+                </div>
+            </section>
+        </div>
+    </div>
+</div>
+
+<script>
+// Smooth scrolling for navigation links
+document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+    anchor.addEventListener('click', function (e) {
+        e.preventDefault();
+        const target = document.querySelector(this.getAttribute('href'));
+        if (target) {
+            target.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start'
+            });
+        }
+    });
+});
+
+// Copy to clipboard function
+function copyToClipboard(selector) {
+    const element = document.querySelector(selector);
+    navigator.clipboard.writeText(element.textContent).then(() => {
+        // Show success message
+        const button = event.target.closest('button');
+        const originalText = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-check"></i> Copied!';
+        button.classList.add('btn-success');
+        button.classList.remove('btn-outline-info');
+        
+        setTimeout(() => {
+            button.innerHTML = originalText;
+            button.classList.remove('btn-success');
+            button.classList.add('btn-outline-info');
+        }, 2000);
+    });
+}
+
+// Update active navigation link based on scroll position
+window.addEventListener('scroll', () => {
+    const sections = document.querySelectorAll('section[id]');
+    const navLinks = document.querySelectorAll('.nav-pills .nav-link');
+    
+    let currentSection = '';
+    sections.forEach(section => {
+        const sectionTop = section.offsetTop - 120;
+        if (window.scrollY >= sectionTop) {
+            currentSection = section.getAttribute('id');
+        }
+    });
+    
+    navLinks.forEach(link => {
+        link.classList.remove('active');
+        if (link.getAttribute('href') === `#${currentSection}`) {
+            link.classList.add('active');
+        }
+    });
+});
+</script>
+{% endblock %} 
