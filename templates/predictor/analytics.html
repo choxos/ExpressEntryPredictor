@@ -318,7 +318,7 @@ async function loadCharts(data) {
                     hovermode: 'x unified'
                 }
             };
-            Plotly.newPlot('crs-trends-chart', crsData.data, crsData.layout);
+            Plotly.newPlot('crsChart', crsData.data, crsData.layout);
         }
         
         // Category distribution based on recent draws
@@ -340,7 +340,62 @@ async function loadCharts(data) {
                     showlegend: true
                 }
             };
-            Plotly.newPlot('category-chart', categoryData.data, categoryData.layout);
+            Plotly.newPlot('categoryChart', categoryData.data, categoryData.layout);
+        }
+        
+        // Monthly draw count chart
+        if (data.recent_draws && data.recent_draws.length > 0) {
+            const monthlyCount = {};
+            data.recent_draws.forEach(draw => {
+                const date = new Date(draw.date);
+                const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                monthlyCount[monthKey] = (monthlyCount[monthKey] || 0) + 1;
+            });
+            
+            const sortedMonths = Object.keys(monthlyCount).sort();
+            const monthlyData = {
+                data: [{
+                    x: sortedMonths,
+                    y: sortedMonths.map(month => monthlyCount[month]),
+                    type: 'bar',
+                    name: 'Draw Count',
+                    marker: { color: '#28a745' }
+                }],
+                layout: {
+                    title: 'Monthly Draw Count',
+                    xaxis: { title: 'Month' },
+                    yaxis: { title: 'Number of Draws' },
+                    showlegend: false
+                }
+            };
+            Plotly.newPlot('monthlyChart', monthlyData.data, monthlyData.layout);
+        }
+        
+        // CRS Score vs Invitations scatter plot
+        if (data.recent_draws && data.recent_draws.length > 0) {
+            const scatterData = {
+                data: [{
+                    x: data.recent_draws.map(draw => draw.lowest_crs_score),
+                    y: data.recent_draws.map(draw => draw.invitations_issued),
+                    mode: 'markers',
+                    type: 'scatter',
+                    name: 'Draws',
+                    text: data.recent_draws.map(draw => `${draw.category_name}<br>Date: ${draw.date}`),
+                    marker: {
+                        size: 8,
+                        color: data.recent_draws.map((_, i) => getCategoryColor(data.recent_draws[i].category_name)),
+                        opacity: 0.8
+                    }
+                }],
+                layout: {
+                    title: 'CRS Score vs Invitations',
+                    xaxis: { title: 'CRS Score' },
+                    yaxis: { title: 'Invitations Issued' },
+                    hovermode: 'closest',
+                    showlegend: false
+                }
+            };
+            Plotly.newPlot('scatterChart', scatterData.data, scatterData.layout);
         }
         
     } catch (error) {
