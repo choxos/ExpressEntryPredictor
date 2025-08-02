@@ -85,37 +85,71 @@ class Command(BaseCommand):
         else:
             categories = active_categories
         
-        total_categories = len(categories)
-        self.stdout.write(f'📊 Processing {total_categories} categories...')
+        # Group categories by IRCC category to avoid duplicates
+        ircc_groups = {}
+        for category in categories:
+            ircc_category, related_categories = DrawCategory.get_pooled_categories(category.name)
+            
+            # Use the IRCC category as the key
+            if ircc_category not in ircc_groups:
+                ircc_groups[ircc_category] = {
+                    'representative_category': category,  # Use first category as representative
+                    'related_categories': list(related_categories),
+                    'total_draws': 0
+                }
+            
+            # Update total draws count
+            pooled_draws, _, _ = category.get_pooled_data()
+            ircc_groups[ircc_category]['total_draws'] = pooled_draws.count()
+        
+        # Display grouping summary
+        self.stdout.write(f'\n📊 Grouped into {len(ircc_groups)} unique IRCC categories:')
+        for ircc_cat, group_info in ircc_groups.items():
+            related_names = [cat.name for cat in group_info['related_categories']]
+            if len(related_names) > 1:
+                self.stdout.write(f'   🔗 {ircc_cat}: {len(related_names)} versions → {group_info["total_draws"]} total draws')
+                for name in related_names:
+                    self.stdout.write(f'      └─ {name}')
+            else:
+                self.stdout.write(f'   📋 {ircc_cat}: {group_info["total_draws"]} draws')
+        
+        total_groups = len(ircc_groups)
+        self.stdout.write(f'\n📊 Processing {total_groups} unique IRCC categories...')
         
         successful_predictions = 0
         failed_categories = []
         
-        for i, category in enumerate(categories, 1):
-            self.stdout.write(f'\n[{i}/{total_categories}] Processing: {category.name}')
+        for i, (ircc_category, group_info) in enumerate(ircc_groups.items(), 1):
+            representative_category = group_info['representative_category']
+            self.stdout.write(f'\n[{i}/{total_groups}] Processing IRCC Category: {ircc_category}')
+            self.stdout.write(f'   📂 Using representative: {representative_category.name}')
             
             try:
                 predictions_created = self.compute_category_predictions(
-                    category, num_predictions, force_recompute
+                    representative_category, num_predictions, force_recompute
                 )
+                
                 if predictions_created > 0:
                     successful_predictions += 1
                     self.stdout.write(self.style.SUCCESS(
-                        f'✅ Created {predictions_created} predictions for {category.name}'
+                        f'✅ Created {predictions_created} predictions for {ircc_category}'
                     ))
                 else:
                     self.stdout.write(self.style.WARNING(
-                        f'⚠️  No predictions created for {category.name} (insufficient data or already computed)'
+                        f'⚠️  No predictions created for {ircc_category} (insufficient data or already computed)'
                     ))
+                
             except Exception as e:
-                failed_categories.append(category.name)
-                self.stdout.write(self.style.ERROR(f'❌ Failed to process {category.name}: {str(e)}'))
+                failed_categories.append((ircc_category, str(e)))
+                self.stdout.write(
+                    self.style.ERROR(f'❌ Failed to process {ircc_category}: {str(e)}')
+                )
         
         # Summary
         self.stdout.write(f'\n📈 PREDICTION COMPUTATION SUMMARY')
-        self.stdout.write(f'✅ Successful categories: {successful_predictions}/{total_categories}')
+        self.stdout.write(f'✅ Successful categories: {successful_predictions}/{total_groups}')
         if failed_categories:
-            self.stdout.write(f'❌ Failed categories: {", ".join(failed_categories)}')
+            self.stdout.write(f'❌ Failed categories: {", ".join([f"{cat}: {err}" for cat, err in failed_categories])}')
         
         # Cache dashboard stats
         self.cache_dashboard_stats()
