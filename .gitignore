@@ -103,4 +103,44 @@ celerybeat-schedule
 celerybeat.pid
 
 # Redis
-dump.rdb 
+dump.rdb
+
+# Documentation and Guide Files (keep only README.md)
+ADMIN_WORKFLOW.md
+CRS_EM.md
+EEP_guide.md
+EEP_variable_collection_guide.md
+EEP_data_source.md
+ENHANCED_PREDICTION_GUIDE.md
+EXPRESS_ENTRY_ML_MODELS_ANALYSIS.md
+FINAL_MODELS_SUMMARY.md
+COMMIT_GUIDE.md
+ML_IMPLEMENTATION_GUIDE.md
+ML_MODELS_RANKING_SUMMARY.md
+INSTALLATION_SUCCESS.md
+DEPLOYMENT_GUIDE.md
+VPS_DEPLOYMENT_GUIDE.md
+IRCC_SYNC_GUIDE.md
+VARIABLE_COLLECTION_SUMMARY.md
+
+# Shell Scripts and Automation
+auto_commit.sh
+auto_push.sh
+setup_weekly_sync.sh
+update_data.sh
+
+# Data Files (keep template files, exclude generated data)
+data/*.csv
+!data/template_*.csv
+
+# Temporary and Cache Files
+.cache/
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Backup Files
+*.bak
+*.backup
+*~ 

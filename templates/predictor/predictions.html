@@ -7,6 +7,83 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
+<style>
+.category-tab-content {
+    min-height: 400px;
+}
+
+.prediction-card {
+    transition: transform 0.2s ease-in-out;
+}
+
+.prediction-card:hover {
+    transform: translateY(-3px);
+}
+
+.model-badge {
+    font-size: 0.8rem;
+    padding: 0.25rem 0.5rem;
+}
+
+.confidence-bar {
+    height: 8px;
+    border-radius: 4px;
+    background: linear-gradient(90deg, #dc3545 0%, #ffc107 50%, #28a745 100%);
+    position: relative;
+    overflow: hidden;
+}
+
+.confidence-indicator {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 4px;
+}
+
+.nav-tabs .nav-link {
+    border-radius: 8px 8px 0 0;
+    margin-right: 2px;
+}
+
+.nav-tabs .nav-link.active {
+    background: linear-gradient(135deg, #007bff, #0056b3);
+    color: white;
+    border-color: #007bff;
+}
+
+.tab-pane {
+    border: 1px solid #dee2e6;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    background: white;
+    padding: 1.5rem;
+}
+
+.prediction-timeline-item {
+    border-left: 3px solid #007bff;
+    padding-left: 1rem;
+    margin-bottom: 1rem;
+    position: relative;
+}
+
+.prediction-timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -6px;
+    top: 8px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #007bff;
+}
+
+.uncertainty-range {
+    font-size: 0.85rem;
+    color: #6c757d;
+}
+</style>
 {% endblock %}
 
 {% block content %}
@@ -17,7 +94,7 @@
             <div class="col-12 text-center">
                 <h1 class="display-5 fw-bold mb-3">
                     <i class="fas fa-crystal-ball me-3"></i>
-                    🇨🇦 Express Entry Predictions
+                    Express Entry Predictions by Category
                 </h1>
                 <p class="lead mb-0">
                     Enhanced AI forecasts using LSTM, SARIMA, Prophet, Gaussian Process, and advanced ensemble models with clean features and uncertainty quantification
@@ -27,20 +104,14 @@
     </div>
 </section>
 
-<!-- Filter Section -->
+<!-- Control Section -->
 <section class="container mb-4">
     <div class="row">
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
                     <div class="row align-items-center">
-                        <div class="col-md-4">
-                            <label for="categoryFilter" class="form-label">Filter by Category:</label>
-                            <select class="form-select" id="categoryFilter">
-                                <option value="">All Categories</option>
-                            </select>
-                        </div>
-                        <div class="col-md-4">
+                        <div class="col-md-6">
                             <label for="timeframe" class="form-label">Prediction Timeframe:</label>
                             <select class="form-select" id="timeframe">
                                 <option value="next_month">Next Month</option>
@@ -48,7 +119,7 @@
                                 <option value="rest_of_year" selected>Rest of Year</option>
                             </select>
                         </div>
-                        <div class="col-md-4 d-flex align-items-end">
+                        <div class="col-md-6 d-flex align-items-end">
                             <button class="btn btn-primary w-100" onclick="refreshPredictions()">
                                 <i class="fas fa-sync-alt me-2"></i>Refresh Predictions
                             </button>
@@ -60,9 +131,9 @@
     </div>
 </section>
 
-<!-- Predictions Grid -->
+<!-- Category Tabs -->
 <section class="container mb-5">
-    <div class="row" id="predictionsGrid">
+    <div class="row">
         <div class="col-12">
             <div class="loading-spinner" id="predictionsLoading" style="display: block;">
                 <div class="spinner-border text-primary" role="status">
@@ -70,17 +141,29 @@
                 </div>
                 <p class="mt-2">Generating AI predictions...</p>
             </div>
+            
+            <div id="categoryTabsContainer" style="display: none;">
+                <!-- Category Navigation Tabs -->
+                <ul class="nav nav-tabs" id="categoryTabs" role="tablist">
+                    <!-- Tabs will be dynamically generated -->
+                </ul>
+                
+                <!-- Tab Content -->
+                <div class="tab-content" id="categoryTabContent">
+                    <!-- Tab panes will be dynamically generated -->
+                </div>
+            </div>
         </div>
     </div>
 </section>
 
-<!-- Model Performance Section -->
+<!-- Selected Category Performance -->
 <section class="container mb-5">
     <div class="row">
         <div class="col-12">
             <h3 class="mb-4">
                 <i class="fas fa-cogs me-2 text-primary"></i>
-                Model Performance Overview
+                <span id="selectedCategoryTitle">Category Performance Overview</span>
             </h3>
         </div>
     </div>
@@ -90,7 +173,7 @@
     </div>
 </section>
 
-<!-- Prediction Timeline Chart -->
+<!-- Category Timeline Chart -->
 <section class="container mb-5">
     <div class="row">
         <div class="col-12">
@@ -98,7 +181,7 @@
                 <div class="card-header">
                     <h5 class="mb-0">
                         <i class="fas fa-chart-line me-2"></i>
-                        Prediction Timeline
+                        <span id="chartTitle">Prediction Timeline</span>
                     </h5>
                 </div>
                 <div class="card-body">
@@ -113,42 +196,22 @@
 {% block extra_js %}
 <script>
 let allPredictions = [];
+let currentCategory = null;
 let categories = [];
 
 document.addEventListener('DOMContentLoaded', function() {
-    loadCategories();
     loadPredictions();
     
-    // Add event listeners for filtering
-    document.getElementById('categoryFilter').addEventListener('change', filterPredictions);
-    document.getElementById('timeframe').addEventListener('change', filterPredictions);
+    // Add event listener for timeframe filtering
+    document.getElementById('timeframe').addEventListener('change', filterByTimeframe);
 });
-
-async function loadCategories() {
-    try {
-        const response = await axios.get('/api/categories/');
-        categories = response.data.results || response.data;
-        
-        const categoryFilter = document.getElementById('categoryFilter');
-        categoryFilter.innerHTML = '<option value="">All Categories</option>';
-        
-        categories.forEach(category => {
-            const option = document.createElement('option');
-            option.value = category.id;
-            option.textContent = category.name;
-            categoryFilter.appendChild(option);
-        });
-        
-    } catch (error) {
-        console.error('Error loading categories:', error);
-    }
-}
 
 async function loadPredictions() {
     const loading = document.getElementById('predictionsLoading');
-    const grid = document.getElementById('predictionsGrid');
+    const tabsContainer = document.getElementById('categoryTabsContainer');
     
     loading.style.display = 'block';
+    tabsContainer.style.display = 'none';
     
     try {
         // Add timestamp to prevent caching
@@ -163,7 +226,6 @@ async function loadPredictions() {
             allPredictions = apiData.data.map(categoryData => {
                 // Ensure predictions array exists and has data
                 const predictions = categoryData.predictions || [];
-                const firstPrediction = predictions[0] || {};
                 
                 return {
                     id: categoryData.category_id,
@@ -175,20 +237,17 @@ async function loadPredictions() {
                     },
                     predictions: predictions,
                     recent_draws: categoryData.recent_draws || [],
-                    last_updated: categoryData.last_updated,
-                    model_performance: {
-                        accuracy: firstPrediction.confidence_score || 0,
-                        model_used: firstPrediction.model_used || 'Unknown'
-                    }
+                    last_updated: categoryData.last_updated
                 };
             });
             
             console.log('Transformed predictions:', allPredictions);
             
             loading.style.display = 'none';
-            displayPredictions(allPredictions);
-            displayModelPerformance(allPredictions);
-            createTimelineChart(allPredictions);
+            tabsContainer.style.display = 'block';
+            
+            createCategoryTabs();
+            
         } else {
             throw new Error('No prediction data available');
         }
@@ -196,205 +255,304 @@ async function loadPredictions() {
     } catch (error) {
         loading.style.display = 'none';
         console.error('Error loading predictions:', error);
-        console.error('Error stack:', error.stack);
         
-        grid.innerHTML = `
-            <div class="col-12">
-                <div class="alert alert-danger text-center">
-                    <i class="fas fa-exclamation-triangle me-2"></i>
-                    Error loading predictions: ${error.message}. 
-                    <br><br>
-                    <strong>Try these steps:</strong>
-                    <ol class="text-start mt-2 small">
-                        <li>Press <kbd>Ctrl+F5</kbd> (or <kbd>Cmd+Shift+R</kbd> on Mac) to hard refresh</li>
-                        <li>Clear your browser cache and reload</li>
-                        <li>Check the browser console (F12) for detailed error messages</li>
-                    </ol>
-                </div>
+        document.getElementById('categoryTabsContainer').innerHTML = `
+            <div class="alert alert-danger text-center">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Error loading predictions: ${error.message}. 
+                <br><br>
+                <strong>Try these steps:</strong>
+                <ol class="text-start mt-2 small">
+                    <li>Press <kbd>Ctrl+F5</kbd> (or <kbd>Cmd+Shift+R</kbd> on Mac) to hard refresh</li>
+                    <li>Clear your browser cache and reload</li>
+                    <li>Check the browser console (F12) for detailed error messages</li>
+                </ol>
             </div>
         `;
     }
 }
 
-function displayPredictions(predictions) {
-    const grid = document.getElementById('predictionsGrid');
-    grid.innerHTML = '';
+function createCategoryTabs() {
+    const tabsNav = document.getElementById('categoryTabs');
+    const tabsContent = document.getElementById('categoryTabContent');
     
-    if (predictions.length === 0) {
-        grid.innerHTML = `
-            <div class="col-12">
-                <div class="alert alert-info text-center">
-                    <i class="fas fa-info-circle me-2"></i>
-                    No predictions available. Try adjusting your filters.
-                </div>
+    tabsNav.innerHTML = '';
+    tabsContent.innerHTML = '';
+    
+    // Filter out categories with no predictions
+    const validCategories = allPredictions.filter(cat => cat.predictions && cat.predictions.length > 0);
+    
+    if (validCategories.length === 0) {
+        tabsContent.innerHTML = `
+            <div class="alert alert-info text-center">
+                <i class="fas fa-info-circle me-2"></i>
+                No predictions available. Try refreshing or check back later.
             </div>
         `;
         return;
     }
     
-    predictions.forEach(prediction => {
-        // Debug logging
-        console.log('Processing prediction:', prediction);
+    validCategories.forEach((categoryData, index) => {
+        const categoryName = categoryData.category_name;
+        const categoryId = `category-${categoryData.id}`;
+        const isActive = index === 0;
         
-        const categoryName = prediction.category?.name || prediction.category_name || 'Unknown';
-        const categoryColor = getCategoryColor(categoryName);
-        const nextPrediction = prediction.predictions?.[0]; // Get first prediction
+        // Create tab navigation
+        const tabNav = document.createElement('li');
+        tabNav.className = 'nav-item';
+        tabNav.innerHTML = `
+            <button class="nav-link ${isActive ? 'active' : ''}" 
+                    id="${categoryId}-tab" 
+                    data-bs-toggle="tab" 
+                    data-bs-target="#${categoryId}" 
+                    type="button" 
+                    role="tab" 
+                    aria-controls="${categoryId}" 
+                    aria-selected="${isActive}">
+                <i class="fas fa-folder me-2"></i>
+                ${abbreviateCategoryName(categoryName)}
+                <span class="badge bg-light text-dark ms-2">${categoryData.predictions.length}</span>
+            </button>
+        `;
         
-        if (!nextPrediction) {
-            console.error('No predictions found for category:', categoryName);
-            return;
+        // Add click event to update performance and chart
+        tabNav.querySelector('.nav-link').addEventListener('click', () => {
+            currentCategory = categoryData;
+            updateCategoryContent(categoryData);
+        });
+        
+        tabsNav.appendChild(tabNav);
+        
+        // Create tab content
+        const tabPane = document.createElement('div');
+        tabPane.className = `tab-pane fade ${isActive ? 'show active' : ''}`;
+        tabPane.id = categoryId;
+        tabPane.setAttribute('role', 'tabpanel');
+        tabPane.setAttribute('aria-labelledby', `${categoryId}-tab`);
+        
+        tabPane.innerHTML = createCategoryContent(categoryData);
+        tabsContent.appendChild(tabPane);
+        
+        // Set initial category for performance display
+        if (isActive) {
+            currentCategory = categoryData;
+            updateCategoryContent(categoryData);
         }
-        
-        const confidence = nextPrediction.confidence_score;
-        
-        const col = document.createElement('div');
-        col.className = 'col-lg-6 mb-4';
-        
-        col.innerHTML = `
-            <div class="card h-100">
-                <div class="card-header" style="background: ${categoryColor}; color: white;">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <h6 class="mb-0">${categoryName}</h6>
-                        <span class="badge bg-light text-dark">
-                            ${confidence}% Confidence
-                        </span>
+    });
+}
+
+function createCategoryContent(categoryData) {
+    const categoryName = categoryData.category_name;
+    const predictions = categoryData.predictions || [];
+    const recentDraws = categoryData.recent_draws || [];
+    
+    if (predictions.length === 0) {
+        return `
+            <div class="alert alert-warning text-center">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                No predictions available for ${categoryName}
+            </div>
+        `;
+    }
+    
+    // Group predictions by model for better organization
+    const predictionsByModel = {};
+    predictions.forEach(pred => {
+        const modelName = pred.model_used || 'Unknown Model';
+        if (!predictionsByModel[modelName]) {
+            predictionsByModel[modelName] = [];
+        }
+        predictionsByModel[modelName].push(pred);
+    });
+    
+    let content = `
+        <div class="category-tab-content">
+            <div class="row mb-4">
+                <div class="col-md-8">
+                    <h4 class="mb-3">${categoryName}</h4>
+                    <p class="text-muted">${categoryData.category.description || 'AI-powered predictions for this Express Entry category'}</p>
+                </div>
+                <div class="col-md-4">
+                    <div class="card bg-light">
+                        <div class="card-body text-center">
+                            <h6 class="card-title">Category Statistics</h6>
+                            <div class="row">
+                                <div class="col-6">
+                                    <strong>${predictions.length}</strong><br>
+                                    <small class="text-muted">Total Predictions</small>
+                                </div>
+                                <div class="col-6">
+                                    <strong>${Object.keys(predictionsByModel).length}</strong><br>
+                                    <small class="text-muted">Models Used</small>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-6">
-                            <div class="text-center mb-3">
-                                <i class="fas fa-calendar-alt fa-2x text-primary mb-2"></i>
-                                <h5 class="mb-1">${formatDateWithCI(nextPrediction.predicted_date, nextPrediction.uncertainty_range)}</h5>
-                                <small class="text-muted">Next Draw Date</small>
-                            </div>
-                        </div>
-                        <div class="col-6">
-                            <div class="text-center mb-3">
-                                <i class="fas fa-trophy fa-2x text-warning mb-2"></i>
-                                <h5 class="mb-1">${formatCRSWithCI(nextPrediction.predicted_crs_score, nextPrediction.uncertainty_range)}</h5>
-                                <small class="text-muted">Predicted CRS</small>
-                            </div>
+            </div>
+    `;
+    
+    // Recent draws section
+    if (recentDraws.length > 0) {
+        content += `
+            <div class="row mb-4">
+                <div class="col-12">
+                    <h5><i class="fas fa-history me-2"></i>Recent Draws</h5>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>CRS Score</th>
+                                    <th>Invitations</th>
+                                    <th>Round #</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${recentDraws.slice(0, 5).map(draw => `
+                                    <tr>
+                                        <td>${formatDate(draw.date)}</td>
+                                        <td><strong>${draw.lowest_crs_score}</strong></td>
+                                        <td>${draw.invitations_issued.toLocaleString()}</td>
+                                        <td>#${draw.round_number}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Predictions by model
+    content += `<div class="row">`;
+    
+    Object.entries(predictionsByModel).forEach(([modelName, modelPredictions]) => {
+        const avgConfidence = modelPredictions.reduce((sum, p) => sum + (p.confidence_score || 0), 0) / modelPredictions.length;
+        const modelColor = getModelColor(modelName);
+        
+        content += `
+            <div class="col-lg-6 mb-4">
+                <div class="card prediction-card h-100">
+                    <div class="card-header" style="background: ${modelColor}; color: white;">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0">
+                                <i class="fas fa-brain me-2"></i>
+                                ${modelName}
+                            </h6>
+                            <span class="badge bg-light text-dark">
+                                ${Math.round(avgConfidence)}% Avg. Confidence
+                            </span>
                         </div>
                     </div>
-                    
-                    <div class="mb-3">
-                        <h6>Upcoming Predictions:</h6>
+                    <div class="card-body">
+                        <div class="confidence-bar mb-3">
+                            <div class="confidence-indicator" style="width: ${avgConfidence}%"></div>
+                        </div>
+                        
+                        <h6 class="mb-3">
+                            <i class="fas fa-calendar me-2"></i>
+                            Upcoming Predictions (${modelPredictions.length})
+                        </h6>
+                        
                         <div class="prediction-timeline">
-                            ${prediction.predictions.slice(0, 4).map(pred => `
-                                <div class="d-flex justify-content-between py-1">
-                                    <span>${formatDateWithCI(pred.predicted_date, pred.uncertainty_range)}</span>
-                                    <strong>CRS: ${formatCRSWithCI(pred.predicted_crs_score, pred.uncertainty_range)}</strong>
+                            ${modelPredictions.slice(0, 6).map((pred, index) => `
+                                <div class="prediction-timeline-item">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div>
+                                            <strong>${formatDateWithCI(pred.predicted_date, pred.uncertainty_range)}</strong>
+                                            <div class="uncertainty-range">
+                                                CRS: ${formatCRSWithCI(pred.predicted_crs_score, pred.uncertainty_range)}
+                                            </div>
+                                        </div>
+                                        <div class="text-end">
+                                            <div class="fw-bold text-primary">${pred.predicted_invitations?.toLocaleString() || 'N/A'}</div>
+                                            <div class="small text-muted">Invitations</div>
+                                        </div>
+                                    </div>
+                                    <div class="small text-muted mt-1">
+                                        <i class="fas fa-percentage me-1"></i>
+                                        ${pred.confidence_score || 0}% confidence
+                                    </div>
                                 </div>
                             `).join('')}
-                        </div>
-                    </div>
-                    
-                    <div class="row text-center">
-                        <div class="col-6">
-                            <small class="text-muted">Model Used</small>
-                            <div><strong>${nextPrediction.model_used}</strong></div>
-                        </div>
-                        <div class="col-6">
-                            <small class="text-muted">Invitations</small>
-                            <div><strong>${nextPrediction.predicted_invitations.toLocaleString()}</strong></div>
+                            
+                            ${modelPredictions.length > 6 ? `
+                                <div class="text-center mt-2">
+                                    <small class="text-muted">
+                                        <i class="fas fa-plus me-1"></i>
+                                        ${modelPredictions.length - 6} more predictions available
+                                    </small>
+                                </div>
+                            ` : ''}
                         </div>
                     </div>
                 </div>
             </div>
         `;
-        
-        grid.appendChild(col);
     });
+    
+    content += `</div></div>`;
+    
+    return content;
 }
 
-// Add robust statistical functions
-function calculateQuartiles(values) {
-    if (!values || values.length === 0) return { q1: 0, median: 0, q3: 0 };
+function updateCategoryContent(categoryData) {
+    const categoryName = categoryData.category_name;
     
-    // Sort values and remove NaN/null
-    const sorted = values.filter(v => v !== null && v !== undefined && !isNaN(v)).sort((a, b) => a - b);
-    if (sorted.length === 0) return { q1: 0, median: 0, q3: 0 };
+    // Update titles
+    document.getElementById('selectedCategoryTitle').textContent = `${categoryName} Performance`;
+    document.getElementById('chartTitle').textContent = `${categoryName} Prediction Timeline`;
     
-    const len = sorted.length;
-    
-    // Calculate median
-    let median;
-    if (len % 2 === 0) {
-        median = (sorted[len / 2 - 1] + sorted[len / 2]) / 2;
-    } else {
-        median = sorted[Math.floor(len / 2)];
-    }
-    
-    // Calculate Q1 (25th percentile)
-    const q1Index = Math.floor(len * 0.25);
-    const q1 = sorted[q1Index];
-    
-    // Calculate Q3 (75th percentile)
-    const q3Index = Math.floor(len * 0.75);
-    const q3 = sorted[q3Index];
-    
-    return { q1, median, q3 };
+    // Update performance and chart for this category only
+    displayModelPerformance([categoryData]);
+    createTimelineChart([categoryData]);
 }
 
-function formatQuartileRange(quartiles) {
-    return `${quartiles.median.toFixed(1)}% (${quartiles.q1.toFixed(1)}-${quartiles.q3.toFixed(1)})`;
-}
-
-function displayModelPerformance(predictions) {
+function displayModelPerformance(categoryPredictions) {
     const container = document.getElementById('modelPerformance');
     container.innerHTML = '';
     
-    // Calculate aggregate metrics from all individual predictions across categories
-    let allPredictions = [];
-    let categoryConfidences = [];  // For category-level median calculation
+    if (!categoryPredictions || categoryPredictions.length === 0) return;
     
-    predictions.forEach(categoryData => {
-        if (categoryData.predictions && Array.isArray(categoryData.predictions)) {
-            allPredictions.push(...categoryData.predictions);
-            
-            // Use the first prediction's confidence as category confidence
-            if (categoryData.predictions[0]) {
-                categoryConfidences.push(categoryData.predictions[0].confidence_score || 0);
-            }
-        }
-    });
+    const categoryData = categoryPredictions[0];
+    const predictions = categoryData.predictions || [];
     
-    // Calculate robust statistics using median and quartiles
-    const categoryQuartiles = calculateQuartiles(categoryConfidences);
-    const totalPredictions = allPredictions.length;
+    // Calculate metrics for this category
+    const avgConfidence = predictions.length > 0 ? 
+        predictions.reduce((sum, p) => sum + (p.confidence_score || 0), 0) / predictions.length : 0;
     
-    // Calculate model diversity
-    const modelTypes = new Set(allPredictions.map(p => p.model_used || 'Unknown'));
+    const modelTypes = new Set(predictions.map(p => p.model_used || 'Unknown'));
+    const nextPrediction = predictions[0];
     
-    // Calculate overall confidence quartiles from all predictions
-    const allConfidences = allPredictions.map(p => p.confidence_score || 0);
-    const overallQuartiles = calculateQuartiles(allConfidences);
+    const lastUpdate = categoryData.last_updated ? 
+        new Date(categoryData.last_updated).toLocaleDateString() : 'Unknown';
     
     const metrics = [
         {
-            title: 'Median Confidence',
-            value: formatQuartileRange(categoryQuartiles),
+            title: 'Average Confidence',
+            value: `${Math.round(avgConfidence)}%`,
             icon: 'fas fa-thumbs-up',
-            color: 'success'
+            color: avgConfidence >= 70 ? 'success' : avgConfidence >= 50 ? 'warning' : 'danger'
         },
         {
-            title: 'Model Diversity',
+            title: 'Active Models',
             value: `${modelTypes.size} Models`,
             icon: 'fas fa-cogs',
             color: 'info'
         },
         {
-            title: 'Overall Confidence',
-            value: formatQuartileRange(overallQuartiles),
-            icon: 'fas fa-chart-line',
-            color: 'warning'
+            title: 'Next Prediction',
+            value: nextPrediction ? formatDate(nextPrediction.predicted_date) : 'N/A',
+            icon: 'fas fa-calendar-alt',
+            color: 'primary'
         },
         {
-            title: 'Total Predictions',
-            value: totalPredictions.toString(),
-            icon: 'fas fa-chart-bar',
-            color: 'primary'
+            title: 'Last Updated',
+            value: lastUpdate,
+            icon: 'fas fa-clock',
+            color: 'secondary'
         }
     ];
     
@@ -416,47 +574,39 @@ function displayModelPerformance(predictions) {
     });
 }
 
-function createTimelineChart(predictions) {
+function createTimelineChart(categoryPredictions) {
+    if (!categoryPredictions || categoryPredictions.length === 0) {
+        document.getElementById('timelineChart').innerHTML = '<p class="text-center text-muted">No data available for chart</p>';
+        return;
+    }
+    
     const chartData = [];
+    const categoryData = categoryPredictions[0];
+    const predictions = categoryData.predictions || [];
     
-    predictions.forEach(prediction => {
-        // Debug logging for data structure
-        console.log('Chart prediction data:', prediction);
-        
-        // Use the correct property name: predictions instead of prediction_timeline
-        const categoryName = prediction.category?.name || prediction.category_name || 'Unknown';
-        
-        if (prediction.predictions && Array.isArray(prediction.predictions)) {
-            prediction.predictions.forEach(pred => {
-                chartData.push({
-                    x: pred.predicted_date,
-                    y: pred.predicted_crs_score,
-                    category: categoryName,
-                    confidence: pred.confidence_score || 75
-                });
-            });
-        } else {
-            console.warn('No predictions array found for category:', categoryName);
+    // Group predictions by model
+    const modelGroups = {};
+    predictions.forEach(pred => {
+        const modelName = pred.model_used || 'Unknown';
+        if (!modelGroups[modelName]) {
+            modelGroups[modelName] = [];
         }
+        modelGroups[modelName].push({
+            x: pred.predicted_date,
+            y: pred.predicted_crs_score,
+            confidence: pred.confidence_score || 75,
+            invitations: pred.predicted_invitations
+        });
     });
     
-    // Group by category
-    const categoryGroups = {};
-    chartData.forEach(point => {
-        if (!categoryGroups[point.category]) {
-            categoryGroups[point.category] = [];
-        }
-        categoryGroups[point.category].push(point);
-    });
-    
-    const traces = Object.keys(categoryGroups).map(category => {
-        const points = categoryGroups[category].sort((a, b) => new Date(a.x) - new Date(b.x));
+    const traces = Object.keys(modelGroups).map(modelName => {
+        const points = modelGroups[modelName].sort((a, b) => new Date(a.x) - new Date(b.x));
         
         return {
             x: points.map(p => p.x),
             y: points.map(p => p.y),
             mode: 'lines+markers',
-            name: abbreviateCategoryName(category),
+            name: modelName,
             line: {
                 width: 3
             },
@@ -475,8 +625,8 @@ function createTimelineChart(predictions) {
     
     const layout = {
         title: {
-            text: 'Predicted CRS Scores Timeline',
-            font: { size: 18 },
+            text: `${categoryData.category_name} - CRS Predictions by Model`,
+            font: { size: 16 },
             y: 0.95
         },
         xaxis: {
@@ -494,10 +644,7 @@ function createTimelineChart(predictions) {
             x: 0.5,
             xanchor: 'center',
             y: -0.15,
-            yanchor: 'top',
-            bgcolor: 'rgba(255, 255, 255, 0.8)',
-            bordercolor: 'rgba(0, 0, 0, 0.1)',
-            borderwidth: 1
+            yanchor: 'top'
         },
         margin: {
             l: 60,
@@ -515,6 +662,13 @@ function refreshPredictions() {
     loadPredictions();
 }
 
+function filterByTimeframe() {
+    if (currentCategory) {
+        updateCategoryContent(currentCategory);
+    }
+}
+
+// Utility functions
 function formatDate(dateString) {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', {
@@ -525,7 +679,6 @@ function formatDate(dateString) {
 }
 
 function formatCRSWithCI(score, uncertaintyRange) {
-    // Handle both old format (min/max) and new format (crs_min/crs_max)
     const minScore = uncertaintyRange?.crs_min || uncertaintyRange?.min;
     const maxScore = uncertaintyRange?.crs_max || uncertaintyRange?.max;
     
@@ -538,7 +691,6 @@ function formatCRSWithCI(score, uncertaintyRange) {
 function formatDateWithCI(predictedDate, uncertaintyRange) {
     if (!predictedDate) return 'N/A';
     
-    // Format the main predicted date
     const mainDate = new Date(predictedDate);
     const formattedMain = mainDate.toLocaleDateString('en-CA', {
         year: 'numeric',
@@ -546,12 +698,10 @@ function formatDateWithCI(predictedDate, uncertaintyRange) {
         day: 'numeric'
     });
     
-    // Check if we have date uncertainty range
     if (uncertaintyRange && uncertaintyRange.date_earliest && uncertaintyRange.date_latest) {
         const earliestDate = new Date(uncertaintyRange.date_earliest);
         const latestDate = new Date(uncertaintyRange.date_latest);
         
-        // Format the range dates
         const formattedEarliest = earliestDate.toLocaleDateString('en-CA', {
             month: 'short',
             day: 'numeric'
@@ -567,25 +717,21 @@ function formatDateWithCI(predictedDate, uncertaintyRange) {
     return formattedMain;
 }
 
-function getCategoryColor(categoryName) {
+function getModelColor(modelName) {
     const colors = {
-        'Provincial Nominee Program': '#0d47a1',
-        'Canadian Experience Class': '#28a745',
-        'Federal Skilled Worker': '#17a2b8',
-        'General': '#6c757d',
-        'No Program Specified': '#6c757d',
-        'French language proficiency': '#ffc107',
-        'Healthcare': '#dc3545',
-        'STEM': '#343a40'
+        'Gaussian Process': '#28a745',
+        'Bayesian Hierarchical': '#17a2b8',
+        'SARIMA': '#ffc107',
+        'LSTM': '#6f42c1',
+        'Prophet': '#fd7e14',
+        'ARIMA': '#dc3545',
+        'Holt-Winters': '#20c997',
+        'VAR': '#6c757d',
+        'Clean Linear Regression': '#007bff',
+        'Advanced Ensemble': '#343a40'
     };
     
-    for (const [key, color] of Object.entries(colors)) {
-        if (categoryName.includes(key)) {
-            return color;
-        }
-    }
-    
-    return '#007bff';
+    return colors[modelName] || '#007bff';
 }
 
 function abbreviateCategoryName(categoryName) {
@@ -594,24 +740,17 @@ function abbreviateCategoryName(categoryName) {
         'Provincial Nominee Program': 'PNP',
         'Federal Skilled Worker': 'FSW',
         'Federal Skilled Trades': 'FST',
-        'Agriculture and agri-food occupations (Version 1)': 'Agriculture',
-        'Healthcare and social services occupations (Version 2)': 'Health (v2)',
-        'Healthcare occupations (Version 1)': 'Health (v1)',
-        'Education occupations (Version 1)': 'Education',
-        'French language proficiency (Version 1)': 'French',
-        'STEM occupations (Version 1)': 'STEM',
-        'Trade occupations (Version 1)': 'Trades',
-        'Transport occupations (Version 1)': 'Transport',
-        'No Program Specified': 'General',
+        'Agriculture and agri-food occupations': 'Agriculture',
+        'Healthcare and social services occupations': 'Healthcare',
+        'Education occupations': 'Education',
+        'French language proficiency': 'French',
+        'STEM occupations': 'STEM',
+        'Trade occupations': 'Trades',
+        'Transport occupations': 'Transport',
         'General': 'General'
     };
     
     // Check for exact matches first
-    if (abbreviations[categoryName]) {
-        return abbreviations[categoryName];
-    }
-    
-    // Check for partial matches
     for (const [key, abbrev] of Object.entries(abbreviations)) {
         if (categoryName.includes(key)) {
             return abbrev;
@@ -620,70 +759,7 @@ function abbreviateCategoryName(categoryName) {
     
     // Default: use first word if no match found
     const firstWord = categoryName.split(' ')[0];
-    return firstWord.length > 8 ? firstWord.substring(0, 8) + '...' : firstWord;
-}
-
-// Comprehensive filter functionality
-function filterPredictions() {
-    const selectedCategory = document.getElementById('categoryFilter').value;
-    const selectedTimeframe = document.getElementById('timeframe').value;
-    
-    let filteredPredictions = allPredictions;
-    
-    // Filter by category
-    if (selectedCategory) {
-        filteredPredictions = filteredPredictions.filter(p => p.category.id == selectedCategory);
-    }
-    
-    // Filter by timeframe
-    if (selectedTimeframe) {
-        filteredPredictions = filteredPredictions.map(categoryData => {
-            const filteredCategoryPredictions = filterPredictionsByTimeframe(
-                categoryData.predictions || [], 
-                selectedTimeframe
-            );
-            
-            return {
-                ...categoryData,
-                predictions: filteredCategoryPredictions
-            };
-        }).filter(categoryData => categoryData.predictions.length > 0);
-    }
-    
-    displayPredictions(filteredPredictions);
-    displayModelPerformance(filteredPredictions);
-    createTimelineChart(filteredPredictions);
-}
-
-function filterPredictionsByTimeframe(predictions, timeframe) {
-    if (!timeframe) return predictions;
-    
-    const now = new Date();
-    let endDate;
-    
-    switch (timeframe) {
-        case 'next_month':
-            // Next month (until end of next month)
-            endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-            break;
-        case 'next_quarter':
-            // Next quarter (until end of current quarter + 1)
-            const currentQuarter = Math.floor(now.getMonth() / 3);
-            const nextQuarterEndMonth = (currentQuarter + 1) * 3;
-            endDate = new Date(now.getFullYear(), nextQuarterEndMonth, 0);
-            break;
-        case 'rest_of_year':
-            // Rest of year (until December 31)
-            endDate = new Date(now.getFullYear(), 11, 31);
-            break;
-        default:
-            return predictions;
-    }
-    
-    return predictions.filter(pred => {
-        const predDate = new Date(pred.predicted_date);
-        return predDate <= endDate;
-    });
+    return firstWord.length > 12 ? firstWord.substring(0, 12) + '...' : firstWord;
 }
 </script>
 {% endblock %} 
