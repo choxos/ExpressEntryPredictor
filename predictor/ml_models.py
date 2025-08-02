@@ -70,7 +70,9 @@ class BasePredictor:
         self.metrics = {}
     
     def prepare_features(self, df):
-        """Prepare features for modeling"""
+        """Prepare features for modeling with comprehensive variable integration"""
+        from .models import EconomicIndicator
+        
         features = df.copy()
         
         # Time-based features
@@ -80,7 +82,7 @@ class BasePredictor:
         features['day_of_year'] = pd.to_datetime(features['date']).dt.dayofyear
         features['is_weekend'] = pd.to_datetime(features['date']).dt.weekday >= 5
         
-        # Lag features
+        # Lag features for both CRS and invitations
         for lag in [1, 2, 3, 7, 14]:
             features[f'crs_lag_{lag}'] = features['lowest_crs_score'].shift(lag)
             features[f'invitations_lag_{lag}'] = features['invitations_issued'].shift(lag)
@@ -90,6 +92,7 @@ class BasePredictor:
             features[f'crs_rolling_mean_{window}'] = features['lowest_crs_score'].rolling(window).mean()
             features[f'crs_rolling_std_{window}'] = features['lowest_crs_score'].rolling(window).std()
             features[f'invitations_rolling_mean_{window}'] = features['invitations_issued'].rolling(window).mean()
+            features[f'invitations_rolling_std_{window}'] = features['invitations_issued'].rolling(window).std()
         
         # Days since last draw
         features['days_since_last'] = features['days_since_last_draw'].fillna(14)  # Default 2 weeks
@@ -97,6 +100,85 @@ class BasePredictor:
         # Category encoding
         category_dummies = pd.get_dummies(features['category'], prefix='category')
         features = pd.concat([features, category_dummies], axis=1)
+        
+        # ENHANCED: Economic Indicators Integration
+        try:
+            # Get economic indicators for the date range
+            economic_data = []
+            for _, row in features.iterrows():
+                draw_date = pd.to_datetime(row['date'])
+                
+                # Find closest economic indicator within 45 days
+                closest_economic = EconomicIndicator.objects.filter(
+                    date__lte=draw_date,
+                    date__gte=draw_date - pd.Timedelta(days=45)
+                ).order_by('-date').first()
+                
+                if closest_economic:
+                    economic_data.append({
+                        'unemployment_rate': closest_economic.unemployment_rate or 6.0,  # Default Canadian average
+                        'job_vacancy_rate': closest_economic.job_vacancy_rate or 3.5,
+                        'gdp_growth': closest_economic.gdp_growth or 2.0,
+                        'immigration_target': closest_economic.immigration_target or 400000,  # 2024 target
+                        'economic_date_lag': (draw_date.date() - closest_economic.date).days
+                    })
+                else:
+                    # Use reasonable defaults if no economic data available
+                    economic_data.append({
+                        'unemployment_rate': 6.0,
+                        'job_vacancy_rate': 3.5,
+                        'gdp_growth': 2.0,
+                        'immigration_target': 400000,
+                        'economic_date_lag': 30  # Assume 30-day lag
+                    })
+            
+            # Add economic features to dataframe
+            economic_df = pd.DataFrame(economic_data)
+            for col in economic_df.columns:
+                features[f'econ_{col}'] = economic_df[col].values
+                
+        except Exception as e:
+            print(f"Warning: Could not load economic indicators: {e}")
+            # Add default economic features
+            features['econ_unemployment_rate'] = 6.0
+            features['econ_job_vacancy_rate'] = 3.5
+            features['econ_gdp_growth'] = 2.0
+            features['econ_immigration_target'] = 400000
+            features['econ_economic_date_lag'] = 30
+        
+        # ENHANCED: Invitation-specific features
+        # Invitations per CRS point ratio (efficiency metric)
+        features['invitations_per_crs_point'] = features['invitations_issued'] / (features['lowest_crs_score'] + 1)
+        
+        # Category-specific invitation patterns
+        if 'category' in features.columns:
+            category_groups = features.groupby('category')['invitations_issued']
+            features['category_avg_invitations'] = features['category'].map(category_groups.mean())
+            features['category_std_invitations'] = features['category'].map(category_groups.std().fillna(0))
+        
+        # Time-based invitation patterns
+        features['month_avg_invitations'] = features.groupby('month')['invitations_issued'].transform('mean')
+        features['quarter_avg_invitations'] = features.groupby('quarter')['invitations_issued'].transform('mean')
+        
+        # ENHANCED: Policy and external factors
+        # Government fiscal year (April-March in Canada)
+        features['fiscal_year'] = features['month'].apply(lambda x: 'Q1' if x in [4,5,6] else 
+                                                                   'Q2' if x in [7,8,9] else
+                                                                   'Q3' if x in [10,11,12] else 'Q4')
+        features['is_fiscal_year_end'] = (features['month'] == 3).astype(int)
+        
+        # Holiday proximity (affects processing)
+        features['days_to_christmas'] = features['day_of_year'].apply(
+            lambda x: min(abs(x - 359), abs(x + 365 - 359)) if x < 359 else 365 - x + 359
+        )
+        features['is_summer_period'] = ((features['month'] >= 7) & (features['month'] <= 8)).astype(int)
+        
+        # ENHANCED: Economic pressure indicators
+        features['economic_pressure'] = (
+            (features['econ_unemployment_rate'] - 5.5) * 0.3 +  # Deviation from target
+            (features['econ_job_vacancy_rate'] - 3.0) * 0.4 +   # Labor demand
+            (features['econ_gdp_growth'] - 2.0) * 0.3           # Economic growth
+        )
         
         return features
     
@@ -1020,3 +1102,402 @@ class EnsemblePredictor(BasePredictor):
             return [weighted_sum / total_weight]
         else:
             return [450]  # Default prediction 
+
+
+class InvitationPredictor(BasePredictor):
+    """Specialized predictor for invitation numbers with economic and policy factors"""
+    
+    def __init__(self, model_type='XGB'):
+        super().__init__("Invitation Volume Predictor", model_type)
+        self.model_type = model_type
+        self.category_baselines = {}
+        self.policy_factors = {}
+        
+    def prepare_invitation_features(self, df):
+        """Enhanced feature engineering specifically for invitation prediction"""
+        from .models import EconomicIndicator, PolicyAnnouncement, GovernmentContext, PoolComposition, PNPActivity
+        from django.db import models
+        
+        features = self.prepare_features(df)  # Get base features
+        
+        # CATEGORY-SPECIFIC PATTERNS
+        # Some categories have more fixed quotas
+        features['is_cec_category'] = features['category'].str.contains('CEC|Canadian Experience', case=False, na=False).astype(int)
+        features['is_pnp_category'] = features['category'].str.contains('PNP|Provincial', case=False, na=False).astype(int)
+        features['is_general_category'] = (~features['is_cec_category'].astype(bool) & ~features['is_pnp_category'].astype(bool)).astype(int)
+        
+        # MACROECONOMIC INVITATION DRIVERS
+        # Higher unemployment typically leads to fewer invitations
+        features['unemployment_invitation_factor'] = (10.0 - features['econ_unemployment_rate']) / 10.0
+        
+        # Higher job vacancies lead to more invitations
+        features['job_demand_factor'] = features['econ_job_vacancy_rate'] / 5.0  # Normalize to typical max
+        
+        # Economic growth affects immigration targets
+        features['growth_invitation_factor'] = np.clip(features['econ_gdp_growth'] / 3.0, 0.5, 2.0)
+        
+        # POLICY AND GOVERNMENT FACTORS
+        # Immigration targets affect invitation volumes
+        features['target_pressure'] = features['econ_immigration_target'] / 400000  # Normalized to current target
+        
+        # Government fiscal pressures (end of fiscal year, budget cycles)
+        features['fiscal_pressure'] = np.where(
+            features['is_fiscal_year_end'] == 1, 
+            1.2,  # Increased activity at fiscal year end
+            1.0
+        )
+        
+        # ENHANCED: Political and Government Context Integration
+        try:
+            political_data = []
+            policy_data = []
+            
+            for _, row in features.iterrows():
+                draw_date = pd.to_datetime(row['date'])
+                
+                # Get government context
+                active_gov = GovernmentContext.objects.filter(
+                    start_date__lte=draw_date
+                ).filter(
+                    models.Q(end_date__gte=draw_date) | models.Q(end_date__isnull=True)
+                ).first()
+                
+                if active_gov:
+                    # Government type affects immigration policy
+                    is_liberal = 'LIBERAL' in active_gov.government_type
+                    is_majority = 'MAJORITY' in active_gov.government_type
+                    
+                    political_data.append({
+                        'is_liberal_gov': int(is_liberal),
+                        'is_majority_gov': int(is_majority), 
+                        'economic_priority': active_gov.economic_immigration_priority,
+                        'humanitarian_priority': active_gov.humanitarian_priority,
+                        'francophone_priority': active_gov.francophone_priority,
+                        'gov_stability': 1.2 if is_majority else 0.8  # Majority = more stable policy
+                    })
+                else:
+                    # Default values if no government data
+                    political_data.append({
+                        'is_liberal_gov': 1,  # Assume current Liberal government
+                        'is_majority_gov': 0,  # Assume minority
+                        'economic_priority': 7,
+                        'humanitarian_priority': 5,
+                        'francophone_priority': 6,
+                        'gov_stability': 0.8
+                    })
+                
+                # Get recent policy announcements (within 6 months)
+                recent_policies = PolicyAnnouncement.objects.filter(
+                    date__lte=draw_date,
+                    date__gte=draw_date - pd.Timedelta(days=180)
+                ).order_by('-date')
+                
+                # Policy impact scoring
+                total_policy_impact = 0
+                high_impact_count = 0
+                target_changes = 0
+                
+                for policy in recent_policies[:10]:  # Consider last 10 announcements
+                    if policy.expected_impact == 'HIGH':
+                        total_policy_impact += 3
+                        high_impact_count += 1
+                    elif policy.expected_impact == 'MEDIUM':
+                        total_policy_impact += 2
+                    else:
+                        total_policy_impact += 1
+                    
+                    if policy.target_change:
+                        target_changes += policy.target_change
+                
+                policy_data.append({
+                    'policy_impact_score': total_policy_impact,
+                    'high_impact_policies': high_impact_count,
+                    'target_changes': target_changes,
+                    'days_since_last_policy': (draw_date.date() - recent_policies.first().date).days if recent_policies.exists() else 90
+                })
+            
+            # Add political features
+            political_df = pd.DataFrame(political_data)
+            for col in political_df.columns:
+                features[f'political_{col}'] = political_df[col].values
+                
+            # Add policy features
+            policy_df = pd.DataFrame(policy_data)
+            for col in policy_df.columns:
+                features[f'policy_{col}'] = policy_df[col].values
+                
+        except Exception as e:
+            print(f"Warning: Could not load political/policy data: {e}")
+            # Add default political features
+            features['political_is_liberal_gov'] = 1
+            features['political_is_majority_gov'] = 0
+            features['political_economic_priority'] = 7
+            features['political_gov_stability'] = 0.8
+            features['policy_impact_score'] = 5
+            features['policy_high_impact_policies'] = 0
+        
+        # ENHANCED: Pool Composition Integration
+        try:
+            pool_data = []
+            
+            for _, row in features.iterrows():
+                draw_date = pd.to_datetime(row['date'])
+                
+                # Find most recent pool composition data (within 30 days)
+                recent_pool = PoolComposition.objects.filter(
+                    date__lte=draw_date,
+                    date__gte=draw_date - pd.Timedelta(days=30)
+                ).order_by('-date').first()
+                
+                if recent_pool:
+                    # Calculate pool pressure metrics
+                    high_score_ratio = recent_pool.candidates_600_plus / max(recent_pool.total_candidates, 1)
+                    competitive_ratio = (recent_pool.candidates_500_599 + recent_pool.candidates_600_plus) / max(recent_pool.total_candidates, 1)
+                    
+                    pool_data.append({
+                        'total_pool_size': recent_pool.total_candidates,
+                        'high_score_candidates': recent_pool.candidates_600_plus,
+                        'pool_pressure': competitive_ratio,
+                        'avg_pool_crs': recent_pool.average_crs or 450,
+                        'pool_growth_rate': recent_pool.new_registrations or 0,
+                        'pool_data_lag': (draw_date.date() - recent_pool.date).days
+                    })
+                else:
+                    # Estimate pool metrics based on historical patterns
+                    pool_data.append({
+                        'total_pool_size': 180000,  # Typical pool size
+                        'high_score_candidates': 5000,
+                        'pool_pressure': 0.3,
+                        'avg_pool_crs': 450,
+                        'pool_growth_rate': 1000,
+                        'pool_data_lag': 15
+                    })
+            
+            # Add pool features
+            pool_df = pd.DataFrame(pool_data)
+            for col in pool_df.columns:
+                features[f'pool_{col}'] = pool_df[col].values
+                
+        except Exception as e:
+            print(f"Warning: Could not load pool composition data: {e}")
+            # Add default pool features
+            features['pool_total_pool_size'] = 180000
+            features['pool_high_score_candidates'] = 5000
+            features['pool_pressure'] = 0.3
+            features['pool_avg_pool_crs'] = 450
+        
+        # ENHANCED: PNP Activity Integration  
+        try:
+            pnp_data = []
+            
+            for _, row in features.iterrows():
+                draw_date = pd.to_datetime(row['date'])
+                
+                # Get PNP activity in the month leading up to the draw
+                recent_pnp = PNPActivity.objects.filter(
+                    date__lte=draw_date,
+                    date__gte=draw_date - pd.Timedelta(days=30)
+                )
+                
+                # Calculate aggregate PNP metrics
+                total_pnp_invites = sum(pnp.invitations_issued for pnp in recent_pnp)
+                ontario_pnp = sum(pnp.invitations_issued for pnp in recent_pnp if pnp.province == 'ON')
+                bc_pnp = sum(pnp.invitations_issued for pnp in recent_pnp if pnp.province == 'BC')
+                prairie_pnp = sum(pnp.invitations_issued for pnp in recent_pnp if pnp.province in ['AB', 'SK', 'MB'])
+                
+                pnp_data.append({
+                    'total_monthly_pnp': total_pnp_invites,
+                    'ontario_pnp_volume': ontario_pnp,
+                    'bc_pnp_volume': bc_pnp,
+                    'prairie_pnp_volume': prairie_pnp,
+                    'pnp_diversity': len(set(pnp.province for pnp in recent_pnp))  # Number of active provinces
+                })
+            
+            # Add PNP features
+            pnp_df = pd.DataFrame(pnp_data)
+            for col in pnp_df.columns:
+                features[f'pnp_{col}'] = pnp_df[col].values
+                
+        except Exception as e:
+            print(f"Warning: Could not load PNP data: {e}")
+            # Add default PNP features
+            features['pnp_total_monthly_pnp'] = 2000
+            features['pnp_ontario_pnp_volume'] = 800
+            features['pnp_bc_pnp_volume'] = 400
+        
+        # SEASONAL INVITATION PATTERNS
+        # Fewer invitations during holiday periods
+        features['holiday_adjustment'] = np.where(
+            (features['month'].isin([12, 1])) | (features['is_summer_period'] == 1),
+            0.8,  # 20% reduction during holidays/summer
+            1.0
+        )
+        
+        # POOL COMPOSITION PROXIES (when pool data unavailable)
+        # Estimate pool pressure from historical patterns
+        features['estimated_pool_pressure'] = (
+            features['crs_rolling_mean_14'] / 450.0 +  # Higher CRS = more competitive pool
+            features['invitations_rolling_mean_14'] / 5000.0  # Historical volume
+        )
+        
+        # POLITICAL FACTORS (proxy indicators)
+        # Election proximity affects policy implementation
+        features['year_mod_4'] = features['year'] % 4  # Federal election cycle
+        features['is_election_year'] = (features['year_mod_4'] == 0).astype(int)
+        features['pre_election_year'] = (features['year_mod_4'] == 3).astype(int)
+        
+        # INVITATION EFFICIENCY METRICS
+        # Government wants to optimize invitation-to-landing ratios
+        features['historical_efficiency'] = features['invitations_per_crs_point']
+        
+        # INTERACTION TERMS for policy effects
+        features['economic_policy_interaction'] = (
+            features['unemployment_invitation_factor'] * 
+            features['job_demand_factor'] * 
+            features['target_pressure']
+        )
+        
+        # Political-Economic Interaction
+        if 'political_is_liberal_gov' in features.columns and 'political_economic_priority' in features.columns:
+            features['political_economic_interaction'] = (
+                features['political_is_liberal_gov'] * 
+                features['political_economic_priority'] / 10.0 *
+                features['economic_policy_interaction']
+            )
+        
+        return features
+    
+    def train(self, df, target_col='invitations_issued'):
+        """Train the invitation prediction model"""
+        features = self.prepare_invitation_features(df)
+        
+        # Calculate category baselines for reference
+        for category in features['category'].unique():
+            cat_data = features[features['category'] == category]
+            self.category_baselines[category] = {
+                'mean_invitations': cat_data[target_col].mean(),
+                'std_invitations': cat_data[target_col].std(),
+                'median_invitations': cat_data[target_col].median(),
+                'typical_range': (cat_data[target_col].quantile(0.25), cat_data[target_col].quantile(0.75))
+            }
+        
+        # Feature selection for invitation prediction
+        exclude_cols = [
+            'date', 'lowest_crs_score', 'round_number', 'url', 'category',
+            'invitations_issued'  # Target variable
+        ]
+        
+        feature_cols = [col for col in features.columns if col not in exclude_cols]
+        
+        X = features[feature_cols].fillna(0)
+        y = features[target_col]
+        
+        # Remove rows with missing target values
+        mask = ~y.isna()
+        X = X[mask]
+        y = y[mask]
+        
+        if len(X) == 0:
+            raise ValueError("No valid training data after removing missing values")
+        
+        # Train different models based on model type
+        if self.model_type == 'XGB' and XGBOOST_AVAILABLE:
+            from xgboost import XGBRegressor
+            self.model = XGBRegressor(
+                n_estimators=100,
+                max_depth=6,
+                learning_rate=0.1,
+                random_state=42,
+                objective='reg:squarederror'
+            )
+        elif self.model_type == 'RF' and SKLEARN_AVAILABLE:
+            from sklearn.ensemble import RandomForestRegressor
+            self.model = RandomForestRegressor(
+                n_estimators=100,
+                max_depth=10,
+                random_state=42
+            )
+        else:
+            # Fallback to simple linear model
+            if SKLEARN_AVAILABLE:
+                from sklearn.linear_model import Ridge
+                self.model = Ridge(alpha=1.0)
+                X = self.scaler.fit_transform(X)
+            else:
+                raise ImportError("No suitable libraries available for invitation prediction")
+        
+        # Train the model
+        self.model.fit(X, y)
+        self.is_trained = True
+        
+        # Calculate feature importance
+        if hasattr(self.model, 'feature_importances_'):
+            importance_dict = dict(zip(feature_cols, self.model.feature_importances_))
+            # Sort by importance
+            self.feature_importance = dict(sorted(importance_dict.items(), 
+                                                key=lambda x: x[1], reverse=True))
+        
+        # Evaluate model performance
+        predictions = self.model.predict(X)
+        self.metrics = self.evaluate(y, predictions)
+        
+        return self.metrics
+    
+    def predict(self, X, category=None):
+        """Predict invitation numbers with category-aware adjustments"""
+        if not self.is_trained:
+            raise ValueError("Model must be trained before prediction")
+        
+        # Make base prediction
+        if SKLEARN_AVAILABLE and hasattr(self.model, 'predict'):
+            if hasattr(self, 'scaler') and hasattr(self.scaler, 'transform'):
+                X_scaled = self.scaler.transform(X)
+                base_prediction = self.model.predict(X_scaled)
+            else:
+                base_prediction = self.model.predict(X)
+        else:
+            # Fallback prediction
+            return [3000]  # Conservative estimate
+        
+        # Apply category-specific adjustments
+        if category and category in self.category_baselines:
+            baseline = self.category_baselines[category]
+            
+            # Ensure prediction is within reasonable bounds for category
+            predicted_value = np.clip(
+                base_prediction[0] if hasattr(base_prediction, '__len__') else base_prediction,
+                baseline['typical_range'][0] * 0.5,  # 50% below typical minimum
+                baseline['typical_range'][1] * 1.5   # 50% above typical maximum
+            )
+        else:
+            # General bounds
+            predicted_value = np.clip(
+                base_prediction[0] if hasattr(base_prediction, '__len__') else base_prediction,
+                500,   # Minimum reasonable invitation count
+                7000   # Maximum reasonable invitation count
+            )
+        
+        return int(predicted_value)
+    
+    def predict_with_uncertainty(self, X, category=None):
+        """Predict invitations with confidence intervals"""
+        base_prediction = self.predict(X, category)
+        
+        # Estimate uncertainty based on historical volatility
+        if category and category in self.category_baselines:
+            std_dev = self.category_baselines[category]['std_invitations']
+        else:
+            std_dev = 800  # Default uncertainty
+        
+        # 95% confidence interval
+        margin_of_error = 1.96 * std_dev
+        lower_bound = max(500, int(base_prediction - margin_of_error))
+        upper_bound = min(7000, int(base_prediction + margin_of_error))
+        
+        return {
+            'prediction': base_prediction,
+            'lower_bound': lower_bound,
+            'upper_bound': upper_bound,
+            'confidence': 95,
+            'std_dev': std_dev
+        } 

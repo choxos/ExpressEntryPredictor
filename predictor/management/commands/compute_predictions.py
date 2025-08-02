@@ -256,9 +256,52 @@ class Command(BaseCommand):
                 # Ensure reasonable bounds
                 predicted_score = max(300, min(900, int(predicted_score)))
                 
-                # Estimate invitations (based on historical average)
-                avg_invitations = df['invitations_issued'].mean()
-                predicted_invitations = max(100, int(avg_invitations * (0.8 + 0.4 * (rank/num_predictions))))
+                # ENHANCED: Proper invitation prediction using dedicated model
+                from predictor.ml_models import InvitationPredictor
+                
+                try:
+                    # Initialize and train invitation predictor
+                    invitation_model = InvitationPredictor(model_type='XGB')
+                    invitation_metrics = invitation_model.train(df)
+                    
+                    # Prepare features for invitation prediction
+                    invitation_features = invitation_model.prepare_invitation_features(df)
+                    exclude_cols = ['date', 'lowest_crs_score', 'round_number', 'url', 'category', 'invitations_issued']
+                    feature_cols = [col for col in invitation_features.columns if col not in exclude_cols]
+                    X_invitation = invitation_features[feature_cols].fillna(0).tail(1)
+                    
+                    # Predict invitation numbers with uncertainty
+                    invitation_result = invitation_model.predict_with_uncertainty(
+                        X_invitation, 
+                        category=category.name
+                    )
+                    predicted_invitations = invitation_result['prediction']
+                    invitation_uncertainty = invitation_result['std_dev']
+                    
+                    print(f"✅ Invitation prediction: {predicted_invitations} (±{invitation_uncertainty})")
+                    
+                    # Feature importance insights
+                    if invitation_model.feature_importance:
+                        top_features = list(invitation_model.feature_importance.items())[:5]
+                        print(f"📊 Top invitation factors: {[f[0] for f in top_features]}")
+                    
+                except Exception as e:
+                    print(f"⚠️ Invitation model failed, using fallback: {e}")
+                    # Fallback to improved historical approach
+                    avg_invitations = df['invitations_issued'].mean()
+                    std_invitations = df['invitations_issued'].std()
+                    
+                    # Category-specific adjustments
+                    if 'CEC' in category.name or 'Canadian Experience' in category.name:
+                        base_invitations = 3000  # Your observation about CEC
+                    elif 'PNP' in category.name:
+                        base_invitations = avg_invitations * 0.8  # PNP typically smaller
+                    else:
+                        base_invitations = avg_invitations
+                    
+                    # Add some reasonable variation
+                    predicted_invitations = max(500, int(base_invitations * (0.9 + 0.2 * (rank/num_predictions))))
+                    invitation_uncertainty = std_invitations or 800
                 
                 # Calculate uncertainty range with proper 95% confidence intervals
                 score_std = df['lowest_crs_score'].std()

@@ -106,6 +106,147 @@ class EconomicIndicator(models.Model):
         return f"Economic Data - {self.date}"
 
 
+class PolicyAnnouncement(models.Model):
+    """Government policy announcements that may affect draw patterns"""
+    ANNOUNCEMENT_TYPES = [
+        ('IMMIGRATION_TARGET', 'Immigration Level Target'),
+        ('MINISTER_MANDATE', 'Minister Mandate Letter'),
+        ('BUDGET_ANNOUNCEMENT', 'Budget/Fiscal Announcement'), 
+        ('PROGRAM_CHANGE', 'Program Rule Change'),
+        ('SPECIAL_MEASURE', 'Special/Temporary Measure'),
+        ('INTERNATIONAL_AGREEMENT', 'International Agreement'),
+    ]
+    
+    IMPACT_LEVELS = [
+        ('HIGH', 'High Impact'),
+        ('MEDIUM', 'Medium Impact'),
+        ('LOW', 'Low Impact'),
+    ]
+    
+    date = models.DateField()
+    announcement_type = models.CharField(max_length=30, choices=ANNOUNCEMENT_TYPES)
+    title = models.CharField(max_length=200)
+    description = models.TextField()
+    expected_impact = models.CharField(max_length=10, choices=IMPACT_LEVELS, default='MEDIUM')
+    
+    # Quantitative impacts (when known)
+    target_change = models.IntegerField(blank=True, null=True, help_text="Change in immigration targets")
+    effective_date = models.DateField(blank=True, null=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-date']
+    
+    def __str__(self):
+        return f"{self.get_announcement_type_display()} - {self.date}"
+
+
+class GovernmentContext(models.Model):
+    """Political and governmental context affecting immigration policy"""
+    GOVERNMENT_TYPES = [
+        ('LIBERAL_MAJORITY', 'Liberal Majority'),
+        ('LIBERAL_MINORITY', 'Liberal Minority'),
+        ('CONSERVATIVE_MAJORITY', 'Conservative Majority'),
+        ('CONSERVATIVE_MINORITY', 'Conservative Minority'),
+        ('COALITION', 'Coalition Government'),
+    ]
+    
+    start_date = models.DateField()
+    end_date = models.DateField(blank=True, null=True)
+    government_type = models.CharField(max_length=30, choices=GOVERNMENT_TYPES)
+    prime_minister = models.CharField(max_length=100)
+    immigration_minister = models.CharField(max_length=100)
+    
+    # Policy priorities (scale 1-10)
+    economic_immigration_priority = models.IntegerField(default=7, 
+        validators=[MinValueValidator(1), MaxValueValidator(10)])
+    humanitarian_priority = models.IntegerField(default=5,
+        validators=[MinValueValidator(1), MaxValueValidator(10)])
+    francophone_priority = models.IntegerField(default=6,
+        validators=[MinValueValidator(1), MaxValueValidator(10)])
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-start_date']
+    
+    def __str__(self):
+        return f"{self.get_government_type_display()} ({self.start_date})"
+        
+    def is_active(self, date):
+        """Check if this government context is active for a given date"""
+        if date < self.start_date:
+            return False
+        if self.end_date and date > self.end_date:
+            return False
+        return True
+
+
+class PoolComposition(models.Model):
+    """Express Entry pool composition data"""
+    date = models.DateField()
+    
+    # Pool size by CRS score ranges
+    total_candidates = models.IntegerField(validators=[MinValueValidator(0)])
+    candidates_600_plus = models.IntegerField(default=0, validators=[MinValueValidator(0)])
+    candidates_500_599 = models.IntegerField(default=0, validators=[MinValueValidator(0)])
+    candidates_450_499 = models.IntegerField(default=0, validators=[MinValueValidator(0)])
+    candidates_400_449 = models.IntegerField(default=0, validators=[MinValueValidator(0)])
+    candidates_below_400 = models.IntegerField(default=0, validators=[MinValueValidator(0)])
+    
+    # Pool dynamics
+    new_registrations = models.IntegerField(blank=True, null=True)
+    expired_profiles = models.IntegerField(blank=True, null=True)
+    average_crs = models.FloatField(blank=True, null=True)
+    median_crs = models.FloatField(blank=True, null=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-date']
+        unique_together = ['date']
+    
+    def __str__(self):
+        return f"Pool Composition - {self.date} ({self.total_candidates} candidates)"
+
+
+class PNPActivity(models.Model):
+    """Provincial Nominee Program activity data"""
+    PROVINCES = [
+        ('ON', 'Ontario'),
+        ('BC', 'British Columbia'),
+        ('AB', 'Alberta'),
+        ('SK', 'Saskatchewan'),
+        ('MB', 'Manitoba'),
+        ('NS', 'Nova Scotia'),
+        ('NB', 'New Brunswick'),
+        ('NL', 'Newfoundland and Labrador'),
+        ('PE', 'Prince Edward Island'),
+        ('YT', 'Yukon'),
+        ('NT', 'Northwest Territories'),
+        ('NU', 'Nunavut'),
+    ]
+    
+    date = models.DateField()
+    province = models.CharField(max_length=2, choices=PROVINCES)
+    invitations_issued = models.IntegerField(validators=[MinValueValidator(0)])
+    minimum_score = models.IntegerField(blank=True, null=True)
+    program_stream = models.CharField(max_length=100, blank=True, null=True)
+    
+    # Economic context for the province
+    provincial_unemployment = models.FloatField(blank=True, null=True)
+    key_sectors = models.JSONField(default=list, blank=True, help_text="Key economic sectors targeted")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-date', 'province']
+    
+    def __str__(self):
+        return f"{self.get_province_display()} PNP - {self.date} ({self.invitations_issued} invites)"
+
+
 class PredictionModel(models.Model):
     """Different prediction models used"""
     MODEL_TYPES = [
