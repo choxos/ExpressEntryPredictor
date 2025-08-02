@@ -285,17 +285,29 @@ class Command(BaseCommand):
                 # Predict CRS score based on model type
                 if hasattr(best_model, 'predict'):
                     # Different models have different predict interfaces
-                    if best_model.name in ['ARIMA Time Series', 'Prophet Time Series']:
-                        # Time series models can predict multiple steps
+                    if best_model.name == 'ARIMA Time Series':
+                        # ARIMA models can predict multiple steps
                         predicted_scores = best_model.predict(steps=rank)
+                        if isinstance(predicted_scores, list) and len(predicted_scores) >= rank:
+                            predicted_score = predicted_scores[rank-1]
+                        else:
+                            predicted_score = predicted_scores if not isinstance(predicted_scores, list) else predicted_scores[0]
+                    elif best_model.name == 'Prophet Time Series':
+                        # Prophet uses 'periods' not 'steps'
+                        predicted_scores = best_model.predict(periods=rank, freq='2W')
                         if isinstance(predicted_scores, list) and len(predicted_scores) >= rank:
                             predicted_score = predicted_scores[rank-1]
                         else:
                             predicted_score = predicted_scores if not isinstance(predicted_scores, list) else predicted_scores[0]
                     else:
                         # ML models need feature data with same engineering as training
-                        # Use the model's prepare_features method to get consistent features
-                        features_df = best_model.prepare_features(df)
+                        # Use clean features for scientifically valid models
+                        if hasattr(best_model, 'prepare_clean_features'):
+                            features_df = best_model.prepare_clean_features(df)
+                        else:
+                            # Fallback for legacy models (with warning)
+                            features_df = best_model.prepare_features(df)
+                        
                         exclude_cols = ['date', 'lowest_crs_score', 'round_number', 'url', 'category']
                         feature_cols = [col for col in features_df.columns if col not in exclude_cols]
                         X = features_df[feature_cols].fillna(0).tail(1)  # Use last row
@@ -702,7 +714,7 @@ class Command(BaseCommand):
             return None  # Need minimum data for evaluation
         
         try:
-            # Calculate missing features that prepare_features expects
+            # Calculate missing features that models may need
             df_enhanced = df.copy()
             df_enhanced['date'] = pd.to_datetime(df_enhanced['date'])
             df_enhanced = df_enhanced.sort_values('date')

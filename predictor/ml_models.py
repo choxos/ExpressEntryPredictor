@@ -1234,7 +1234,7 @@ class BayesianHierarchicalPredictor(BasePredictor):
         features = self.prepare_clean_features(df)
         
         # Prepare features (exclude target and metadata)
-        exclude_cols = ['date', 'lowest_crs_score', 'invitations_issued', 'round_number', 'url']
+        exclude_cols = ['date', 'lowest_crs_score', 'invitations_issued', 'round_number', 'url', 'category']
         
         # Handle category separately for hierarchical modeling
         if 'category' in features.columns:
@@ -1244,7 +1244,7 @@ class BayesianHierarchicalPredictor(BasePredictor):
             categories = ['Unknown']
             category_cols = []
         
-        # Base features (without category dummies)
+        # Base features (without category strings or dummies)
         base_feature_cols = [col for col in features.columns 
                            if col not in exclude_cols and not col.startswith('category_')]
         
@@ -1277,7 +1277,7 @@ class BayesianHierarchicalPredictor(BasePredictor):
             if cat_mask.sum() < 2:  # Need at least 2 samples
                 continue
                 
-            X_cat = features.loc[cat_mask, feature_cols].fillna(0).values
+            X_cat = features.loc[cat_mask, feature_cols].fillna(0).astype(float).values
             y_cat = features.loc[cat_mask, target_col].values
             
             # Add bias term
@@ -1316,7 +1316,7 @@ class BayesianHierarchicalPredictor(BasePredictor):
     
     def _train_simple_bayesian(self, features, feature_cols, target_col):
         """Fallback to simple Bayesian regression"""
-        X = features[feature_cols].fillna(0).values
+        X = features[feature_cols].fillna(0).astype(float).values
         y = features[target_col].values
         
         # Add bias term
@@ -1347,7 +1347,7 @@ class BayesianHierarchicalPredictor(BasePredictor):
             if cat_mask.sum() == 0:
                 continue
                 
-            X_cat = features.loc[cat_mask, feature_cols].fillna(0).values
+            X_cat = features.loc[cat_mask, feature_cols].fillna(0).astype(float).values
             y_cat = features.loc[cat_mask, target_col].values
             
             # Add bias term
