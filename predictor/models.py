@@ -25,40 +25,48 @@ class DrawCategory(models.Model):
         """
         Map IRCC official categories to our database category names.
         This allows pooling data across different versions of the same category.
+        Updated to match actual database categories.
         """
         return {
             'French-language proficiency': [
                 'French language proficiency (Version 1)',
-                'French language proficiency (Version 2)',
+                # Note: Version 2 doesn't exist in current data
             ],
             'Healthcare and social services occupations': [
-                'Healthcare occupations (Version 1)',
-                'Healthcare and social services occupations (Version 2)',
-                'Healthcare and social services occupations (Version 1)',
+                'Healthcare occupations (Version 1)',                    # 6 draws
+                'Healthcare and social services occupations (Version 2)', # 3 draws
+                # Total: 9 draws when pooled
             ],
             'STEM occupations': [
-                'Science, technology, engineering and math (STEM) occupations',
                 'STEM occupations (Version 1)',
-                'STEM occupations (Version 2)',
+                # Note: Full name version doesn't exist in current data
             ],
             'Trade occupations': [
                 'Trade occupations (Version 1)',
-                'Trade occupations (Version 2)',
+                # Note: Version 2 doesn't exist in current data
             ],
             'Agriculture and agri-food occupations': [
                 'Agriculture and agri-food occupations (Version 1)',
-                'Agriculture and agri-food occupations (Version 2)',
+                # Note: Version 2 doesn't exist in current data
             ],
             'Education occupations': [
                 'Education occupations (Version 1)',
-                'Education occupations (Version 2)',
+                # Note: Version 2 doesn't exist in current data
             ],
-            # Non-category specific draws
-            'Canadian Experience Class': ['Canadian Experience Class'],
-            'Provincial Nominee Program': ['Provincial Nominee Program'],
-            'Federal Skilled Worker': ['Federal Skilled Worker'],
-            'Federal Skilled Trades': ['Federal Skilled Trades'], 
-            'General': ['General', 'No Program Specified'],
+            'Transport occupations': [
+                'Transport occupations (Version 1)',
+                # Note: Version 2 doesn't exist in current data
+            ],
+            # Non-category specific draws (these have good data volumes)
+            'Canadian Experience Class': ['Canadian Experience Class'],              # 45 draws
+            'Provincial Nominee Program': ['Provincial Nominee Program'],            # 84 draws
+            'Federal Skilled Worker': ['Federal Skilled Worker'],                    # 1 draw
+            'Federal Skilled Trades': ['Federal Skilled Trades'],                    # 7 draws
+            'General': [
+                'General',           # 11 draws
+                'No Program Specified'  # 167 draws - POOL THESE FOR BETTER PREDICTIONS
+                # Total: 178 draws when pooled
+            ],
         }
     
     @classmethod
