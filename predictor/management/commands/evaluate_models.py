@@ -59,9 +59,13 @@ class Command(BaseCommand):
                 continue
             
             # Convert to DataFrame
-            df = pd.DataFrame(draws.values('date', 'lowest_crs_score', 'invitations_issued'))
+            df = pd.DataFrame(draws.values('date', 'lowest_crs_score', 'invitations_issued', 'category__name'))
             df['date'] = pd.to_datetime(df['date'])
             df = df.sort_values('date')
+            
+            # Rename category column to match expected format
+            df['category'] = df['category__name']
+            df = df.drop(columns=['category__name'])
             
             # Evaluate models for this category
             try:
@@ -135,12 +139,20 @@ class Command(BaseCommand):
         """Evaluate a single model using cross-validation and performance metrics"""
         
         try:
+            # Calculate missing features that prepare_features expects
+            df_enhanced = df.copy()
+            df_enhanced['date'] = pd.to_datetime(df_enhanced['date'])
+            df_enhanced = df_enhanced.sort_values('date')
+            
+            # Calculate days_since_last_draw (required by prepare_features)
+            df_enhanced['days_since_last_draw'] = df_enhanced['date'].diff().dt.days.fillna(14)
+            
             # Prepare data
-            X = df.drop(columns=[target_col]).select_dtypes(include=[np.number])
-            y = df[target_col]
+            X = df_enhanced.drop(columns=[target_col]).select_dtypes(include=[np.number])
+            y = df_enhanced[target_col]
             
             if X.empty or len(X.columns) == 0:
-                X = pd.DataFrame({'time_index': range(len(df))})
+                X = pd.DataFrame({'time_index': range(len(df_enhanced))})
             
             # Cross-validation
             cv_scores = []
@@ -152,8 +164,8 @@ class Command(BaseCommand):
                 
                 for train_idx, val_idx in kf.split(X):
                     try:
-                        train_df = df.iloc[train_idx].copy()
-                        val_df = df.iloc[val_idx].copy()
+                        train_df = df_enhanced.iloc[train_idx].copy()
+                        val_df = df_enhanced.iloc[val_idx].copy()
                         
                         # Create model copy and train
                         model_copy = self._copy_model(model)
@@ -180,9 +192,9 @@ class Command(BaseCommand):
             
             # Train on full dataset
             if model_name in ['ARIMA', 'LSTM']:
-                model.train(df)  # These models don't take target_col
+                model.train(df_enhanced)  # These models don't take target_col
             else:
-                model.train(df, target_col)
+                model.train(df_enhanced, target_col)
             
             # Get metrics
             if hasattr(model, 'metrics') and model.metrics:

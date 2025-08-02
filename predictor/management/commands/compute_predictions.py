@@ -652,13 +652,21 @@ class Command(BaseCommand):
             return None  # Need minimum data for evaluation
         
         try:
+            # Calculate missing features that prepare_features expects
+            df_enhanced = df.copy()
+            df_enhanced['date'] = pd.to_datetime(df_enhanced['date'])
+            df_enhanced = df_enhanced.sort_values('date')
+            
+            # Calculate days_since_last_draw (required by prepare_features)
+            df_enhanced['days_since_last_draw'] = df_enhanced['date'].diff().dt.days.fillna(14)
+            
             # Prepare data
-            X = df.drop(columns=[target_col]).select_dtypes(include=[np.number])
-            y = df[target_col]
+            X = df_enhanced.drop(columns=[target_col]).select_dtypes(include=[np.number])
+            y = df_enhanced[target_col]
             
             if X.empty or len(X.columns) == 0:
                 # For time series models, use index as feature
-                X = pd.DataFrame({'time_index': range(len(df))})
+                X = pd.DataFrame({'time_index': range(len(df_enhanced))})
             
             # Cross-validation evaluation
             cv_scores = []
@@ -674,7 +682,7 @@ class Command(BaseCommand):
                         y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
                         
                         # Train model
-                        train_df = df.iloc[train_idx].copy()
+                        train_df = df_enhanced.iloc[train_idx].copy()
                         model_copy = self._copy_model(model)
                         
                         # Handle different train() method signatures
@@ -698,9 +706,9 @@ class Command(BaseCommand):
             
             # Full model training for final metrics
             if model_name in ['ARIMA', 'LSTM']:
-                model.train(df)  # These models don't take target_col
+                model.train(df_enhanced)  # These models don't take target_col
             else:
-                model.train(df, target_col)
+                model.train(df_enhanced, target_col)
             
             # Calculate final metrics
             if hasattr(model, 'metrics') and model.metrics:
