@@ -550,80 +550,368 @@ class Command(BaseCommand):
         return predictions_created
 
     def select_best_model(self, df, category):
-        """Select the best model for a category based on data characteristics"""
+        """Select the best model based on statistical performance criteria"""
         
-        # Use pooled data count for model selection
         data_size = len(df)
         
-        # Handle very small datasets (1-4 data points)
-        if data_size <= 4:
+        # For very small datasets, still use specialized predictor as fallback
+        if data_size <= 3:
             try:
-                # Get global data for cross-category learning
                 from predictor.models import ExpressEntryDraw
                 global_draws = ExpressEntryDraw.objects.all().values(
                     'date', 'lowest_crs_score', 'invitations_issued'
                 )
                 global_df = pd.DataFrame(global_draws)
-                
-                # Use specialized small dataset predictor
                 small_model = SmallDatasetPredictor(global_data=global_df)
-                confidence = 0.2 + (data_size * 0.1)  # 20-50% confidence for very small data
+                confidence = 0.2 + (data_size * 0.1)
                 return small_model, confidence
-                
             except Exception as e:
-                print(f"Error setting up small dataset predictor: {e}")
-                # Fallback to simple linear model with low confidence
                 fallback_model = LinearRegressionPredictor()
                 fallback_model.name = "Linear Regression (Fallback)"
                 return fallback_model, 0.2
         
-        # Handle small datasets (5-10 data points) with pooled benefits  
-        elif data_size <= 10:
-            try:
-                # With pooled data, we might have enough for Bayesian approach
-                bayesian_model = BayesianPredictor()
-                bayesian_model.name = "Bayesian Regression"
-                confidence = 0.4 + (data_size * 0.05)  # 40-90% confidence based on data size
-                return bayesian_model, confidence
-                
-            except Exception as e:
-                print(f"Error setting up Bayesian model: {e}")
-                # Fallback to Random Forest which works well with small data
-                rf_model = RandomForestPredictor()
-                rf_model.name = "Random Forest (Small Data)"
-                return rf_model, 0.3
+        # For all other cases, evaluate all models and select the best
+        print(f"🔍 Evaluating all available models for {category} ({data_size} data points)...")
         
-        # Medium datasets (11-30 data points) - pooled data advantage
-        elif data_size <= 30:
-            try:
-                # Random Forest for medium pooled data
-                rf_model = RandomForestPredictor()
-                rf_model.name = "Random Forest (Medium Data)"
-                confidence = 0.6 + (data_size * 0.01)  # 60-90% confidence
-                return rf_model, confidence
-                
-            except Exception as e:
-                print(f"Error setting up Random Forest: {e}")
-                linear_model = LinearRegressionPredictor()
-                linear_model.name = "Linear Regression (Fallback)"
-                return linear_model, 0.5
+        try:
+            best_model, confidence = self._evaluate_all_models(df, category)
+            print(f"✅ Selected {best_model.name} with confidence {confidence:.2f}")
+            return best_model, confidence
+            
+        except Exception as e:
+            print(f"❌ Model evaluation failed: {e}")
+            # Fallback to data-size heuristic if evaluation fails
+            return self._fallback_model_selection(df, data_size)
+    
+    def _evaluate_all_models(self, df, category):
+        """Evaluate all available models and select the best based on statistical criteria"""
         
-        # Large datasets (30+ data points) - full model capability
+        # Define models to evaluate
+        models_to_test = [
+            ('Linear Regression', LinearRegressionPredictor()),
+            ('Random Forest', RandomForestPredictor()),
+        ]
+        
+        # Add advanced models if data size permits
+        data_size = len(df)
+        if data_size >= 8:
+            try:
+                from predictor.ml_models import XGBoostPredictor
+                models_to_test.append(('XGBoost', XGBoostPredictor()))
+            except ImportError:
+                pass
+        
+        if data_size >= 10:
+            try:
+                from predictor.ml_models import ARIMAPredictor
+                models_to_test.append(('ARIMA', ARIMAPredictor()))
+            except ImportError:
+                pass
+                
+        if data_size >= 15:
+            try:
+                from predictor.ml_models import LSTMPredictor, ProphetPredictor
+                models_to_test.extend([
+                    ('LSTM', LSTMPredictor()),
+                    ('Prophet', ProphetPredictor()),
+                ])
+            except ImportError:
+                pass
+        
+        print(f"📊 Testing {len(models_to_test)} models: {[name for name, _ in models_to_test]}")
+        
+        model_results = {}
+        target_col = 'lowest_crs_score'
+        
+        for name, model in models_to_test:
+            try:
+                result = self._evaluate_single_model(model, df, target_col, name)
+                if result:
+                    model_results[name] = result
+                    print(f"  ✅ {name}: CV Score={result['cv_score']:.3f}, MAE={result['mae']:.2f}")
+                    
+            except Exception as e:
+                print(f"  ❌ {name}: Failed - {e}")
+                continue
+        
+        if not model_results:
+            raise ValueError("No models could be evaluated successfully")
+        
+        # Select best model using multi-criteria approach
+        best_model_name, best_result = self._select_best_model_multi_criteria(model_results)
+        
+        # Calculate confidence based on model performance
+        confidence = self._calculate_model_confidence(best_result, data_size)
+        
+        return best_result['model'], confidence
+    
+    def _evaluate_single_model(self, model, df, target_col, model_name):
+        """Evaluate a single model using cross-validation and performance metrics"""
+        
+        if len(df) < 5:
+            return None  # Need minimum data for evaluation
+        
+        try:
+            # Prepare data
+            X = df.drop(columns=[target_col]).select_dtypes(include=[np.number])
+            y = df[target_col]
+            
+            if X.empty or len(X.columns) == 0:
+                # For time series models, use index as feature
+                X = pd.DataFrame({'time_index': range(len(df))})
+            
+            # Cross-validation evaluation
+            cv_scores = []
+            n_folds = min(3, len(df) // 2)  # Adaptive fold count
+            
+            if n_folds >= 2:
+                from sklearn.model_selection import KFold
+                kf = KFold(n_splits=n_folds, shuffle=False)  # No shuffle for time series
+                
+                for train_idx, val_idx in kf.split(X):
+                    try:
+                        X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
+                        y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
+                        
+                        # Train model
+                        train_df = df.iloc[train_idx].copy()
+                        model_copy = self._copy_model(model)
+                        model_copy.train(train_df, target_col)
+                        
+                        # Predict
+                        if hasattr(model_copy, 'predict'):
+                            pred = model_copy.predict(X_val)
+                            if isinstance(pred, (list, np.ndarray)):
+                                pred = pred[0] if len(pred) > 0 else y_val.mean()
+                            
+                            # Calculate score (negative MAE for cross-validation)
+                            mae = abs(pred - y_val.iloc[0]) if len(y_val) > 0 else 0
+                            cv_scores.append(-mae)
+                            
+                    except Exception as e:
+                        continue
+            
+            # Full model training for final metrics
+            model.train(df, target_col)
+            
+            # Calculate final metrics
+            if hasattr(model, 'metrics') and model.metrics:
+                mae = model.metrics.get('mae', np.inf)
+                r2 = model.metrics.get('r2', -np.inf)
+            else:
+                mae = np.inf
+                r2 = -np.inf
+            
+            # Information criteria approximation
+            aic, bic = self._calculate_information_criteria(model, df, target_col)
+            
+            return {
+                'model': model,
+                'cv_score': np.mean(cv_scores) if cv_scores else -mae,
+                'cv_std': np.std(cv_scores) if cv_scores else 0,
+                'mae': mae,
+                'r2': r2,
+                'aic': aic,
+                'bic': bic,
+                'n_cv_folds': len(cv_scores)
+            }
+            
+        except Exception as e:
+            print(f"Error evaluating {model_name}: {e}")
+            return None
+    
+    def _copy_model(self, model):
+        """Create a copy of the model for cross-validation"""
+        model_class = type(model)
+        try:
+            return model_class()
+        except:
+            # Fallback to the original model if copying fails
+            return model
+    
+    def _calculate_information_criteria(self, model, df, target_col):
+        """Calculate AIC and BIC for model comparison"""
+        
+        try:
+            # For models with built-in criteria
+            if hasattr(model, 'aic') and hasattr(model, 'bic'):
+                return getattr(model, 'aic', np.inf), getattr(model, 'bic', np.inf)
+            
+            # Approximate for other models
+            n = len(df)
+            if hasattr(model, 'metrics') and model.metrics:
+                mse = model.metrics.get('mse', 1.0)
+            else:
+                # Fallback calculation
+                y_true = df[target_col]
+                y_pred = model.predict(df.drop(columns=[target_col]).select_dtypes(include=[np.number]))
+                if isinstance(y_pred, (list, np.ndarray)):
+                    y_pred = y_pred[0] if len(y_pred) > 0 else y_true.mean()
+                mse = ((y_true - y_pred) ** 2).mean()
+            
+            # Estimate number of parameters
+            n_params = self._estimate_model_parameters(model)
+            
+            # Calculate AIC and BIC
+            log_likelihood = -0.5 * n * (np.log(2 * np.pi * mse) + 1)
+            aic = -2 * log_likelihood + 2 * n_params
+            bic = -2 * log_likelihood + n_params * np.log(n)
+            
+            return aic, bic
+            
+        except Exception as e:
+            return np.inf, np.inf
+    
+    def _estimate_model_parameters(self, model):
+        """Estimate the number of parameters for a model"""
+        
+        if hasattr(model, 'n_estimators'):  # Random Forest, XGBoost
+            return getattr(model, 'n_estimators', 100) * 2
+        elif hasattr(model, 'coef_'):  # Linear models
+            return len(getattr(model, 'coef_', [1]))
+        elif 'ARIMA' in str(type(model)):
+            return 5  # Typical ARIMA parameters
+        elif 'LSTM' in str(type(model)):
+            return 50  # Estimate for LSTM
+        else:
+            return 3  # Default fallback
+    
+    def _select_best_model_multi_criteria(self, model_results):
+        """Select the best model using multiple statistical criteria"""
+        
+        if len(model_results) == 1:
+            return list(model_results.items())[0]
+        
+        # Normalize scores for comparison
+        scores = {}
+        criteria = ['cv_score', 'r2', 'mae', 'aic', 'bic']
+        
+        # Extract values for normalization
+        criteria_values = {criterion: [] for criterion in criteria}
+        for result in model_results.values():
+            for criterion in criteria:
+                value = result.get(criterion, 0)
+                if not np.isfinite(value):
+                    value = 0 if criterion in ['cv_score', 'r2'] else 1000
+                criteria_values[criterion].append(value)
+        
+        # Calculate composite scores
+        for name, result in model_results.items():
+            score = 0
+            
+            # CV Score (higher is better) - weight: 40%
+            cv_score = result.get('cv_score', 0)
+            if not np.isfinite(cv_score):
+                cv_score = min(criteria_values['cv_score'])
+            cv_norm = self._normalize_score(cv_score, criteria_values['cv_score'], higher_better=True)
+            score += cv_norm * 0.4
+            
+            # R² (higher is better) - weight: 25%
+            r2 = result.get('r2', 0)
+            if not np.isfinite(r2):
+                r2 = min(criteria_values['r2'])
+            r2_norm = self._normalize_score(r2, criteria_values['r2'], higher_better=True)
+            score += r2_norm * 0.25
+            
+            # MAE (lower is better) - weight: 20%
+            mae = result.get('mae', np.inf)
+            if not np.isfinite(mae):
+                mae = max(criteria_values['mae'])
+            mae_norm = self._normalize_score(mae, criteria_values['mae'], higher_better=False)
+            score += mae_norm * 0.2
+            
+            # AIC (lower is better) - weight: 10%
+            aic = result.get('aic', np.inf)
+            if not np.isfinite(aic):
+                aic = max(criteria_values['aic'])
+            aic_norm = self._normalize_score(aic, criteria_values['aic'], higher_better=False)
+            score += aic_norm * 0.1
+            
+            # BIC (lower is better) - weight: 5%
+            bic = result.get('bic', np.inf)
+            if not np.isfinite(bic):
+                bic = max(criteria_values['bic'])
+            bic_norm = self._normalize_score(bic, criteria_values['bic'], higher_better=False)
+            score += bic_norm * 0.05
+            
+            scores[name] = score
+        
+        # Select model with highest score
+        best_model_name = max(scores.items(), key=lambda x: x[1])[0]
+        print(f"🏆 Model ranking: {dict(sorted(scores.items(), key=lambda x: x[1], reverse=True))}")
+        
+        return best_model_name, model_results[best_model_name]
+    
+    def _normalize_score(self, value, all_values, higher_better=True):
+        """Normalize a score between 0 and 1"""
+        
+        if len(all_values) <= 1:
+            return 1.0
+        
+        min_val = min(all_values)
+        max_val = max(all_values)
+        
+        if max_val == min_val:
+            return 1.0
+        
+        if higher_better:
+            return (value - min_val) / (max_val - min_val)
+        else:
+            return (max_val - value) / (max_val - min_val)
+    
+    def _calculate_model_confidence(self, result, data_size):
+        """Calculate confidence score based on model performance and data size"""
+        
+        base_confidence = 0.5
+        
+        # CV score contribution (30%)
+        cv_score = result.get('cv_score', -100)
+        cv_confidence = max(0, min(1, (cv_score + 50) / 100)) * 0.3
+        
+        # R² contribution (25%)
+        r2 = result.get('r2', 0)
+        r2_confidence = max(0, min(1, r2)) * 0.25
+        
+        # Data size contribution (20%)
+        size_confidence = min(1, data_size / 50) * 0.2
+        
+        # Cross-validation folds contribution (15%)
+        n_folds = result.get('n_cv_folds', 0)
+        cv_folds_confidence = min(1, n_folds / 3) * 0.15
+        
+        # MAE contribution (10%)
+        mae = result.get('mae', 100)
+        mae_confidence = max(0, min(1, (100 - mae) / 100)) * 0.1
+        
+        total_confidence = base_confidence + cv_confidence + r2_confidence + size_confidence + cv_folds_confidence + mae_confidence
+        
+        return min(0.95, max(0.1, total_confidence))
+    
+    def _fallback_model_selection(self, df, data_size):
+        """Fallback to simple data-size based selection if evaluation fails"""
+        
+        print(f"🔄 Using fallback model selection for {data_size} data points")
+        
+        if data_size <= 10:
+            model = LinearRegressionPredictor()
+            model.name = "Linear Regression (Fallback)"
+            confidence = 0.3 + (data_size * 0.02)
+        elif data_size <= 20:
+            model = RandomForestPredictor()
+            model.name = "Random Forest (Fallback)"
+            confidence = 0.5 + (data_size * 0.01)
         else:
             try:
-                # XGBoost for large pooled datasets
                 from predictor.ml_models import XGBoostPredictor
-                xgb_model = XGBoostPredictor()
-                xgb_model.name = "XGBoost (Large Pooled Data)"
-                confidence = 0.75 + min(data_size * 0.005, 0.2)  # 75-95% confidence
-                return xgb_model, confidence
-                
-            except Exception as e:
-                print(f"Error setting up XGBoost: {e}")
-                # Fallback to Random Forest
-                rf_model = RandomForestPredictor()
-                rf_model.name = "Random Forest (Fallback)"
-                return rf_model, 0.7
+                model = XGBoostPredictor()
+                model.name = "XGBoost (Fallback)"
+                confidence = 0.7
+            except ImportError:
+                model = RandomForestPredictor()
+                model.name = "Random Forest (Fallback)"
+                confidence = 0.6
+        
+        return model, confidence
 
     def cache_dashboard_stats(self):
         """Cache basic prediction counts (removed conflicting dashboard stats cache)"""
