@@ -143,7 +143,7 @@ class ExpressEntryDraw(models.Model):
     lowest_crs_score = models.IntegerField(
         validators=[MinValueValidator(0), MaxValueValidator(1200)]
     )
-    url = models.URLField(blank=True, null=True)
+    url = models.URLField(max_length=500, blank=True, null=True)
     
     # Additional derived fields
     days_since_last_draw = models.IntegerField(blank=True, null=True)
