@@ -510,44 +510,26 @@ class Command(BaseCommand):
         return best_model, best_confidence
 
     def cache_dashboard_stats(self):
-        """Cache expensive dashboard statistics"""
+        """Cache basic prediction counts (removed conflicting dashboard stats cache)"""
         
         try:
-            # Calculate stats
+            # Just cache basic counts - let DashboardStatsAPIView handle its own caching
             total_predictions = PreComputedPrediction.objects.filter(is_active=True).count()
             categories_with_predictions = PreComputedPrediction.objects.filter(
                 is_active=True
             ).values('category').distinct().count()
             
-            last_updated = timezone.now()
-            
-            stats = {
+            # Cache prediction counts only with different cache key
+            prediction_counts = {
                 'total_predictions': total_predictions,
                 'categories_with_predictions': categories_with_predictions,
-                'last_updated': last_updated.isoformat(),
-                'next_predicted_draws': [
-                    {
-                        'category_name': pred['category__name'],
-                        'predicted_date': pred['predicted_date'].isoformat(),
-                        'predicted_crs_score': pred['predicted_crs_score'],
-                        'confidence_score': pred['confidence_score']
-                    }
-                    for pred in PreComputedPrediction.objects.filter(
-                        is_active=True, 
-                        prediction_rank=1
-                    ).select_related('category').values(
-                        'category__name', 
-                        'predicted_date', 
-                        'predicted_crs_score',
-                        'confidence_score'
-                    )[:10]
-                ]
+                'last_updated': timezone.now().isoformat(),
             }
             
-            # Cache for 24 hours
-            PredictionCache.set_cache('dashboard_stats', stats, hours=24)
+            # Use different cache key to avoid conflict with DashboardStatsAPIView
+            PredictionCache.set_cache('prediction_counts', prediction_counts, hours=24)
             
-            self.stdout.write(f'📊 Cached dashboard stats: {total_predictions} predictions for {categories_with_predictions} categories')
+            self.stdout.write(f'📊 Cached prediction counts: {total_predictions} predictions for {categories_with_predictions} categories')
             
         except Exception as e:
-            self.stdout.write(self.style.WARNING(f'⚠️  Failed to cache dashboard stats: {str(e)}')) 
+            self.stdout.write(self.style.WARNING(f'⚠️  Failed to cache prediction counts: {str(e)}')) 
