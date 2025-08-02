@@ -38,6 +38,13 @@ except ImportError:
     TENSORFLOW_AVAILABLE = False
     print("Warning: TensorFlow not available. LSTM model will be disabled.")
 
+try:
+    from prophet import Prophet
+    PROPHET_AVAILABLE = True
+except ImportError:
+    PROPHET_AVAILABLE = False
+    print("Warning: Prophet not available. Prophet model will be disabled.")
+
 
 class BasePredictor:
     """Base class for all prediction models"""
@@ -396,6 +403,80 @@ class LinearRegressionPredictor(BasePredictor):
         
         X_scaled = self.scaler.transform(X)
         return self.model.predict(X_scaled)
+
+
+class ProphetPredictor(BasePredictor):
+    """Prophet time series model for EE draw prediction"""
+    
+    def __init__(self, yearly_seasonality=True, weekly_seasonality=False, daily_seasonality=False):
+        super().__init__("Prophet Time Series", "PROPHET")
+        if not PROPHET_AVAILABLE:
+            raise ImportError("Prophet is required for Prophet model")
+        self.yearly_seasonality = yearly_seasonality
+        self.weekly_seasonality = weekly_seasonality
+        self.daily_seasonality = daily_seasonality
+        self.model = None
+    
+    def train(self, df, target_col='lowest_crs_score', date_col='date'):
+        """Train Prophet model
+        
+        Args:
+            df: DataFrame with date and target columns
+            target_col: Name of the target column
+            date_col: Name of the date column
+        """
+        # Prepare data in Prophet format
+        prophet_data = pd.DataFrame({
+            'ds': pd.to_datetime(df[date_col]),
+            'y': df[target_col]
+        })
+        
+        # Remove rows with NaN values
+        prophet_data = prophet_data.dropna()
+        
+        # Initialize Prophet model
+        self.model = Prophet(
+            yearly_seasonality=self.yearly_seasonality,
+            weekly_seasonality=self.weekly_seasonality,
+            daily_seasonality=self.daily_seasonality,
+            changepoint_prior_scale=0.05  # Sensitivity to trend changes
+        )
+        
+        # Add custom seasonality for bi-weekly Express Entry draws
+        self.model.add_seasonality(
+            name='biweekly',
+            period=14,  # 14 days for bi-weekly pattern
+            fourier_order=3
+        )
+        
+        # Fit the model
+        self.model.fit(prophet_data)
+        self.is_trained = True
+        
+        # Calculate metrics on fitted values
+        forecast = self.model.predict(prophet_data[['ds']])
+        self.metrics = self.evaluate(prophet_data['y'], forecast['yhat'])
+        
+        return self.metrics
+    
+    def predict(self, periods=30, freq='D'):
+        """Make predictions
+        
+        Args:
+            periods: Number of periods to forecast
+            freq: Frequency of predictions ('D' for daily, 'W' for weekly)
+        """
+        if not self.is_trained:
+            raise ValueError("Model must be trained before making predictions")
+        
+        # Create future dataframe
+        future = self.model.make_future_dataframe(periods=periods, freq=freq)
+        
+        # Make predictions
+        forecast = self.model.predict(future)
+        
+        # Return predictions for the forecasted periods
+        return forecast['yhat'].tail(periods).values.tolist()
 
 
 class EnsemblePredictor(BasePredictor):
