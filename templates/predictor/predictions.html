@@ -98,7 +98,7 @@
                 <div class="card-header">
                     <h5 class="mb-0">
                         <i class="fas fa-chart-line me-2"></i>
-                        Prediction Timeline - Next 6 Months
+                        Prediction Timeline
                     </h5>
                 </div>
                 <div class="card-body">
@@ -421,7 +421,7 @@ function createTimelineChart(predictions) {
             x: points.map(p => p.x),
             y: points.map(p => p.y),
             mode: 'lines+markers',
-            name: category,
+            name: abbreviateCategoryName(category),
             line: {
                 width: 3
             },
@@ -434,7 +434,7 @@ function createTimelineChart(predictions) {
     
     const layout = {
         title: {
-            text: 'Predicted CRS Scores Timeline - Next 6 Months',
+            text: 'Predicted CRS Scores Timeline',
             font: { size: 18 },
             y: 0.95
         },
@@ -545,6 +545,41 @@ function getCategoryColor(categoryName) {
     }
     
     return '#007bff';
+}
+
+function abbreviateCategoryName(categoryName) {
+    const abbreviations = {
+        'Canadian Experience Class': 'CEC',
+        'Provincial Nominee Program': 'PNP',
+        'Federal Skilled Worker': 'FSW',
+        'Federal Skilled Trades': 'FST',
+        'Agriculture and agri-food occupations (Version 1)': 'Agriculture',
+        'Healthcare and social services occupations (Version 2)': 'Health (v2)',
+        'Healthcare occupations (Version 1)': 'Health (v1)',
+        'Education occupations (Version 1)': 'Education',
+        'French language proficiency (Version 1)': 'French',
+        'STEM occupations (Version 1)': 'STEM',
+        'Trade occupations (Version 1)': 'Trades',
+        'Transport occupations (Version 1)': 'Transport',
+        'No Program Specified': 'General',
+        'General': 'General'
+    };
+    
+    // Check for exact matches first
+    if (abbreviations[categoryName]) {
+        return abbreviations[categoryName];
+    }
+    
+    // Check for partial matches
+    for (const [key, abbrev] of Object.entries(abbreviations)) {
+        if (categoryName.includes(key)) {
+            return abbrev;
+        }
+    }
+    
+    // Default: use first word if no match found
+    const firstWord = categoryName.split(' ')[0];
+    return firstWord.length > 8 ? firstWord.substring(0, 8) + '...' : firstWord;
 }
 
 // Comprehensive filter functionality
