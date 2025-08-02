@@ -38,6 +38,7 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: var(--light-bg);
             color: var(--dark-text);
+            padding-top: 70px; /* Adjust based on navbar height */
         }
         
         .navbar-brand {
@@ -48,6 +49,24 @@
         /* Smaller, narrower navigation bar */
         .navbar {
             padding: 0.25rem 0; /* Reduced from default 0.5rem 1rem */
+            position: fixed; /* Make navbar sticky */
+            top: 0;
+            width: 100%;
+            z-index: 1030; /* Ensure it stays above other content */
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Add subtle shadow */
+        }
+        
+        /* Add padding to body to compensate for fixed navbar - moved to main body style above */
+        
+        /* Responsive padding for mobile */
+        @media (max-width: 768px) {
+            body {
+                padding-top: 80px !important; /* Slightly more padding on mobile */
+            }
+            
+            .navbar {
+                box-shadow: 0 1px 3px rgba(0,0,0,0.15); /* Lighter shadow on mobile */
+            }
         }
         
         .navbar-nav .nav-link {
