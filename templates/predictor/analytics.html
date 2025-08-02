@@ -251,13 +251,15 @@ function displayRecentDraws(draws) {
         const row = document.createElement('tr');
         const categoryClass = getCategoryClass(draw.category_name);
         
+        const daysSince = calculateDaysSince(draw.date);
+        
         row.innerHTML = `
             <td><strong>#${draw.round_number}</strong></td>
             <td>${formatDate(draw.date)}</td>
             <td><span class="badge ${categoryClass}">${draw.category_name}</span></td>
             <td><strong>${draw.lowest_crs_score}</strong></td>
             <td>${draw.invitations_issued.toLocaleString()}</td>
-            <td>${draw.days_since_last_draw || 'N/A'} days</td>
+            <td>${daysSince === 'N/A' ? 'N/A' : daysSince} days</td>
         `;
         tbody.appendChild(row);
     });
@@ -528,6 +530,21 @@ function formatDate(dateString) {
         month: 'short',
         day: 'numeric'
     });
+}
+
+function calculateDaysSince(dateString) {
+    if (!dateString) return 'N/A';
+    
+    const drawDate = new Date(dateString);
+    const today = new Date();
+    
+    // Calculate the difference in milliseconds
+    const timeDifference = today.getTime() - drawDate.getTime();
+    
+    // Convert to days and round down
+    const daysDifference = Math.floor(timeDifference / (1000 * 3600 * 24));
+    
+    return daysDifference;
 }
 
 function getCategoryClass(categoryName) {
