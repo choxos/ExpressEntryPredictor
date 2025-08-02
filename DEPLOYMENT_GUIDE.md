@@ -24,6 +24,28 @@ The Express Entry Predictor is a Django-based web application that uses **8 mach
 - **Git**
 - **Virtual environment** (recommended)
 
+### 2. Clean up
+
+```bash
+# Remove all predictions and caches in one command
+python manage.py shell -c "
+from predictor.models import PreComputedPrediction, PredictionCache
+print('Clearing all prediction data...')
+
+# Delete all pre-computed predictions
+pred_count = PreComputedPrediction.objects.count()
+PreComputedPrediction.objects.all().delete()
+print(f'✅ Deleted {pred_count} pre-computed predictions')
+
+# Delete all prediction cache entries
+cache_count = PredictionCache.objects.count()
+PredictionCache.objects.all().delete()
+print(f'✅ Deleted {cache_count} cache entries')
+
+print('🎯 All prediction data cleared successfully!')
+"
+```
+
 ### 2. Installation & Setup
 
 ```bash
