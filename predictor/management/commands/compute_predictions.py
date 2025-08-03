@@ -101,43 +101,64 @@ class Command(BaseCommand):
         for category in categories:
             ircc_category, related_categories = DrawCategory.get_pooled_categories(category.name)
             
+            # 🚨 2025 POLICY FILTER: Skip eliminated categories entirely
+            if self.is_category_eliminated_2025(ircc_category):
+                self.stdout.write(self.style.WARNING(
+                    f'🚫 Skipping {ircc_category}: ELIMINATED by 2025 policy changes'
+                ))
+                continue
+            
             # Use the IRCC category as the key
             if ircc_category not in ircc_groups:
                 ircc_groups[ircc_category] = {
                     'representative_category': category,  # Use first category as representative
                     'related_categories': list(related_categories),
-                    'total_draws': 0
+                    'total_draws': 0,
+                    'priority_level': self.get_category_priority_2025(ircc_category),
+                    'adjusted_predictions': self.get_adjusted_prediction_count(ircc_category, num_predictions)
                 }
             
             # Update total draws count
             pooled_draws, _, _ = category.get_pooled_data()
             ircc_groups[ircc_category]['total_draws'] = pooled_draws.count()
         
-        # Display grouping summary
-        self.stdout.write(f'\n📊 Grouped into {len(ircc_groups)} unique IRCC categories:')
+        # Display grouping summary with priority information
+        self.stdout.write(f'\n📊 Grouped into {len(ircc_groups)} unique IRCC categories (2025 policy-filtered):')
         for ircc_cat, group_info in ircc_groups.items():
+            priority_emoji = {
+                'HIGH': '🔥',
+                'MEDIUM': '📋', 
+                'LOW': '⬇️'
+            }.get(group_info['priority_level'], '📋')
+            
             related_names = [cat.name for cat in group_info['related_categories']]
+            pred_count = group_info['adjusted_predictions']
+            
             if len(related_names) > 1:
-                self.stdout.write(f'   🔗 {ircc_cat}: {len(related_names)} versions → {group_info["total_draws"]} total draws')
+                self.stdout.write(f'   {priority_emoji} {ircc_cat}: {len(related_names)} versions → {group_info["total_draws"]} draws → {pred_count} predictions')
                 for name in related_names:
                     self.stdout.write(f'      └─ {name}')
             else:
-                self.stdout.write(f'   📋 {ircc_cat}: {group_info["total_draws"]} draws')
+                self.stdout.write(f'   {priority_emoji} {ircc_cat}: {group_info["total_draws"]} draws → {pred_count} predictions')
         
         total_groups = len(ircc_groups)
-        self.stdout.write(f'\n📊 Processing {total_groups} unique IRCC categories...')
+        self.stdout.write(f'\n📊 Processing {total_groups} policy-compliant IRCC categories...')
         
         successful_predictions = 0
         local_failed_categories = []
         
         for i, (ircc_category, group_info) in enumerate(ircc_groups.items(), 1):
             representative_category = group_info['representative_category']
+            adjusted_count = group_info['adjusted_predictions']
+            priority_level = group_info['priority_level']
+            
             self.stdout.write(f'\n[{i}/{total_groups}] Processing IRCC Category: {ircc_category}')
             self.stdout.write(f'   📂 Using representative: {representative_category.name}')
+            self.stdout.write(f'   🎯 2025 Priority: {priority_level} → {adjusted_count} predictions')
             
             try:
                 predictions_created = self.compute_category_predictions(
-                    representative_category, num_predictions, force_recompute
+                    representative_category, adjusted_count, force_recompute
                 )
                 
                 if predictions_created > 0:
@@ -200,6 +221,71 @@ class Command(BaseCommand):
         
         self.stdout.write(self.style.SUCCESS('\n🎉 Prediction computation completed!'))
 
+    def is_category_eliminated_2025(self, ircc_category):
+        """Check if category is eliminated by 2025 policy changes"""
+        eliminated_categories = [
+            'Transport occupations',
+            'General',  # Eliminated after April 2024
+            'No Program Specified'
+        ]
+        
+        # Transport occupations completely eliminated
+        if 'Transport' in ircc_category:
+            return True
+        
+        # General draws eliminated after April 2024
+        if any(term in ircc_category for term in ['General', 'No Program']):
+            return True
+        
+        return False
+    
+    def get_category_priority_2025(self, ircc_category):
+        """Get 2025 policy priority level for category"""
+        
+        # HIGH PRIORITY: 66% allocation for in-Canada + critical labor shortages
+        if any(term in ircc_category for term in [
+            'Canadian Experience Class',  # 38.1% of invitations
+            'French'  # 37.4% of invitations, largest volumes
+        ]):
+            return 'HIGH'
+        
+        # HIGH PRIORITY: Critical labor shortage sectors
+        if any(term in ircc_category for term in [
+            'Healthcare',  # 36 eligible occupations
+            'Trade',  # 25 NOC codes, construction focus
+            'Education'  # New priority category, 5 NOC codes
+        ]):
+            return 'HIGH'
+        
+        # MEDIUM PRIORITY: Reduced but active
+        if 'Provincial Nominee' in ircc_category:
+            return 'MEDIUM'  # Reduced from 120K to 55K but still active
+        
+        # LOW PRIORITY: Deprioritized categories
+        if any(term in ircc_category for term in [
+            'STEM', 'Agriculture', 'Federal Skilled'
+        ]):
+            return 'LOW'
+        
+        return 'MEDIUM'  # Default for unclassified categories
+    
+    def get_adjusted_prediction_count(self, ircc_category, base_count):
+        """Adjust prediction count based on 2025 policy priority"""
+        priority = self.get_category_priority_2025(ircc_category)
+        
+        if priority == 'HIGH':
+            # CEC and French get extended predictions (bi-weekly through 2027)
+            if any(term in ircc_category for term in ['Canadian Experience', 'French']):
+                return min(52, base_count * 3)  # Up to 52 weeks (1 year) for top priorities
+            else:
+                return min(26, base_count * 2)  # Up to 26 weeks for other high priority
+        
+        elif priority == 'MEDIUM':
+            return base_count  # Standard prediction count
+        
+        else:  # LOW priority
+            return max(3, base_count // 2)  # Reduced predictions for deprioritized
+    
     def compute_category_predictions(self, category, num_predictions, force_recompute):
         """Compute predictions for a specific category"""
         
