@@ -170,8 +170,12 @@ class BasePredictor:
         features['days_since_program_start'] = (pd.to_datetime(features['date']) - program_start).dt.days
         features['years_since_program_start'] = features['days_since_program_start'] / 365.25
         
-        # ✅ COMPREHENSIVE UNCERTAINTY MODELING for Future Predictions
-        # Apply uncertainty to confounding factors to increase prediction variation
+        # ✅ APPLY 2025 POLICY INTELLIGENCE TO ALL DATA
+        # Integrate government policy decisions and strategic shifts
+        features = self._add_policy_intelligence_2025(features)
+        
+        # ✅ COMPREHENSIVE UNCERTAINTY MODELING + 2025 POLICY INTELLIGENCE
+        # Apply uncertainty + government policy intelligence for realistic predictions
         try:
             # Check if this is for future prediction (dates beyond latest historical data)
             from .models import ExpressEntryDraw
@@ -195,6 +199,9 @@ class BasePredictor:
                     
                     # Add seasonal/calendar uncertainty
                     future_features = self._add_seasonal_uncertainty(future_features)
+                    
+                    # ✅ NEW: Add 2025 Express Entry policy intelligence
+                    future_features = self._add_policy_intelligence_2025(future_features)
                     
                     # Replace future rows with uncertainty-enhanced versions
                     features.loc[future_mask] = future_features
@@ -397,6 +404,116 @@ class BasePredictor:
                 'rmse': np.sqrt(mse),
                 'r2': r2
             }
+    
+    def _add_policy_intelligence_2025(self, features):
+        """Add 2025 Express Entry policy intelligence from government decisions"""
+        import random
+        
+        # ✅ POLICY INTELLIGENCE: 2025 Express Entry Strategic Shift
+        # Based on February 27, 2025 announcement and 2025-2027 Immigration Levels Plan
+        
+        for i in range(len(features)):
+            draw_date = pd.to_datetime(features.iloc[i]['date'])
+            
+            # 🎯 IN-CANADA PRIORITY WEIGHTING (66% of 124,680 allocations)
+            # 82,980 spots for in-Canada candidates - highest priority factor
+            if 'category' in features.columns:
+                category_name = features.iloc[i].get('category', '')
+                
+                # Canadian Experience Class: 38.1% of invitations, priority pathway
+                if 'Canadian Experience' in str(category_name):
+                    features.loc[features.index[i], 'policy_priority_weight'] = 1.0  # Highest priority
+                    features.loc[features.index[i], 'in_canada_allocation'] = 82980
+                    features.loc[features.index[i], 'expected_crs_range'] = random.uniform(507, 547)  # Declining trend
+                    features.loc[features.index[i], 'draw_frequency_weeks'] = 2  # Bi-weekly rhythm
+                    
+                # French Language: 37.4% of invitations, largest draw volumes
+                elif 'French' in str(category_name):
+                    features.loc[features.index[i], 'policy_priority_weight'] = 0.95  # High priority
+                    features.loc[features.index[i], 'francophone_target_pct'] = random.uniform(8.5, 10.0)  # Progressive targets
+                    features.loc[features.index[i], 'expected_crs_range'] = random.uniform(379, 428)  # Most accessible
+                    features.loc[features.index[i], 'typical_invitation_volume'] = random.uniform(4500, 7500)
+                    
+                # Healthcare: Critical labor shortage, 36 eligible occupations
+                elif 'Healthcare' in str(category_name):
+                    features.loc[features.index[i], 'policy_priority_weight'] = 0.85  # High priority
+                    features.loc[features.index[i], 'labor_shortage_severity'] = 0.9  # Critical shortage
+                    features.loc[features.index[i], 'expected_crs_range'] = random.uniform(450, 510)
+                    features.loc[features.index[i], 'eligible_occupations'] = 36
+                    
+                # Education: New priority category (5 NOC codes)
+                elif 'Education' in str(category_name):
+                    features.loc[features.index[i], 'policy_priority_weight'] = 0.80  # New priority
+                    features.loc[features.index[i], 'labor_shortage_severity'] = 0.8  # Education crisis
+                    features.loc[features.index[i], 'expected_crs_range'] = random.uniform(450, 490)
+                    features.loc[features.index[i], 'eligible_occupations'] = 5
+                    
+                # Trade Occupations: Enhanced with construction (25 NOC codes)
+                elif 'Trade' in str(category_name):
+                    features.loc[features.index[i], 'policy_priority_weight'] = 0.75  # Medium-high priority
+                    features.loc[features.index[i], 'construction_shortage'] = 0.9  # Severe construction shortage
+                    features.loc[features.index[i], 'expected_crs_range'] = random.uniform(430, 480)
+                    features.loc[features.index[i], 'eligible_occupations'] = 25
+                    
+                # Provincial Nominee: Reduced allocation but guaranteed pathway
+                elif 'Provincial' in str(category_name):
+                    features.loc[features.index[i], 'policy_priority_weight'] = 0.70  # Medium priority
+                    features.loc[features.index[i], 'pnp_allocation_reduction'] = 0.54  # 65,000 reduction
+                    features.loc[features.index[i], 'expected_crs_range'] = random.uniform(663, 816)
+                    features.loc[features.index[i], 'crs_bonus_points'] = 600  # Guaranteed bonus
+                    
+                # Transport: ELIMINATED category (post-March 2024)
+                elif 'Transport' in str(category_name):
+                    if draw_date > pd.to_datetime('2024-03-01'):
+                        features.loc[features.index[i], 'policy_priority_weight'] = 0.0  # ELIMINATED
+                        features.loc[features.index[i], 'category_status'] = 'ELIMINATED'
+                    else:
+                        features.loc[features.index[i], 'policy_priority_weight'] = 0.1  # Legacy only
+                        
+                # STEM/Agriculture: Deprioritized, unlikely regular draws
+                elif any(term in str(category_name) for term in ['STEM', 'Agriculture']):
+                    features.loc[features.index[i], 'policy_priority_weight'] = 0.2  # Deprioritized
+                    features.loc[features.index[i], 'category_status'] = 'DEPRIORITIZED'
+                    
+                # General/No Program: ELIMINATED after April 2024
+                elif any(term in str(category_name) for term in ['General', 'No Program']):
+                    if draw_date > pd.to_datetime('2024-04-01'):
+                        features.loc[features.index[i], 'policy_priority_weight'] = 0.0  # ELIMINATED
+                        features.loc[features.index[i], 'category_status'] = 'ELIMINATED'
+                    else:
+                        features.loc[features.index[i], 'policy_priority_weight'] = 0.3  # Historical only
+            
+            # 🎯 CRS SCORING REVOLUTION (March 25, 2025)
+            # Job offer points eliminated - major score deflation
+            if draw_date > pd.to_datetime('2025-03-25'):
+                features.loc[features.index[i], 'crs_job_offer_impact'] = 0  # Eliminated
+                features.loc[features.index[i], 'score_deflation_factor'] = random.uniform(0.85, 0.95)  # 5-15% reduction
+            else:
+                features.loc[features.index[i], 'crs_job_offer_impact'] = random.uniform(50, 200)  # Historical impact
+                features.loc[features.index[i], 'score_deflation_factor'] = 1.0
+            
+            # 📊 IMMIGRATION LEVELS PLAN 2025-2027
+            year = draw_date.year
+            if year >= 2025:
+                features.loc[features.index[i], 'total_immigration_target'] = 395000  # Reduced from 500k
+                features.loc[features.index[i], 'express_entry_allocation'] = 124680  # Increased allocation
+                features.loc[features.index[i], 'pnp_allocation'] = 55000  # Dramatically reduced
+                features.loc[features.index[i], 'in_canada_focus_pct'] = 66  # 66% for in-Canada candidates
+            else:
+                features.loc[features.index[i], 'total_immigration_target'] = 500000  # Historical target
+                features.loc[features.index[i], 'express_entry_allocation'] = 117500  # Historical allocation
+                features.loc[features.index[i], 'pnp_allocation'] = 120000  # Historical PNP
+                
+            # 🗓️ SEASONAL PATTERNS WITH POLICY AWARENESS
+            month = draw_date.month
+            if month == 7:  # July surge pattern
+                features.loc[features.index[i], 'seasonal_surge_factor'] = random.uniform(1.3, 1.8)  # 30-80% increase
+            elif month in [11, 12]:  # Year-end acceleration
+                features.loc[features.index[i], 'seasonal_surge_factor'] = random.uniform(1.1, 1.4)
+            else:
+                features.loc[features.index[i], 'seasonal_surge_factor'] = 1.0
+                
+        return features
 
 
 class ARIMAPredictor(BasePredictor):
