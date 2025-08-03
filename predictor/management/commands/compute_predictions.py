@@ -260,7 +260,7 @@ class Command(BaseCommand):
         
         # Clear old predictions if force recompute (for all models)
         if force_recompute:
-            PreComputedPrediction.objects.filter(category=category).update(is_active=False)
+            PreComputedPrediction.objects.filter(category=category).delete()
         
         # Generate predictions
         import pytz
@@ -381,6 +381,71 @@ class Command(BaseCommand):
                             except Exception as e:
                                 print(f"⚠️ LSTM prediction failed: {e}, using simple approach")
                                 # Fallback to simple prediction
+                                predicted_score = df['lowest_crs_score'].mean()
+                        elif current_model.name in ['VAR', 'Vector Autoregression']:
+                            # VAR models return lists/arrays
+                            try:
+                                predicted_scores = current_model.predict(steps=rank)
+                                if isinstance(predicted_scores, list) and len(predicted_scores) >= rank:
+                                    predicted_score = predicted_scores[rank-1]
+                                elif isinstance(predicted_scores, list) and len(predicted_scores) > 0:
+                                    predicted_score = predicted_scores[0]
+                                else:
+                                    predicted_score = float(predicted_scores) if not hasattr(predicted_scores, '__len__') else float(predicted_scores[0])
+                            except Exception as e:
+                                print(f"⚠️ VAR prediction failed: {e}, using fallback")
+                                predicted_score = df['lowest_crs_score'].mean()
+                        elif current_model.name in ['Dynamic Linear Model', 'DLM']:
+                            # DLM returns numpy arrays/matrices
+                            try:
+                                predicted_scores = current_model.predict(steps=rank)
+                                if isinstance(predicted_scores, list) and len(predicted_scores) >= rank:
+                                    pred_val = predicted_scores[rank-1]
+                                    # Handle numpy arrays/matrices
+                                    if hasattr(pred_val, 'item'):
+                                        predicted_score = pred_val.item()
+                                    elif hasattr(pred_val, '__getitem__'):
+                                        predicted_score = float(pred_val[0])
+                                    else:
+                                        predicted_score = float(pred_val)
+                                elif isinstance(predicted_scores, list) and len(predicted_scores) > 0:
+                                    pred_val = predicted_scores[0]
+                                    if hasattr(pred_val, 'item'):
+                                        predicted_score = pred_val.item()
+                                    elif hasattr(pred_val, '__getitem__'):
+                                        predicted_score = float(pred_val[0])
+                                    else:
+                                        predicted_score = float(pred_val)
+                                else:
+                                    predicted_score = df['lowest_crs_score'].mean()
+                            except Exception as e:
+                                print(f"⚠️ DLM prediction failed: {e}, using fallback")
+                                predicted_score = df['lowest_crs_score'].mean()
+                        elif current_model.name in ['Holt-Winters', 'HW']:
+                            # Holt-Winters returns lists
+                            try:
+                                predicted_scores = current_model.predict(steps=rank)
+                                if isinstance(predicted_scores, list) and len(predicted_scores) >= rank:
+                                    predicted_score = float(predicted_scores[rank-1])
+                                elif isinstance(predicted_scores, list) and len(predicted_scores) > 0:
+                                    predicted_score = float(predicted_scores[0])
+                                else:
+                                    predicted_score = float(predicted_scores) if not hasattr(predicted_scores, '__len__') else df['lowest_crs_score'].mean()
+                            except Exception as e:
+                                print(f"⚠️ Holt-Winters prediction failed: {e}, using fallback")
+                                predicted_score = df['lowest_crs_score'].mean()
+                        elif current_model.name in ['SARIMA', 'Exponential Smoothing']:
+                            # SARIMA and Exponential Smoothing models
+                            try:
+                                predicted_scores = current_model.predict(steps=rank)
+                                if isinstance(predicted_scores, list) and len(predicted_scores) >= rank:
+                                    predicted_score = float(predicted_scores[rank-1])
+                                elif isinstance(predicted_scores, list) and len(predicted_scores) > 0:
+                                    predicted_score = float(predicted_scores[0])
+                                else:
+                                    predicted_score = float(predicted_scores) if not hasattr(predicted_scores, '__len__') else df['lowest_crs_score'].mean()
+                            except Exception as e:
+                                print(f"⚠️ {current_model.name} prediction failed: {e}, using fallback")
                                 predicted_score = df['lowest_crs_score'].mean()
                         else:
                             # ML models need feature data with same engineering as training
@@ -637,7 +702,6 @@ class Command(BaseCommand):
                             'predicted_crs_score': predicted_score,
                             'predicted_invitations': predicted_invitations,
                             'confidence_score': model_confidence,
-                            'model_used': str(model_name),
                             'model_version': '1.0',
                             'uncertainty_range': uncertainty_range,
                             'is_active': True
