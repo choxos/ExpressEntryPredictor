@@ -596,10 +596,10 @@ async function createCategoryContent(categoryData) {
                                             </div>
                                         </div>
                                         
-                                        ${pred.uncertainty_range && pred.uncertainty_range.invitations_confidence ? `
+                                        ${model.uncertainty_range && model.uncertainty_range.invitations_confidence ? `
                                             <div class="mt-2 text-center">
                                                 <small class="text-muted">
-                                                    Invitations Confidence: <strong>${pred.uncertainty_range.invitations_confidence}%</strong>
+                                                    Invitations Confidence: <strong>${model.uncertainty_range.invitations_confidence}%</strong>
                                                 </small>
                                             </div>
                                         ` : ''}
