@@ -658,23 +658,72 @@ function getCategoryClass(categoryName) {
 
 function getCategoryColor(categoryName) {
     const categoryColors = {
-        'Provincial Nominee Program': '#FF6B35', // Vibrant Orange
-        'Canadian Experience Class': '#00A8CC', // Bright Cyan
-        'Federal Skilled Worker': '#7209B7', // Rich Purple
-        'General': '#2D3748', // Dark Blue-Gray
-        'No Program Specified': '#718096', // Light Gray
-        'French language proficiency': '#E53E3E', // Bright Red
-        'Healthcare': '#38A169', // Medical Green
-        'STEM': '#3182CE', // Tech Blue
-        'Healthcare occupations': '#38A169', // Medical Green
-        'Agriculture and agri-food occupations': '#68D391', // Agriculture Green
-        'Education occupations': '#9F7AEA', // Education Purple
-        'Trade occupations': '#F56500', // Trade Orange
-        'Transport occupations': '#319795', // Transport Teal
-        'Federal Skilled Trades': '#ED8936', // Skilled Trades Gold
-        'Francophone minority communities': '#E53E3E' // French Red
+        // Main Immigration Categories
+        'Provincial Nominee Program': '#FF6B35',        // Vibrant Orange
+        'Canadian Experience Class': '#00A8CC',         // Bright Cyan  
+        'Federal Skilled Worker': '#7209B7',            // Rich Purple
+        'Federal Skilled Trades': '#FF8C42',            // Distinct Orange-Red
+        'General': '#2D3748',                           // Dark Blue-Gray
+        'No Program Specified': '#8B5A3C',             // Brown
+        
+        // Language Categories
+        'French language proficiency': '#E53E3E',       // Bright Red
+        'Francophone minority communities': '#C05621',  // Darker Orange-Red
+        
+        // Occupation-Based Categories  
+        'Healthcare occupations': '#38A169',            // Medical Green
+        'Healthcare': '#22C55E',                        // Brighter Green (different from healthcare occupations)
+        'STEM occupations': '#3182CE',                  // Tech Blue
+        'STEM': '#1E40AF',                              // Deeper Blue
+        'Agriculture and agri-food occupations': '#10B981', // Emerald Green
+        'Education occupations': '#9F7AEA',            // Education Purple
+        'Trade occupations': '#F59E0B',                // Amber
+        'Transport occupations': '#06B6D4',            // Sky Blue
+        
+        // Additional Categories
+        'International Student': '#EC4899',            // Pink
+        'Essential Worker': '#84CC16',                  // Lime Green
+        'Entrepreneur': '#F97316',                      // Orange
+        'Caregiver': '#8B5CF6',                        // Violet
+        'Rural and Northern': '#059669',               // Teal Green
+        'Skilled Worker': '#DC2626',                   // Red
+        'Business': '#7C3AED',                         // Purple
+        'Investor': '#B91C1C',                         // Dark Red
+        'Self-employed': '#065F46',                    // Dark Green
     };
-    return categoryColors[categoryName] || '#A0AEC0'; // Light gray default
+    
+    // If exact match found, return it
+    if (categoryColors[categoryName]) {
+        return categoryColors[categoryName];
+    }
+    
+    // Try partial matches for flexibility
+    for (const [key, color] of Object.entries(categoryColors)) {
+        if (categoryName && categoryName.toLowerCase().includes(key.toLowerCase())) {
+            return color;
+        }
+    }
+    
+    // Generate a consistent color based on category name hash for unknown categories
+    if (categoryName) {
+        const fallbackColors = [
+            '#6366F1', '#8B5CF6', '#EC4899', '#EF4444', '#F97316', 
+            '#F59E0B', '#84CC16', '#22C55E', '#10B981', '#14B8A6',
+            '#06B6D4', '#3B82F6', '#6366F1', '#8B5CF6', '#D946EF'
+        ];
+        
+        // Create a simple hash from the category name
+        let hash = 0;
+        for (let i = 0; i < categoryName.length; i++) {
+            hash = ((hash << 5) - hash + categoryName.charCodeAt(i)) & 0xffffffff;
+        }
+        
+        // Use hash to pick a consistent color
+        const colorIndex = Math.abs(hash) % fallbackColors.length;
+        return fallbackColors[colorIndex];
+    }
+    
+    return '#6B7280'; // Neutral gray as final fallback
 }
 </script>
 {% endblock %} 
