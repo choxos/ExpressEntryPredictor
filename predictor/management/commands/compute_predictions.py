@@ -265,53 +265,94 @@ class Command(BaseCommand):
         return False
     
     def get_category_priority_2025(self, ircc_category):
-        """Get 2025 policy priority level for category"""
+        """
+        Get 2025 policy priority based on OFFICIAL Government Announcement.
         
-        # HIGH PRIORITY: 66% allocation for in-Canada + critical labor shortages
-        if any(term in ircc_category for term in [
-            'Canadian Experience Class',  # 38.1% of invitations
-            'French'  # 37.4% of invitations, largest volumes
-        ]):
-            return 'HIGH'
+        Source: Canada.ca Feb 27, 2025 - "Canada announces 2025 Express Entry 
+        category-based draws, plans for more in-Canada draws"
         
-        # HIGH PRIORITY: Critical labor shortage sectors (but less frequent than CEC/French)
-        if any(term in ircc_category for term in [
-            'Healthcare',  # 36 eligible occupations - monthly draws
-        ]):
-            return 'MEDIUM'  # Changed from HIGH to MEDIUM for realistic frequency
+        Official Policy: "For 2025, the focus of the federal economic class 
+        draws will be to invite candidates with experience working in Canada"
+        """
         
-        # MEDIUM PRIORITY: Important sectors but less frequent draws
-        if any(term in ircc_category for term in [
-            'Provincial Nominee',  # Reduced from 120K to 55K but still active
-            'Trade',  # 25 NOC codes, sporadic scheduling based on labor market
-            'Education'  # New priority, sporadic scheduling based on labor market
-        ]):
-            return 'MEDIUM'
+        # 🏆 HIGHEST PRIORITY: Canadian Experience Class - PRIMARY 2025 FOCUS
+        # Government Quote: "focus will be to invite candidates with experience 
+        # working in Canada (Canadian Experience Class)"
+        if any(term in ircc_category for term in ['Canadian Experience']):
+            return 'HIGHEST'  # Primary focus, frequent draws
         
-        # LOW PRIORITY: Deprioritized categories
-        if any(term in ircc_category for term in [
-            'STEM', 'Agriculture', 'Federal Skilled'
-        ]):
-            return 'LOW'
+        # 🥇 HIGH PRIORITY: Official Category-Based Selection Priorities
+        # 1. Healthcare: 55.8% rated "great need" (highest in consultations)
+        if any(term in ircc_category for term in ['Healthcare']):
+            return 'HIGH'  # Monthly draws, strong government priority
         
-        return 'MEDIUM'  # Default for unclassified categories
+        # 2. French: Official commitment to Francophone immigration
+        if any(term in ircc_category for term in ['French']):
+            return 'HIGH'  # Monthly draws, government mandate
+        
+        # 🥈 MEDIUM PRIORITY: Confirmed 2025 Categories
+        # 3. Trades: 38.8% rated "great need", confirmed priority
+        if any(term in ircc_category for term in ['Trade']):
+            return 'MEDIUM'  # Quarterly draws per consultation results
+        
+        # 4. Education: 28.4% rated "great need", NEW 2025 category
+        if any(term in ircc_category for term in ['Education']):
+            return 'MEDIUM'  # New category, quarterly draws
+        
+        # Provincial Nominee: Continues but with reduced emphasis
+        if any(term in ircc_category for term in ['Provincial Nominee']):
+            return 'MEDIUM'  # Bi-weekly operational frequency
+        
+        # 🥉 LOW PRIORITY: Reduced Focus Categories  
+        # STEM: Not prioritized in 2025 announcement
+        if any(term in ircc_category for term in ['STEM']):
+            return 'LOW'  # Minimal draws
+        
+        # Agriculture: Limited priority per consultation results
+        if any(term in ircc_category for term in ['Agriculture']):
+            return 'LOW'  # Quarterly draws
+        
+        # ❌ ELIMINATED: Categories Not Mentioned in 2025 Policy
+        # Transport: Only 18.8% "great need" (lowest), not in 2025 priorities
+        if any(term in ircc_category for term in ['Transport']):
+            return 'ELIMINATED'  # Not part of 2025 focus
+        
+        # General: Shift to category-based selection eliminates general draws
+        if any(term in ircc_category for term in ['General']):
+            return 'ELIMINATED'  # Policy eliminated general draws
+        
+        return 'LOW'  # Default for unspecified categories
     
     def get_adjusted_prediction_count(self, ircc_category, base_count):
-        """Adjust prediction count based on 2025 policy priority"""
+        """
+        Adjust prediction count based on OFFICIAL 2025 Government Policy.
+        
+        Reflects official government priorities and consultation results.
+        """
         priority = self.get_category_priority_2025(ircc_category)
         
-        if priority == 'HIGH':
-            # CEC and French get extended predictions (bi-weekly through 2027)
-            if any(term in ircc_category for term in ['Canadian Experience', 'French']):
-                return min(52, base_count * 3)  # Up to 52 weeks (1 year) for top priorities
-            else:
-                return min(26, base_count * 2)  # Up to 26 weeks for other high priority
+        if priority == 'HIGHEST':
+            # Canadian Experience Class: PRIMARY 2025 FOCUS
+            # Government quote: "focus will be to invite candidates with experience working in Canada"
+            return min(52, base_count * 4)  # Up to 1 year predictions (bi-weekly draws)
+        
+        elif priority == 'HIGH':
+            # Healthcare (55.8% great need) + French (government mandate)
+            return min(26, base_count * 2)  # Up to 6 months (monthly draws)
         
         elif priority == 'MEDIUM':
-            return base_count  # Standard prediction count
+            # Trades (38.8% great need), Education (28.4% great need), PNP
+            return min(12, base_count)  # Up to 3 months (bi-monthly draws)
         
-        else:  # LOW priority
-            return max(3, base_count // 2)  # Reduced predictions for deprioritized
+        elif priority == 'LOW':
+            # STEM, Agriculture: Minimal consultation support
+            return min(4, max(3, base_count // 2))  # 3-4 predictions maximum
+        
+        elif priority == 'ELIMINATED':
+            # Transport, General: Not part of 2025 policy
+            return 0  # No predictions for eliminated categories
+        
+        return min(6, base_count)  # Default conservative count
     
     def compute_category_predictions(self, category, num_predictions, force_recompute, assigned_dates=None):
         """Compute predictions for a specific category using coordinated dates"""
@@ -1589,11 +1630,13 @@ class Command(BaseCommand):
         draw_calendar = {}
         current_date = start_date
         
-        # Category priorities for date assignment (DATA-DRIVEN based on actual frequency)
+        # Category priorities for date assignment (OFFICIAL 2025 GOVERNMENT POLICY)
         priority_categories = {
-            'HIGH': ['Provincial Nominee Program'],  # Most frequent (bi-weekly)
-            'MEDIUM': ['Canadian Experience Class', 'French-language proficiency', 'Healthcare and social services occupations'],  # Monthly
-            'LOW': ['Trade occupations', 'Education occupations', 'STEM occupations', 'Agriculture and agri-food occupations']  # Quarterly/rare
+            'HIGHEST': ['Canadian Experience Class'],  # Primary 2025 focus (bi-weekly)
+            'HIGH': ['Healthcare and social services occupations', 'French-language proficiency'],  # Official priorities (monthly)
+            'MEDIUM': ['Trade occupations', 'Education occupations', 'Provincial Nominee Program'],  # Important but less frequent
+            'LOW': ['STEM occupations', 'Agriculture and agri-food occupations']  # Minimal priority
+            # Note: 'ELIMINATED' categories are skipped entirely
         }
         
         # Flatten priorities with order
@@ -1628,20 +1671,29 @@ class Command(BaseCommand):
         """
         category_schedules = {}
         
-        # Calculate prediction frequency for each category based on ACTUAL DATA
+        # Calculate prediction frequency based on OFFICIAL 2025 GOVERNMENT POLICY
         for ircc_category in ircc_groups.keys():
             adjusted_count = self.get_adjusted_prediction_count(ircc_category, num_predictions)
+            priority = self.get_category_priority_2025(ircc_category)
             
-            # DATA-DRIVEN FREQUENCIES (based on 2024-2025 actual patterns)
-            if any(term in ircc_category for term in ['Provincial Nominee']):
-                frequency = 2  # PNP: 16 days average → bi-weekly
-            elif any(term in ircc_category for term in ['Canadian Experience', 'French', 'Healthcare']):
-                frequency = 4  # CEC: 25 days, French: 32 days, Healthcare: 41 days → monthly
-            elif any(term in ircc_category for term in ['Trade', 'Education']):
-                frequency = 16  # Trade: 111 days, Education: very rare → quarterly+
+            # GOVERNMENT POLICY-BASED FREQUENCIES (Official 2025 priorities)
+            if priority == 'HIGHEST':
+                # Canadian Experience Class: PRIMARY 2025 FOCUS
+                frequency = 2  # Bi-weekly draws (most frequent)
+            elif priority == 'HIGH':
+                # Healthcare + French: Official category-based priorities
+                frequency = 4  # Monthly draws per government policy
+            elif priority == 'MEDIUM':
+                # Trades, Education, PNP: Regular but less frequent
+                frequency = 8  # Every 2 months
+            elif priority == 'LOW':
+                # STEM, Agriculture: Minimal priority
+                frequency = 16  # Quarterly draws
+            elif priority == 'ELIMINATED':
+                # Transport, General: No longer conducted
+                continue  # Skip eliminated categories entirely
             else:
-                # STEM, Agriculture: quarterly
-                frequency = 12  # 12 weeks between draws
+                frequency = 12  # Default quarterly
             
             # Generate date schedule for this category
             dates = []
@@ -1657,8 +1709,8 @@ class Command(BaseCommand):
                 # Determine if this category should draw this week based on frequency
                 if current_week % frequency == 0:  # Respects frequency pattern
                     
-                    # Assign dates based on frequency (most frequent gets best slots)
-                    if frequency == 2:  # Bi-weekly (PNP) - gets primary slots
+                    # Assign dates based on OFFICIAL GOVERNMENT PRIORITY
+                    if priority == 'HIGHEST':  # Canadian Experience Class - PRIMARY FOCUS
                         if week_info['assigned_primary'] is None:
                             dates.append(week_info['primary'])
                             draw_calendar[current_week]['assigned_primary'] = ircc_category
@@ -1668,7 +1720,7 @@ class Command(BaseCommand):
                             draw_calendar[current_week]['assigned_secondary'] = ircc_category
                             weeks_assigned.append(current_week)
                     
-                    elif frequency == 4:  # Monthly (CEC, French, Healthcare) - gets secondary or available primary
+                    elif priority == 'HIGH':  # Healthcare + French - OFFICIAL PRIORITIES
                         if week_info['assigned_secondary'] is None:
                             dates.append(week_info['secondary'])
                             draw_calendar[current_week]['assigned_secondary'] = ircc_category
@@ -1678,7 +1730,7 @@ class Command(BaseCommand):
                             draw_calendar[current_week]['assigned_primary'] = ircc_category
                             weeks_assigned.append(current_week)
                     
-                    else:  # Quarterly+ (Trade, Education, STEM, Agriculture) - gets any remaining slots
+                    else:  # MEDIUM/LOW - Gets remaining slots
                         if week_info['assigned_primary'] is None:
                             dates.append(week_info['primary'])
                             draw_calendar[current_week]['assigned_primary'] = ircc_category
@@ -1692,9 +1744,13 @@ class Command(BaseCommand):
             
             category_schedules[ircc_category] = dates
             
-            # Determine frequency description based on actual weeks
-            freq_desc = {2: 'bi-weekly', 4: 'monthly', 12: 'quarterly', 16: 'quarterly+'}
-            print(f"📅 {ircc_category} ({freq_desc.get(frequency, f'{frequency}w')}): {len(dates)} draws, frequency every {frequency} weeks")
+            # Show priority and frequency based on official government policy
+            priority_emojis = {
+                'HIGHEST': '🏆', 'HIGH': '🥇', 'MEDIUM': '🥈', 'LOW': '🥉', 'ELIMINATED': '❌'
+            }
+            freq_desc = {2: 'bi-weekly', 4: 'monthly', 8: 'bi-monthly', 12: 'quarterly', 16: 'quarterly+'}
+            priority_emoji = priority_emojis.get(priority, '❓')
+            print(f"📅 {priority_emoji} {ircc_category} ({priority}, {freq_desc.get(frequency, f'{frequency}w')}): {len(dates)} draws")
             if dates:
                 print(f"   First: {dates[0]}, Last: {dates[-1] if dates else 'None'}")
         
