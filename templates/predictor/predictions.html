@@ -429,10 +429,10 @@ function createCategoryContent(categoryData) {
                             <tbody>
                                 ${recentDraws.slice(0, 5).map(draw => `
                                     <tr>
-                                        <td>${formatDate(draw.date)}</td>
-                                        <td><strong>${draw.lowest_crs_score}</strong></td>
-                                        <td>${draw.invitations_issued.toLocaleString()}</td>
-                                        <td>#${draw.round_number}</td>
+                                        <td>${draw.date ? formatDate(draw.date) : 'N/A'}</td>
+                                        <td><strong>${draw.lowest_crs_score || 'N/A'}</strong></td>
+                                        <td>${draw.invitations_issued ? draw.invitations_issued.toLocaleString() : 'N/A'}</td>
+                                        <td>#${draw.round_number || 'N/A'}</td>
                                     </tr>
                                 `).join('')}
                             </tbody>
@@ -481,18 +481,18 @@ function createCategoryContent(categoryData) {
                                         <div class="col-md-6">
                                             <div class="crs-highlight">
                                                 <div class="mb-1">
-                                                    <strong class="text-primary">${formatDateWithCI(pred.predicted_date, pred.uncertainty_range)}</strong>
+                                                    <strong class="text-primary">${pred.predicted_date ? formatDateWithCI(pred.predicted_date, pred.uncertainty_range) : 'N/A'}</strong>
                                                 </div>
                                                 <div class="uncertainty-range">
                                                     <i class="fas fa-trophy me-1 text-warning"></i>
-                                                    <strong>CRS: ${formatCRSWithCI(pred.predicted_crs_score, pred.uncertainty_range)}</strong>
+                                                    <strong>CRS: ${pred.predicted_crs_score ? formatCRSWithCI(pred.predicted_crs_score, pred.uncertainty_range) : 'N/A'}</strong>
                                                 </div>
                                             </div>
                                         </div>
                                         <div class="col-md-6">
                                             <div class="invitation-highlight">
                                                 <div class="mb-1">
-                                                    <strong class="text-success">${formatInvitationsWithCI(pred.predicted_invitations, pred.uncertainty_range)}</strong>
+                                                    <strong class="text-success">${pred.predicted_invitations ? formatInvitationsWithCI(pred.predicted_invitations, pred.uncertainty_range) : 'N/A'}</strong>
                                                 </div>
                                                 <div class="uncertainty-range">
                                                     <i class="fas fa-users me-1 text-success"></i>
@@ -626,10 +626,10 @@ function createTimelineChart(categoryPredictions) {
             modelGroups[modelName] = [];
         }
         modelGroups[modelName].push({
-            x: pred.predicted_date,
-            y: pred.predicted_crs_score,
-            confidence: pred.confidence_score || 75,
-            invitations: pred.predicted_invitations
+                                        x: pred.predicted_date || new Date(),
+                            y: pred.predicted_crs_score || 0,
+                            confidence: pred.confidence_score || 75,
+                            invitations: pred.predicted_invitations || 0
         });
     });
     
