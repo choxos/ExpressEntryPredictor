@@ -528,6 +528,7 @@ class BasePredictor:
                 features.loc[features.index[i], 'total_immigration_target'] = 500000  # Historical target
                 features.loc[features.index[i], 'express_entry_allocation'] = 117500  # Historical allocation
                 features.loc[features.index[i], 'pnp_allocation'] = 120000  # Historical PNP
+                features.loc[features.index[i], 'in_canada_focus_pct'] = 45  # Historical in-Canada focus (lower priority)
                 
             # 🗓️ SEASONAL PATTERNS WITH POLICY AWARENESS
             month = draw_date.month
