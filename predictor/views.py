@@ -192,15 +192,19 @@ class PredictionAPIView(APIView):
             if cached_data:
                 return Response(cached_data)
             
-            # Get categories with recent activity (draws within last 2 years)
+            # Get categories with predictions (regardless of recent draw activity)
             if category_id:
                 categories = DrawCategory.objects.filter(id=category_id, is_active=True)
-                # Filter for recent activity
-                categories = [cat for cat in categories if cat.has_recent_activity(24)]
             else:
-                all_categories = DrawCategory.objects.filter(is_active=True)
-                # Filter for recent activity (draws within last 2 years)
-                categories = [cat for cat in all_categories if cat.has_recent_activity(24)]
+                # Get all active categories that have predictions available
+                categories_with_predictions = PreComputedPrediction.objects.filter(
+                    is_active=True
+                ).values_list('category', flat=True).distinct()
+                
+                categories = DrawCategory.objects.filter(
+                    id__in=categories_with_predictions,
+                    is_active=True
+                )
             
             # Group categories by IRCC category to avoid duplicates (like compute_predictions does)
             ircc_groups = {}
