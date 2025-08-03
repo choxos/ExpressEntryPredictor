@@ -144,6 +144,28 @@ class Command(BaseCommand):
         total_groups = len(ircc_groups)
         self.stdout.write(f'\n📊 Processing {total_groups} policy-compliant IRCC categories...')
         
+        # 🗓️ GENERATE REALISTIC DRAW CALENDAR to avoid date conflicts
+        import pytz
+        eastern = pytz.timezone('America/Toronto')
+        now_eastern = timezone.now().astimezone(eastern)
+        today_eastern = now_eastern.date()
+        
+        self.stdout.write(f'\n🗓️ Generating realistic draw calendar to avoid date conflicts...')
+        draw_calendar, category_priority_order = self.generate_realistic_draw_calendar(
+            start_date=today_eastern, 
+            total_weeks=52
+        )
+        
+        # Assign specific dates to each category based on priority and frequency
+        category_schedules = self.assign_category_dates(
+            ircc_groups, 
+            draw_calendar, 
+            category_priority_order, 
+            num_predictions
+        )
+        
+        self.stdout.write(f'✅ Draw calendar generated with realistic spacing')
+        
         successful_predictions = 0
         local_failed_categories = []
         
@@ -157,8 +179,11 @@ class Command(BaseCommand):
             self.stdout.write(f'   🎯 2025 Priority: {priority_level} → {adjusted_count} predictions')
             
             try:
+                # Get pre-assigned dates for this category
+                assigned_dates = category_schedules.get(ircc_category, [])
+                
                 predictions_created = self.compute_category_predictions(
-                    representative_category, adjusted_count, force_recompute
+                    representative_category, adjusted_count, force_recompute, assigned_dates
                 )
                 
                 if predictions_created > 0:
@@ -286,8 +311,8 @@ class Command(BaseCommand):
         else:  # LOW priority
             return max(3, base_count // 2)  # Reduced predictions for deprioritized
     
-    def compute_category_predictions(self, category, num_predictions, force_recompute):
-        """Compute predictions for a specific category"""
+    def compute_category_predictions(self, category, num_predictions, force_recompute, assigned_dates=None):
+        """Compute predictions for a specific category using coordinated dates"""
         
         # Check if we need to recompute
         if not force_recompute:
@@ -420,19 +445,26 @@ class Command(BaseCommand):
         
             # 🔄 PREDICTION CREATION LOOP for current model
             model_predictions_created = 0
+            
+            # Use coordinated dates to avoid conflicts across categories
+            if assigned_dates:
+                prediction_dates = assigned_dates[:num_predictions]
+                print(f"📅 Using {len(prediction_dates)} coordinated dates for {category.name}")
+            else:
+                # Fallback to old logic if no coordinated dates provided
+                prediction_dates = []
+                for rank in range(1, num_predictions + 1):
+                    base_interval = 14
+                    variation = (-2, -1, 0, 1, 2)[rank % 5]
+                    interval = base_interval + variation
+                    next_date = current_date + timedelta(days=interval * rank)
+                    
+                    if next_date > today_eastern + timedelta(days=365):
+                        break
+                    prediction_dates.append(next_date)
+                print(f"⚠️ Using fallback date calculation for {category.name}")
         
-            for rank in range(1, num_predictions + 1):
-                # Express Entry draws typically happen every 2 weeks (14 days)
-                # Add some variation: 12-16 days to make it more realistic
-                base_interval = 14
-                variation = (-2, -1, 0, 1, 2)[rank % 5]  # Cycle through variations
-                interval = base_interval + variation
-                
-                next_date = current_date + timedelta(days=interval * rank)
-                
-                # Skip if too far in the future (more than 1 year from today)
-                if next_date > today_eastern + timedelta(days=365):
-                    break
+            for rank, next_date in enumerate(prediction_dates, 1):
                 
                 try:
                     # Predict CRS score based on model type
@@ -1540,3 +1572,123 @@ class Command(BaseCommand):
             base_multiplier = 1.0
             
         return base_multiplier 
+
+    def generate_realistic_draw_calendar(self, start_date, total_weeks=52):
+        """
+        Generate a realistic Express Entry draw calendar avoiding date conflicts.
+        
+        Based on historical patterns:
+        - Maximum 1-2 draws per week
+        - Strategic spacing to manage processing workload
+        - Priority categories get preferred dates
+        """
+        from datetime import datetime, timedelta
+        
+        draw_calendar = {}
+        current_date = start_date
+        
+        # Category priorities for date assignment (2025 policy-based)
+        priority_categories = {
+            'HIGH': ['Canadian Experience Class', 'French-language proficiency'],
+            'MEDIUM': ['Healthcare and social services occupations', 'Trade occupations', 'Education occupations'],
+            'LOW': ['Provincial Nominee Program', 'STEM occupations', 'Agriculture and agri-food occupations']
+        }
+        
+        # Flatten priorities with order
+        category_priority_order = []
+        for priority_level in ['HIGH', 'MEDIUM', 'LOW']:
+            category_priority_order.extend(priority_categories[priority_level])
+        
+        # Generate weekly slots for draws (max 2 per week)
+        for week in range(total_weeks):
+            week_start = current_date + timedelta(weeks=week)
+            
+            # Primary draw day (typically Tuesday/Wednesday)
+            primary_date = week_start + timedelta(days=2)  # Wednesday
+            
+            # Secondary draw day (typically Thursday/Friday) - less frequent
+            secondary_date = week_start + timedelta(days=4)  # Friday
+            
+            draw_calendar[week] = {
+                'primary': primary_date,
+                'secondary': secondary_date,
+                'assigned_primary': None,
+                'assigned_secondary': None
+            }
+        
+        return draw_calendar, category_priority_order
+    
+    def assign_category_dates(self, ircc_groups, draw_calendar, category_priority_order, num_predictions):
+        """
+        Assign realistic dates to categories based on priority and frequency patterns.
+        
+        Returns: category_schedules = {category_name: [date1, date2, ...]}
+        """
+        category_schedules = {}
+        
+        # Calculate prediction frequency for each category based on 2025 policy
+        for ircc_category in ircc_groups.keys():
+            priority = self.get_category_priority_2025(ircc_category)
+            adjusted_count = self.get_adjusted_prediction_count(ircc_category, num_predictions)
+            
+            if priority == 'HIGH':
+                # CEC and French: bi-weekly draws (every 2 weeks)
+                frequency = 2  # weeks between draws
+            elif priority == 'MEDIUM':
+                # Healthcare, Trades, Education: monthly draws
+                frequency = 4  # weeks between draws  
+            else:
+                # LOW priority: quarterly draws
+                frequency = 12  # weeks between draws
+            
+            # Generate date schedule for this category
+            dates = []
+            weeks_assigned = []
+            
+            # Start assignment from week 1
+            current_week = 0
+            predictions_needed = min(adjusted_count, 26)  # Cap at 6 months for realism
+            
+            while len(dates) < predictions_needed and current_week < len(draw_calendar):
+                week_info = draw_calendar[current_week]
+                
+                # Determine if this category should draw this week
+                if current_week % frequency == 0:  # Respects frequency pattern
+                    
+                    # HIGH priority gets primary dates
+                    if priority == 'HIGH' and week_info['assigned_primary'] is None:
+                        dates.append(week_info['primary'])
+                        draw_calendar[current_week]['assigned_primary'] = ircc_category
+                        weeks_assigned.append(current_week)
+                    
+                    # MEDIUM priority gets secondary dates or available primary
+                    elif priority == 'MEDIUM':
+                        if week_info['assigned_secondary'] is None:
+                            dates.append(week_info['secondary'])
+                            draw_calendar[current_week]['assigned_secondary'] = ircc_category
+                            weeks_assigned.append(current_week)
+                        elif week_info['assigned_primary'] is None:
+                            dates.append(week_info['primary'])
+                            draw_calendar[current_week]['assigned_primary'] = ircc_category
+                            weeks_assigned.append(current_week)
+                    
+                    # LOW priority gets any remaining slots
+                    elif priority == 'LOW':
+                        if week_info['assigned_primary'] is None:
+                            dates.append(week_info['primary'])
+                            draw_calendar[current_week]['assigned_primary'] = ircc_category
+                            weeks_assigned.append(current_week)
+                        elif week_info['assigned_secondary'] is None:
+                            dates.append(week_info['secondary']) 
+                            draw_calendar[current_week]['assigned_secondary'] = ircc_category
+                            weeks_assigned.append(current_week)
+                
+                current_week += 1
+            
+            category_schedules[ircc_category] = dates
+            
+            print(f"📅 {ircc_category} ({priority}): {len(dates)} draws, frequency every {frequency} weeks")
+            if dates:
+                print(f"   First: {dates[0]}, Last: {dates[-1] if dates else 'None'}")
+        
+        return category_schedules 
