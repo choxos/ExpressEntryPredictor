@@ -481,7 +481,7 @@ class Command(BaseCommand):
                     # Ensure reasonable bounds
                     predicted_score = max(300, min(900, int(predicted_score)))
                     
-                    # FIXED: Proper invitation prediction with future-date features
+                    # Now predict invitation numbers using the invitation model if available
                     if invitation_trained:
                         try:
                             # Generate features for the FUTURE prediction date (not historical data)
@@ -508,8 +508,6 @@ class Command(BaseCommand):
                             predicted_invitations = invitation_result['prediction']
                             invitation_uncertainty = invitation_result['std_dev']
                             
-                            print(f"✅ Invitation prediction (rank {rank}): {predicted_invitations} (±{invitation_uncertainty:.0f})")
-                            
                             # Feature importance insights (only for first prediction to avoid spam)
                             if rank == 1 and invitation_model.feature_importance:
                                 top_features = list(invitation_model.feature_importance.items())[:5]
@@ -533,13 +531,9 @@ class Command(BaseCommand):
                             seasonal_factor = 1.0 + 0.05 * ((rank % 4) - 2)  # Seasonal variation
                             predicted_invitations = max(500, int(base_invitations * seasonal_factor))
                             invitation_uncertainty = (std_invitations or 800) * (1 + 0.1 * rank)  # Scale with horizon
-                            
-                            print(f"✅ Fallback invitation prediction (rank {rank}): {predicted_invitations} (±{invitation_uncertainty:.0f})")
                     
                     else:
                         # Invitation model not trained - use enhanced statistical fallback
-                        print(f"⚠️ Invitation model not available, using statistical approach for rank {rank}")
-                        
                         avg_invitations = df['invitations_issued'].mean()
                         std_invitations = df['invitations_issued'].std()
                         
@@ -566,100 +560,32 @@ class Command(BaseCommand):
                         
                         predicted_invitations = max(500, int(base_invitations * seasonal_effect))
                         invitation_uncertainty = (std_invitations or 800) * horizon_uncertainty
-                        
-                        print(f"✅ Statistical invitation prediction (rank {rank}): {predicted_invitations} (±{invitation_uncertainty:.0f})")
                     
-                    # Calculate uncertainty range with proper 95% confidence intervals
-                    score_std = df['lowest_crs_score'].std()
-                    
-                    # Calculate data size first for use in multiple places
-                    data_size = len(df)
-                    
-                    # Handle NaN std for single data points
-                    if pd.isna(score_std) or np.isnan(score_std):
-                        # For single data points, use a reasonable default uncertainty
-                        if data_size == 1:
-                            score_std = 50  # Default 50-point uncertainty for single data point
-                        else:
-                            score_std = 25  # Default 25-point uncertainty for very small datasets
-                        print(f"⚠️ NaN std detected, using fallback: {score_std}")
-                    
-                    # For small datasets, increase uncertainty significantly
-                    if data_size <= 4:
-                        uncertainty_multiplier = 3.0  # Very wide confidence intervals
-                    elif data_size <= 10:
-                        uncertainty_multiplier = 2.0  # Wide confidence intervals  
+                    # Create uncertainty range for CRS score (based on model-specific prediction)
+                    if hasattr(current_model, 'predict_with_uncertainty'):
+                        try:
+                            # Use model's own uncertainty if available
+                            uncertainty_result = current_model.predict_with_uncertainty(X)
+                            crs_uncertainty = uncertainty_result.get('std_dev', 50)
+                        except:
+                            # Fallback uncertainty based on model confidence
+                            crs_uncertainty = 50 + (1 - model_confidence) * 100
                     else:
-                        uncertainty_multiplier = 1.0  # Normal confidence intervals
+                        # Default uncertainty scaling
+                        crs_uncertainty = 50 + (1 - model_confidence) * 100
                     
-                    # Calculate 95% confidence intervals
-                    # Using 1.96 as the z-score for 95% confidence interval
-                    z_score_95 = 1.96
-                    
-                    # Use Bayesian uncertainty if available
-                    if hasattr(current_model, 'predict_with_uncertainty') and hasattr(current_model, 'last_prediction_std'):
-                        # Use model's uncertainty estimation for Bayesian models
-                        model_std = getattr(current_model, 'last_prediction_std', [score_std])[0] if hasattr(current_model, 'last_prediction_std') else score_std
-                        
-                        # Handle NaN in model_std
-                        if pd.isna(model_std) or np.isnan(model_std):
-                            model_std = score_std  # Fall back to score_std
-                            print(f"⚠️ NaN model_std detected, using score_std: {model_std}")
-                        
-                        # Apply z-score for 95% CI
-                        margin_of_error = z_score_95 * model_std * uncertainty_multiplier
-                    else:
-                        # Fallback to data-based uncertainty with 95% CI
-                        base_std = max(score_std, 15)  # Minimum 15 point uncertainty
-                        margin_of_error = z_score_95 * base_std * uncertainty_multiplier
-                    
-                    # Calculate 95% confidence interval bounds for CRS score
-                    ci_lower = max(250, int(predicted_score - margin_of_error))
-                    ci_upper = min(950, int(predicted_score + margin_of_error))
-                    
-                    # Handle NaN in margin_of_error
-                    if pd.isna(margin_of_error) or np.isnan(margin_of_error):
-                        margin_of_error = 50.0  # Default margin of error
-                        ci_lower = max(250, int(predicted_score - margin_of_error))
-                        ci_upper = min(950, int(predicted_score + margin_of_error))
-                        print(f"⚠️ NaN margin_of_error detected, using fallback: {margin_of_error}")
-                    
-                    # Calculate date confidence interval (± days around predicted date)
-                    base_date_margin = 7  # Base uncertainty of ±7 days
-                    
-                    # Adjust date uncertainty based on model confidence and data quality
-                    if data_size <= 4:
-                        date_margin_days = min(21, base_date_margin * 3)  # Up to ±21 days for very small data
-                    elif data_size <= 10:
-                        date_margin_days = min(14, base_date_margin * 2)  # Up to ±14 days for small data
-                    elif model_confidence < 0.5:
-                        date_margin_days = min(10, base_date_margin * 1.5)  # ±10 days for low confidence
-                    else:
-                        date_margin_days = base_date_margin  # ±7 days for good confidence
-                    
-                    # Calculate date range
-                    date_lower = next_date - timedelta(days=date_margin_days)
-                    date_upper = next_date + timedelta(days=date_margin_days)
-                    
-                    # Ensure date range doesn't go into the past
-                    if date_lower < today_eastern:
-                        date_lower = today_eastern
+                    # Scale uncertainty by prediction horizon
+                    scaled_crs_uncertainty = crs_uncertainty * (1 + 0.2 * rank)
+                    scaled_invitation_uncertainty = invitation_uncertainty * (1 + 0.2 * rank)
                     
                     uncertainty_range = {
-                        'crs_min': ci_lower,
-                        'crs_max': ci_upper,
-                        'crs_margin_of_error': round(margin_of_error, 1),
-                        'date_earliest': str(date_lower.isoformat()),
-                        'date_latest': str(date_upper.isoformat()),
-                        'date_margin_days': date_margin_days,
-                        'confidence_level': 95
+                        'crs_min': max(250, predicted_score - int(scaled_crs_uncertainty)),
+                        'crs_max': min(950, predicted_score + int(scaled_crs_uncertainty)),
+                        'invitations_min': max(100, predicted_invitations - int(scaled_invitation_uncertainty)),
+                        'invitations_max': min(10000, predicted_invitations + int(scaled_invitation_uncertainty))
                     }
                     
-                    # Adjust confidence score based on uncertainty
-                    if data_size <= 4:
-                        model_confidence = min(model_confidence * 0.6, 0.4)  # Cap at 40% for very small data
-                    elif data_size <= 10:
-                        model_confidence = min(model_confidence * 0.8, 0.6)  # Cap at 60% for small data
+                    print(f"🎯 {model_name} prediction (rank {rank}): CRS {predicted_score} (±{int(scaled_crs_uncertainty)}), Invitations {predicted_invitations} (±{int(scaled_invitation_uncertainty)})")
                     
                     # FINAL NaN SAFETY CHECKS before database save
                     # Ensure all values are valid numbers that can be saved to database
