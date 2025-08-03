@@ -77,6 +77,7 @@ class ExpressEntryDrawViewSet(viewsets.ModelViewSet):
     """API for managing Express Entry draws"""
     queryset = ExpressEntryDraw.objects.all().order_by('-date')
     serializer_class = ExpressEntryDrawSerializer
+    pagination_class = None  # Disable pagination for complete historical data
     
     def get_queryset(self):
         """Filter draws by category and date range"""
