@@ -453,7 +453,7 @@ class PreComputedPrediction(models.Model):
     class Meta:
         db_table = 'predictor_precomputed_prediction'
         ordering = ['category', 'prediction_rank', 'predicted_date']
-        unique_together = ['category', 'prediction_rank']
+        unique_together = ['category', 'prediction_rank', 'model_used']
     
     def __str__(self):
         return f"{self.category.name} - {self.predicted_date} (CRS: {self.predicted_crs_score})"

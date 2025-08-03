@@ -148,6 +148,39 @@ class DrawPredictionViewSet(viewsets.ModelViewSet):
 class PredictionAPIView(APIView):
     """Fast prediction API using pre-computed predictions with IRCC category grouping"""
     
+    def _group_predictions_by_date(self, predictions):
+        """Group predictions by date and show all models for each date"""
+        grouped = {}
+        
+        for pred in predictions:
+            date_key = pred.predicted_date.isoformat()
+            
+            if date_key not in grouped:
+                grouped[date_key] = {
+                    'predicted_date': date_key,
+                    'rank': pred.prediction_rank,
+                    'models': []
+                }
+            
+            # Add this model's prediction to the date group
+            grouped[date_key]['models'].append({
+                'model_name': pred.model_used,
+                'predicted_crs_score': pred.predicted_crs_score,
+                'predicted_invitations': pred.predicted_invitations,
+                'confidence_score': round(pred.confidence_score * 100, 1),
+                'uncertainty_range': pred.uncertainty_range
+            })
+        
+        # Sort models within each date by confidence (highest first)
+        for date_group in grouped.values():
+            date_group['models'].sort(key=lambda x: x['confidence_score'], reverse=True)
+        
+        # Convert to list and sort by date
+        result = list(grouped.values())
+        result.sort(key=lambda x: x['predicted_date'])
+        
+        return result
+    
     def get(self, request, category_id=None):
         """Get pre-computed predictions grouped by IRCC categories"""
         
@@ -233,15 +266,7 @@ class PredictionAPIView(APIView):
                         'crs_score': draw.lowest_crs_score,
                         'invitations': draw.invitations_issued
                     } for draw in recent_draws],
-                    'predictions': [{
-                        'rank': pred.prediction_rank,
-                        'predicted_date': pred.predicted_date.isoformat(),
-                        'predicted_crs_score': pred.predicted_crs_score,
-                        'predicted_invitations': pred.predicted_invitations,
-                        'confidence_score': round(pred.confidence_score * 100, 1),
-                        'model_used': pred.model_used,
-                        'uncertainty_range': pred.uncertainty_range
-                    } for pred in predictions]
+                    'predictions': self._group_predictions_by_date(predictions)
                 }
                 
                 results.append(category_data)

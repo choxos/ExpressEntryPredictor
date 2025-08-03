@@ -470,21 +470,10 @@ async function createCategoryContent(categoryData) {
         `;
     }
     
-    // Group predictions by date to show all models per date
-    const predictionsByDate = {};
-    predictions.forEach(pred => {
-        const dateKey = pred.predicted_date ? pred.predicted_date.split('T')[0] : 'unknown';
-        if (!predictionsByDate[dateKey]) {
-            predictionsByDate[dateKey] = [];
-        }
-        predictionsByDate[dateKey].push(pred);
-    });
-    
-    // Sort dates chronologically
-    const sortedDates = Object.keys(predictionsByDate).sort((a, b) => {
-        if (a === 'unknown') return 1;
-        if (b === 'unknown') return -1;
-        return new Date(a) - new Date(b);
+    // Predictions are already grouped by date from the API
+    // Sort by date for consistent display
+    const sortedPredictions = predictions.sort((a, b) => {
+        return new Date(a.predicted_date) - new Date(b.predicted_date);
     });
     
     content += `
@@ -497,14 +486,14 @@ async function createCategoryContent(categoryData) {
         <div class="row">
     `;
     
-    sortedDates.forEach((dateKey, dateIndex) => {
-        const datePredictions = predictionsByDate[dateKey];
-        const displayDate = dateKey !== 'unknown' ? formatDate(dateKey) : 'Unknown Date';
+    sortedPredictions.forEach((predictionGroup, dateIndex) => {
+        const models = predictionGroup.models || [];
+        const displayDate = formatDate(predictionGroup.predicted_date);
         
         // Calculate average metrics across all models for this date
-        const avgCRS = datePredictions.reduce((sum, p) => sum + (p.predicted_crs_score || 0), 0) / datePredictions.length;
-        const avgInvitations = datePredictions.reduce((sum, p) => sum + (p.predicted_invitations || 0), 0) / datePredictions.length;
-        const avgConfidence = datePredictions.reduce((sum, p) => sum + (p.confidence_score || 0), 0) / datePredictions.length;
+        const avgCRS = models.reduce((sum, m) => sum + (m.predicted_crs_score || 0), 0) / models.length;
+        const avgInvitations = models.reduce((sum, m) => sum + (m.predicted_invitations || 0), 0) / models.length;
+        const avgConfidence = models.reduce((sum, m) => sum + (m.confidence_score || 0), 0) / models.length;
         
         content += `
             <div class="col-lg-6 mb-4">
@@ -516,7 +505,7 @@ async function createCategoryContent(categoryData) {
                                     <i class="fas fa-calendar me-2"></i>
                                     ${displayDate}
                                 </h6>
-                                <small class="opacity-75">${datePredictions.length} Models Predicting</small>
+                                <small class="opacity-75">${models.length} Models Predicting</small>
                             </div>
                             <div class="text-end">
                                 <span class="badge bg-white text-dark fs-6">
@@ -552,9 +541,9 @@ async function createCategoryContent(categoryData) {
                         <!-- All model predictions for this date -->
                         <h6 class="mb-3"><i class="fas fa-brain me-2"></i>Predictions by Model:</h6>
                         <div class="model-predictions">
-                            ${datePredictions.map((pred, modelIndex) => {
-                                const modelColor = getModelColor(pred.model_used || 'Unknown');
-                                const confidence = pred.confidence_score || 0;
+                            ${models.map((model, modelIndex) => {
+                                const modelColor = getModelColor(model.model_name || 'Unknown');
+                                const confidence = model.confidence_score || 0;
                                 
                                 return `
                                     <div class="model-prediction-item mb-3 p-3 border-0 rounded shadow-sm" style="background: linear-gradient(135deg, ${modelColor}15 0%, ${modelColor}05 100%); border-left: 4px solid ${modelColor} !important;">
@@ -562,7 +551,7 @@ async function createCategoryContent(categoryData) {
                                             <div>
                                                 <h6 class="mb-1" style="color: ${modelColor};">
                                                     <i class="fas fa-brain me-2"></i>
-                                                    ${pred.model_used || 'Unknown Model'}
+                                                    ${model.model_name || 'Unknown Model'}
                                                 </h6>
                                                 <small class="text-muted">AI Model Prediction</small>
                                             </div>
@@ -577,7 +566,7 @@ async function createCategoryContent(categoryData) {
                                                     <div class="crs-highlight">
                                                         <i class="fas fa-trophy text-warning mb-1"></i>
                                                         <div class="fw-bold text-dark fs-5">
-                                                            ${pred.predicted_crs_score ? formatCRSWithCI(pred.predicted_crs_score, pred.uncertainty_range) : 'N/A'}
+                                                            ${model.predicted_crs_score ? formatCRSWithCI(model.predicted_crs_score, model.uncertainty_range) : 'N/A'}
                                                         </div>
                                                         <div class="small text-muted">CRS Score</div>
                                                     </div>
@@ -588,7 +577,7 @@ async function createCategoryContent(categoryData) {
                                                     <div class="invitation-highlight">
                                                         <i class="fas fa-users text-success mb-1"></i>
                                                         <div class="fw-bold text-dark fs-5">
-                                                            ${pred.predicted_invitations ? formatInvitationsWithCI(pred.predicted_invitations, pred.uncertainty_range) : 'N/A'}
+                                                            ${model.predicted_invitations ? formatInvitationsWithCI(model.predicted_invitations, model.uncertainty_range) : 'N/A'}
                                                         </div>
                                                         <div class="small text-muted">Invitations</div>
                                                     </div>

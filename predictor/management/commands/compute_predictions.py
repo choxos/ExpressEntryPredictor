@@ -250,17 +250,17 @@ class Command(BaseCommand):
             'quarter': draw.quarter
         } for draw in pooled_draws])
         
-        # Choose best model for this category
-        best_model, confidence = self.select_best_model(df, category)
+        # Evaluate ALL models for this category
+        all_models = self.select_best_model(df, category)
         
-        if not best_model:
-            raise ValueError("No suitable model found for this data")
+        if not all_models:
+            raise ValueError("No suitable models found for this data")
         
-        # Train the model
-        try:
-            metrics = best_model.train(df)
-        except Exception as e:
-            raise ValueError(f"Failed to train model: {str(e)}")
+        print(f"📊 Found {len(all_models)} successful models for {category.name}")
+        
+        # Clear old predictions if force recompute (for all models)
+        if force_recompute:
+            PreComputedPrediction.objects.filter(category=category).update(is_active=False)
         
         # Generate predictions
         import pytz
@@ -291,11 +291,7 @@ class Command(BaseCommand):
         self.stdout.write(f"   Days since last draw: {days_since_last_draw}")
         self.stdout.write(f"   Starting predictions from: {current_date}")
         
-        # Clear old predictions if force recompute
-        if force_recompute:
-            PreComputedPrediction.objects.filter(category=category).update(is_active=False)
-        
-        # FIXED: Train invitation model ONCE outside the loop
+        # Train invitation model ONCE (shared across all models)
         from predictor.ml_models import InvitationPredictor
         invitation_model = None
         invitation_trained = False
@@ -304,312 +300,336 @@ class Command(BaseCommand):
             invitation_model = InvitationPredictor(model_type='XGB')
             invitation_metrics = invitation_model.train(df)
             invitation_trained = True
-            print(f"✅ Invitation model trained successfully with {len(df)} historical draws")
+            print(f"✅ Shared invitation model trained successfully with {len(df)} historical draws")
         except Exception as e:
             print(f"⚠️ Failed to train invitation model: {e}")
             invitation_trained = False
         
-        predictions_created = 0
+        total_predictions_created = 0
         
-        for rank in range(1, num_predictions + 1):
-            # Express Entry draws typically happen every 2 weeks (14 days)
-            # Add some variation: 12-16 days to make it more realistic
-            base_interval = 14
-            variation = (-2, -1, 0, 1, 2)[rank % 5]  # Cycle through variations
-            interval = base_interval + variation
+        # 🔄 MAIN LOOP: Create predictions for ALL models
+        for model_idx, model_info in enumerate(all_models):
+            current_model = model_info['model']
+            model_confidence = model_info['confidence']
+            model_name = model_info['name']
             
-            next_date = current_date + timedelta(days=interval * rank)
+            print(f"\n🔧 Processing Model {model_idx + 1}/{len(all_models)}: {model_name} (confidence: {model_confidence:.3f})")
             
-            # Skip if too far in the future (more than 1 year from today)
-            if next_date > today_eastern + timedelta(days=365):
-                break
-            
+            # Train the current model
             try:
-                # Predict CRS score based on model type
-                if hasattr(best_model, 'predict'):
-                    # Different models have different predict interfaces
-                    if best_model.name == 'ARIMA Time Series':
-                        # ARIMA models can predict multiple steps
-                        predicted_scores = best_model.predict(steps=rank)
-                        if isinstance(predicted_scores, list) and len(predicted_scores) >= rank:
-                            predicted_score = predicted_scores[rank-1]
+                metrics = current_model.train(df)
+                print(f"  ✅ {model_name} trained successfully")
+            except Exception as e:
+                print(f"  ❌ {model_name} training failed: {e}")
+                continue  # Skip this model and move to next
+        
+            # 🔄 PREDICTION CREATION LOOP for current model
+            model_predictions_created = 0
+        
+            for rank in range(1, num_predictions + 1):
+                # Express Entry draws typically happen every 2 weeks (14 days)
+                # Add some variation: 12-16 days to make it more realistic
+                base_interval = 14
+                variation = (-2, -1, 0, 1, 2)[rank % 5]  # Cycle through variations
+                interval = base_interval + variation
+                
+                next_date = current_date + timedelta(days=interval * rank)
+                
+                # Skip if too far in the future (more than 1 year from today)
+                if next_date > today_eastern + timedelta(days=365):
+                    break
+                
+                try:
+                    # Predict CRS score based on model type
+                    if hasattr(current_model, 'predict'):
+                        # Different models have different predict interfaces
+                        if current_model.name == 'ARIMA Time Series':
+                            # ARIMA models can predict multiple steps
+                            predicted_scores = current_model.predict(steps=rank)
+                            if isinstance(predicted_scores, list) and len(predicted_scores) >= rank:
+                                predicted_score = predicted_scores[rank-1]
+                            else:
+                                predicted_score = predicted_scores if not isinstance(predicted_scores, list) else predicted_scores[0]
+                        elif current_model.name == 'Prophet Time Series':
+                            # Prophet uses 'periods' not 'steps'
+                            predicted_scores = current_model.predict(periods=rank, freq='2W')
+                            if isinstance(predicted_scores, list) and len(predicted_scores) >= rank:
+                                predicted_score = predicted_scores[rank-1]
+                            else:
+                                predicted_score = predicted_scores if not isinstance(predicted_scores, list) else predicted_scores[0]
                         else:
-                            predicted_score = predicted_scores if not isinstance(predicted_scores, list) else predicted_scores[0]
-                    elif best_model.name == 'Prophet Time Series':
-                        # Prophet uses 'periods' not 'steps'
-                        predicted_scores = best_model.predict(periods=rank, freq='2W')
-                        if isinstance(predicted_scores, list) and len(predicted_scores) >= rank:
-                            predicted_score = predicted_scores[rank-1]
-                        else:
-                            predicted_score = predicted_scores if not isinstance(predicted_scores, list) else predicted_scores[0]
+                            # ML models need feature data with same engineering as training
+                            # Use clean features for scientifically valid models
+                            if hasattr(current_model, 'prepare_clean_features'):
+                                features_df = current_model.prepare_clean_features(df)
+                            else:
+                                # Fallback for legacy models (with warning)
+                                features_df = current_model.prepare_features(df)
+                            
+                            exclude_cols = ['date', 'lowest_crs_score', 'invitations_issued', 'round_number', 'url', 'category']
+                            
+                            # For Bayesian Hierarchical models, also exclude category dummy variables to match training
+                            if hasattr(current_model, 'category_effects'):  # BayesianHierarchicalPredictor
+                                feature_cols = [col for col in features_df.columns 
+                                              if col not in exclude_cols and not col.startswith('category_')]
+                            else:
+                                feature_cols = [col for col in features_df.columns if col not in exclude_cols]
+                            X = features_df[feature_cols].fillna(0).tail(1)  # Use last row
+                            prediction_result = current_model.predict(X)
+                            predicted_score = prediction_result[0] if hasattr(prediction_result, '__len__') else prediction_result
                     else:
-                        # ML models need feature data with same engineering as training
-                        # Use clean features for scientifically valid models
-                        if hasattr(best_model, 'prepare_clean_features'):
-                            features_df = best_model.prepare_clean_features(df)
-                        else:
-                            # Fallback for legacy models (with warning)
-                            features_df = best_model.prepare_features(df)
+                        predicted_score = df['lowest_crs_score'].mean()  # Fallback
+                    
+                    # Handle NaN predictions
+                    if pd.isna(predicted_score) or np.isnan(predicted_score):
+                        predicted_score = df['lowest_crs_score'].mean()
+                        print(f"⚠️ NaN predicted_score detected, using fallback: {predicted_score}")
+                    
+                    # Ensure prediction is a valid integer
+                    predicted_score = int(np.clip(predicted_score, 250, 950))
+                    
+                    # Ensure reasonable bounds
+                    predicted_score = max(300, min(900, int(predicted_score)))
+                    
+                    # FIXED: Proper invitation prediction with future-date features
+                    if invitation_trained:
+                        try:
+                            # Generate features for the FUTURE prediction date (not historical data)
+                            future_features = self.generate_future_features(
+                                historical_df=df,
+                                prediction_date=next_date,
+                                last_draw_date=last_draw_date,
+                                category_name=ircc_category,
+                                rank=rank
+                            )
+                            
+                            # Prepare features using the trained model's method
+                            invitation_features = invitation_model.prepare_invitation_features(future_features)
+                            exclude_cols = ['date', 'lowest_crs_score', 'round_number', 'url', 'category', 'invitations_issued']
+                            feature_cols = [col for col in invitation_features.columns if col not in exclude_cols]
+                            X_invitation = invitation_features[feature_cols].fillna(0).tail(1)
+                            
+                            # Predict invitation numbers with uncertainty scaling
+                            invitation_result = invitation_model.predict_with_uncertainty(
+                                X_invitation, 
+                                category=category.name,
+                                prediction_horizon=rank  # Scale uncertainty by prediction distance
+                            )
+                            predicted_invitations = invitation_result['prediction']
+                            invitation_uncertainty = invitation_result['std_dev']
+                            
+                            print(f"✅ Invitation prediction (rank {rank}): {predicted_invitations} (±{invitation_uncertainty:.0f})")
+                            
+                            # Feature importance insights (only for first prediction to avoid spam)
+                            if rank == 1 and invitation_model.feature_importance:
+                                top_features = list(invitation_model.feature_importance.items())[:5]
+                                print(f"📊 Top invitation factors: {[f[0] for f in top_features]}")
+                            
+                        except Exception as e:
+                            print(f"⚠️ Invitation model failed, using fallback: {e}")
+                            # Fallback to improved historical approach
+                            avg_invitations = df['invitations_issued'].mean()
+                            std_invitations = df['invitations_issued'].std()
+                            
+                            # Category-specific adjustments
+                            if 'CEC' in category.name or 'Canadian Experience' in category.name:
+                                base_invitations = 3000  # Your observation about CEC
+                            elif 'PNP' in category.name:
+                                base_invitations = avg_invitations * 0.8  # PNP typically smaller
+                            else:
+                                base_invitations = avg_invitations
+                            
+                            # Add horizon-based variation (scientific improvement)
+                            seasonal_factor = 1.0 + 0.05 * ((rank % 4) - 2)  # Seasonal variation
+                            predicted_invitations = max(500, int(base_invitations * seasonal_factor))
+                            invitation_uncertainty = (std_invitations or 800) * (1 + 0.1 * rank)  # Scale with horizon
+                            
+                            print(f"✅ Fallback invitation prediction (rank {rank}): {predicted_invitations} (±{invitation_uncertainty:.0f})")
+                    
+                    else:
+                        # Invitation model not trained - use enhanced statistical fallback
+                        print(f"⚠️ Invitation model not available, using statistical approach for rank {rank}")
                         
-                        exclude_cols = ['date', 'lowest_crs_score', 'invitations_issued', 'round_number', 'url', 'category']
-                        
-                        # For Bayesian Hierarchical models, also exclude category dummy variables to match training
-                        if hasattr(best_model, 'category_effects'):  # BayesianHierarchicalPredictor
-                            feature_cols = [col for col in features_df.columns 
-                                          if col not in exclude_cols and not col.startswith('category_')]
-                        else:
-                            feature_cols = [col for col in features_df.columns if col not in exclude_cols]
-                        X = features_df[feature_cols].fillna(0).tail(1)  # Use last row
-                        prediction_result = best_model.predict(X)
-                        predicted_score = prediction_result[0] if hasattr(prediction_result, '__len__') else prediction_result
-                else:
-                    predicted_score = df['lowest_crs_score'].mean()  # Fallback
-                
-                # Handle NaN predictions
-                if pd.isna(predicted_score) or np.isnan(predicted_score):
-                    predicted_score = df['lowest_crs_score'].mean()
-                    print(f"⚠️ NaN predicted_score detected, using fallback: {predicted_score}")
-                
-                # Ensure prediction is a valid integer
-                predicted_score = int(np.clip(predicted_score, 250, 950))
-                
-                # Ensure reasonable bounds
-                predicted_score = max(300, min(900, int(predicted_score)))
-                
-                # FIXED: Proper invitation prediction with future-date features
-                if invitation_trained:
-                    try:
-                        # Generate features for the FUTURE prediction date (not historical data)
-                        future_features = self.generate_future_features(
-                            historical_df=df,
-                            prediction_date=next_date,
-                            last_draw_date=last_draw_date,
-                            category_name=ircc_category,
-                            rank=rank
-                        )
-                        
-                        # Prepare features using the trained model's method
-                        invitation_features = invitation_model.prepare_invitation_features(future_features)
-                        exclude_cols = ['date', 'lowest_crs_score', 'round_number', 'url', 'category', 'invitations_issued']
-                        feature_cols = [col for col in invitation_features.columns if col not in exclude_cols]
-                        X_invitation = invitation_features[feature_cols].fillna(0).tail(1)
-                        
-                        # Predict invitation numbers with uncertainty scaling
-                        invitation_result = invitation_model.predict_with_uncertainty(
-                            X_invitation, 
-                            category=category.name,
-                            prediction_horizon=rank  # Scale uncertainty by prediction distance
-                        )
-                        predicted_invitations = invitation_result['prediction']
-                        invitation_uncertainty = invitation_result['std_dev']
-                        
-                        print(f"✅ Invitation prediction (rank {rank}): {predicted_invitations} (±{invitation_uncertainty:.0f})")
-                        
-                        # Feature importance insights (only for first prediction to avoid spam)
-                        if rank == 1 and invitation_model.feature_importance:
-                            top_features = list(invitation_model.feature_importance.items())[:5]
-                            print(f"📊 Top invitation factors: {[f[0] for f in top_features]}")
-                        
-                    except Exception as e:
-                        print(f"⚠️ Invitation model failed, using fallback: {e}")
-                        # Fallback to improved historical approach
                         avg_invitations = df['invitations_issued'].mean()
                         std_invitations = df['invitations_issued'].std()
                         
-                        # Category-specific adjustments
+                        # Category-aware baseline predictions
                         if 'CEC' in category.name or 'Canadian Experience' in category.name:
-                            base_invitations = 3000  # Your observation about CEC
+                            base_invitations = 3000  # CEC is very consistent
+                            category_variation = 0.05  # Low variation
+                        elif 'French' in category.name:
+                            base_invitations = avg_invitations
+                            category_variation = 0.3  # High variation for French draws  
+                        elif 'Healthcare' in category.name:
+                            base_invitations = avg_invitations * 1.1  # Slightly higher demand
+                            category_variation = 0.15  # Moderate variation
                         elif 'PNP' in category.name:
-                            base_invitations = avg_invitations * 0.8  # PNP typically smaller
+                            base_invitations = avg_invitations * 0.7  # Typically smaller
+                            category_variation = 0.2  # Moderate variation
                         else:
                             base_invitations = avg_invitations
+                            category_variation = 0.2  # Default variation
                         
-                        # Add horizon-based variation (scientific improvement)
-                        seasonal_factor = 1.0 + 0.05 * ((rank % 4) - 2)  # Seasonal variation
-                        predicted_invitations = max(500, int(base_invitations * seasonal_factor))
-                        invitation_uncertainty = (std_invitations or 800) * (1 + 0.1 * rank)  # Scale with horizon
+                        # Apply prediction horizon effects
+                        horizon_uncertainty = 1 + (0.1 * rank)  # 10% increase per rank
+                        seasonal_effect = 1.0 + 0.05 * ((rank % 4) - 2)  # Cyclic seasonal pattern
                         
-                        print(f"✅ Fallback invitation prediction (rank {rank}): {predicted_invitations} (±{invitation_uncertainty:.0f})")
-                
-                else:
-                    # Invitation model not trained - use enhanced statistical fallback
-                    print(f"⚠️ Invitation model not available, using statistical approach for rank {rank}")
+                        predicted_invitations = max(500, int(base_invitations * seasonal_effect))
+                        invitation_uncertainty = (std_invitations or 800) * horizon_uncertainty
+                        
+                        print(f"✅ Statistical invitation prediction (rank {rank}): {predicted_invitations} (±{invitation_uncertainty:.0f})")
                     
-                    avg_invitations = df['invitations_issued'].mean()
-                    std_invitations = df['invitations_issued'].std()
+                    # Calculate uncertainty range with proper 95% confidence intervals
+                    score_std = df['lowest_crs_score'].std()
                     
-                    # Category-aware baseline predictions
-                    if 'CEC' in category.name or 'Canadian Experience' in category.name:
-                        base_invitations = 3000  # CEC is very consistent
-                        category_variation = 0.05  # Low variation
-                    elif 'French' in category.name:
-                        base_invitations = avg_invitations
-                        category_variation = 0.3  # High variation for French draws  
-                    elif 'Healthcare' in category.name:
-                        base_invitations = avg_invitations * 1.1  # Slightly higher demand
-                        category_variation = 0.15  # Moderate variation
-                    elif 'PNP' in category.name:
-                        base_invitations = avg_invitations * 0.7  # Typically smaller
-                        category_variation = 0.2  # Moderate variation
+                    # Calculate data size first for use in multiple places
+                    data_size = len(df)
+                    
+                    # Handle NaN std for single data points
+                    if pd.isna(score_std) or np.isnan(score_std):
+                        # For single data points, use a reasonable default uncertainty
+                        if data_size == 1:
+                            score_std = 50  # Default 50-point uncertainty for single data point
+                        else:
+                            score_std = 25  # Default 25-point uncertainty for very small datasets
+                        print(f"⚠️ NaN std detected, using fallback: {score_std}")
+                    
+                    # For small datasets, increase uncertainty significantly
+                    if data_size <= 4:
+                        uncertainty_multiplier = 3.0  # Very wide confidence intervals
+                    elif data_size <= 10:
+                        uncertainty_multiplier = 2.0  # Wide confidence intervals  
                     else:
-                        base_invitations = avg_invitations
-                        category_variation = 0.2  # Default variation
+                        uncertainty_multiplier = 1.0  # Normal confidence intervals
                     
-                    # Apply prediction horizon effects
-                    horizon_uncertainty = 1 + (0.1 * rank)  # 10% increase per rank
-                    seasonal_effect = 1.0 + 0.05 * ((rank % 4) - 2)  # Cyclic seasonal pattern
+                    # Calculate 95% confidence intervals
+                    # Using 1.96 as the z-score for 95% confidence interval
+                    z_score_95 = 1.96
                     
-                    predicted_invitations = max(500, int(base_invitations * seasonal_effect))
-                    invitation_uncertainty = (std_invitations or 800) * horizon_uncertainty
-                    
-                    print(f"✅ Statistical invitation prediction (rank {rank}): {predicted_invitations} (±{invitation_uncertainty:.0f})")
-                
-                # Calculate uncertainty range with proper 95% confidence intervals
-                score_std = df['lowest_crs_score'].std()
-                
-                # Calculate data size first for use in multiple places
-                data_size = len(df)
-                
-                # Handle NaN std for single data points
-                if pd.isna(score_std) or np.isnan(score_std):
-                    # For single data points, use a reasonable default uncertainty
-                    if data_size == 1:
-                        score_std = 50  # Default 50-point uncertainty for single data point
+                    # Use Bayesian uncertainty if available
+                    if hasattr(current_model, 'predict_with_uncertainty') and hasattr(current_model, 'last_prediction_std'):
+                        # Use model's uncertainty estimation for Bayesian models
+                        model_std = getattr(current_model, 'last_prediction_std', [score_std])[0] if hasattr(current_model, 'last_prediction_std') else score_std
+                        
+                        # Handle NaN in model_std
+                        if pd.isna(model_std) or np.isnan(model_std):
+                            model_std = score_std  # Fall back to score_std
+                            print(f"⚠️ NaN model_std detected, using score_std: {model_std}")
+                        
+                        # Apply z-score for 95% CI
+                        margin_of_error = z_score_95 * model_std * uncertainty_multiplier
                     else:
-                        score_std = 25  # Default 25-point uncertainty for very small datasets
-                    print(f"⚠️ NaN std detected, using fallback: {score_std}")
-                
-                # For small datasets, increase uncertainty significantly
-                if data_size <= 4:
-                    uncertainty_multiplier = 3.0  # Very wide confidence intervals
-                elif data_size <= 10:
-                    uncertainty_multiplier = 2.0  # Wide confidence intervals  
-                else:
-                    uncertainty_multiplier = 1.0  # Normal confidence intervals
-                
-                # Calculate 95% confidence intervals
-                # Using 1.96 as the z-score for 95% confidence interval
-                z_score_95 = 1.96
-                
-                # Use Bayesian uncertainty if available
-                if hasattr(best_model, 'predict_with_uncertainty') and hasattr(best_model, 'last_prediction_std'):
-                    # Use model's uncertainty estimation for Bayesian models
-                    model_std = getattr(best_model, 'last_prediction_std', [score_std])[0] if hasattr(best_model, 'last_prediction_std') else score_std
+                        # Fallback to data-based uncertainty with 95% CI
+                        base_std = max(score_std, 15)  # Minimum 15 point uncertainty
+                        margin_of_error = z_score_95 * base_std * uncertainty_multiplier
                     
-                    # Handle NaN in model_std
-                    if pd.isna(model_std) or np.isnan(model_std):
-                        model_std = score_std  # Fall back to score_std
-                        print(f"⚠️ NaN model_std detected, using score_std: {model_std}")
-                    
-                    # Apply z-score for 95% CI
-                    margin_of_error = z_score_95 * model_std * uncertainty_multiplier
-                else:
-                    # Fallback to data-based uncertainty with 95% CI
-                    base_std = max(score_std, 15)  # Minimum 15 point uncertainty
-                    margin_of_error = z_score_95 * base_std * uncertainty_multiplier
-                
-                # Calculate 95% confidence interval bounds for CRS score
-                ci_lower = max(250, int(predicted_score - margin_of_error))
-                ci_upper = min(950, int(predicted_score + margin_of_error))
-                
-                # Handle NaN in margin_of_error
-                if pd.isna(margin_of_error) or np.isnan(margin_of_error):
-                    margin_of_error = 50.0  # Default margin of error
+                    # Calculate 95% confidence interval bounds for CRS score
                     ci_lower = max(250, int(predicted_score - margin_of_error))
                     ci_upper = min(950, int(predicted_score + margin_of_error))
-                    print(f"⚠️ NaN margin_of_error detected, using fallback: {margin_of_error}")
-                
-                # Calculate date confidence interval (± days around predicted date)
-                base_date_margin = 7  # Base uncertainty of ±7 days
-                
-                # Adjust date uncertainty based on model confidence and data quality
-                if data_size <= 4:
-                    date_margin_days = min(21, base_date_margin * 3)  # Up to ±21 days for very small data
-                elif data_size <= 10:
-                    date_margin_days = min(14, base_date_margin * 2)  # Up to ±14 days for small data
-                elif confidence < 0.5:
-                    date_margin_days = min(10, base_date_margin * 1.5)  # ±10 days for low confidence
-                else:
-                    date_margin_days = base_date_margin  # ±7 days for good confidence
-                
-                # Calculate date range
-                date_lower = next_date - timedelta(days=date_margin_days)
-                date_upper = next_date + timedelta(days=date_margin_days)
-                
-                # Ensure date range doesn't go into the past
-                if date_lower < today_eastern:
-                    date_lower = today_eastern
-                
-                uncertainty_range = {
-                    'crs_min': ci_lower,
-                    'crs_max': ci_upper,
-                    'crs_margin_of_error': round(margin_of_error, 1),
-                    'date_earliest': str(date_lower.isoformat()),
-                    'date_latest': str(date_upper.isoformat()),
-                    'date_margin_days': date_margin_days,
-                    'confidence_level': 95
-                }
-                
-                # Adjust confidence score based on uncertainty
-                if data_size <= 4:
-                    confidence = min(confidence * 0.6, 0.4)  # Cap at 40% for very small data
-                elif data_size <= 10:
-                    confidence = min(confidence * 0.8, 0.6)  # Cap at 60% for small data
-                
-                # FINAL NaN SAFETY CHECKS before database save
-                # Ensure all values are valid numbers that can be saved to database
-                if pd.isna(predicted_score) or np.isnan(predicted_score):
-                    predicted_score = int(df['lowest_crs_score'].mean() or 450)
-                    print(f"⚠️ NaN predicted_score detected, using fallback: {predicted_score}")
-                
-                if pd.isna(predicted_invitations) or np.isnan(predicted_invitations):
-                    fallback_invitations = int(df['invitations_issued'].mean() or 2000)
-                    predicted_invitations = fallback_invitations
-                    print(f"⚠️ NaN predicted_invitations detected, using fallback: {predicted_invitations}")
-                
-                if pd.isna(confidence) or np.isnan(confidence):
-                    confidence = 0.3  # Default 30% confidence
-                    print(f"⚠️ NaN confidence detected, using fallback: {confidence}")
-                
-                # Ensure integer values are properly cast
-                try:
-                    predicted_score = int(float(predicted_score))
-                    predicted_invitations = int(float(predicted_invitations))
-                    confidence = float(confidence)
-                except (ValueError, TypeError) as e:
-                    print(f"⚠️ Value conversion error: {e}, using safe fallbacks")
-                    predicted_score = int(df['lowest_crs_score'].mean() or 450)
-                    predicted_invitations = int(df['invitations_issued'].mean() or 2000)
-                    confidence = 0.3
-                
-                # Final bounds checking
-                predicted_score = max(250, min(950, predicted_score))
-                predicted_invitations = max(100, min(10000, predicted_invitations))
-                confidence = max(0.1, min(1.0, confidence))
-                
-                # Create prediction
-                PreComputedPrediction.objects.update_or_create(
-                    category=category,
-                    prediction_rank=rank,
-                    defaults={
-                        'predicted_date': next_date,
-                        'predicted_crs_score': predicted_score,
-                        'predicted_invitations': predicted_invitations,
-                        'confidence_score': confidence,
-                        'model_used': str(best_model.name),
-                        'model_version': '1.0',
-                        'uncertainty_range': uncertainty_range,
-                        'is_active': True
+                    
+                    # Handle NaN in margin_of_error
+                    if pd.isna(margin_of_error) or np.isnan(margin_of_error):
+                        margin_of_error = 50.0  # Default margin of error
+                        ci_lower = max(250, int(predicted_score - margin_of_error))
+                        ci_upper = min(950, int(predicted_score + margin_of_error))
+                        print(f"⚠️ NaN margin_of_error detected, using fallback: {margin_of_error}")
+                    
+                    # Calculate date confidence interval (± days around predicted date)
+                    base_date_margin = 7  # Base uncertainty of ±7 days
+                    
+                    # Adjust date uncertainty based on model confidence and data quality
+                    if data_size <= 4:
+                        date_margin_days = min(21, base_date_margin * 3)  # Up to ±21 days for very small data
+                    elif data_size <= 10:
+                        date_margin_days = min(14, base_date_margin * 2)  # Up to ±14 days for small data
+                    elif model_confidence < 0.5:
+                        date_margin_days = min(10, base_date_margin * 1.5)  # ±10 days for low confidence
+                    else:
+                        date_margin_days = base_date_margin  # ±7 days for good confidence
+                    
+                    # Calculate date range
+                    date_lower = next_date - timedelta(days=date_margin_days)
+                    date_upper = next_date + timedelta(days=date_margin_days)
+                    
+                    # Ensure date range doesn't go into the past
+                    if date_lower < today_eastern:
+                        date_lower = today_eastern
+                    
+                    uncertainty_range = {
+                        'crs_min': ci_lower,
+                        'crs_max': ci_upper,
+                        'crs_margin_of_error': round(margin_of_error, 1),
+                        'date_earliest': str(date_lower.isoformat()),
+                        'date_latest': str(date_upper.isoformat()),
+                        'date_margin_days': date_margin_days,
+                        'confidence_level': 95
                     }
-                )
-                
-                predictions_created += 1
-                
-            except Exception as e:
-                self.stdout.write(self.style.WARNING(f'⚠️  Failed to create prediction {rank}: {str(e)}'))
-                continue
+                    
+                    # Adjust confidence score based on uncertainty
+                    if data_size <= 4:
+                        model_confidence = min(model_confidence * 0.6, 0.4)  # Cap at 40% for very small data
+                    elif data_size <= 10:
+                        model_confidence = min(model_confidence * 0.8, 0.6)  # Cap at 60% for small data
+                    
+                    # FINAL NaN SAFETY CHECKS before database save
+                    # Ensure all values are valid numbers that can be saved to database
+                    if pd.isna(predicted_score) or np.isnan(predicted_score):
+                        predicted_score = int(df['lowest_crs_score'].mean() or 450)
+                        print(f"⚠️ NaN predicted_score detected, using fallback: {predicted_score}")
+                    
+                    if pd.isna(predicted_invitations) or np.isnan(predicted_invitations):
+                        fallback_invitations = int(df['invitations_issued'].mean() or 2000)
+                        predicted_invitations = fallback_invitations
+                        print(f"⚠️ NaN predicted_invitations detected, using fallback: {predicted_invitations}")
+                    
+                    if pd.isna(model_confidence) or np.isnan(model_confidence):
+                        model_confidence = 0.3  # Default 30% confidence
+                        print(f"⚠️ NaN confidence detected, using fallback: {model_confidence}")
+                    
+                    # Ensure integer values are properly cast
+                    try:
+                        predicted_score = int(float(predicted_score))
+                        predicted_invitations = int(float(predicted_invitations))
+                        model_confidence = float(model_confidence)
+                    except (ValueError, TypeError) as e:
+                        print(f"⚠️ Value conversion error: {e}, using safe fallbacks")
+                        predicted_score = int(df['lowest_crs_score'].mean() or 450)
+                        predicted_invitations = int(df['invitations_issued'].mean() or 2000)
+                        model_confidence = 0.3
+                    
+                    # Final bounds checking
+                    predicted_score = max(250, min(950, predicted_score))
+                    predicted_invitations = max(100, min(10000, predicted_invitations))
+                    model_confidence = max(0.1, min(1.0, model_confidence))
+                    
+                    # Create prediction
+                    PreComputedPrediction.objects.update_or_create(
+                         category=category,
+                         prediction_rank=rank,
+                         model_used=str(model_name),
+                         defaults={
+                            'predicted_date': next_date,
+                            'predicted_crs_score': predicted_score,
+                            'predicted_invitations': predicted_invitations,
+                            'confidence_score': model_confidence,
+                            'model_used': str(model_name),
+                            'model_version': '1.0',
+                            'uncertainty_range': uncertainty_range,
+                            'is_active': True
+                        }
+                    )
+                    
+                    model_predictions_created += 1
+                    total_predictions_created += 1
+                    
+                except Exception as e:
+                    self.stdout.write(self.style.WARNING(f'⚠️  Failed to create prediction {rank}: {str(e)}'))
+                    continue
+            
+            print(f"  📊 {model_name}: Created {model_predictions_created} predictions")
         
-        return predictions_created
+        print(f"\n🎉 Total predictions created across all models: {total_predictions_created}")
+        return total_predictions_created
 
     def select_best_model(self, df, category):
         """Select the best model based on statistical performance criteria"""
@@ -636,15 +656,148 @@ class Command(BaseCommand):
         print(f"🔍 Evaluating all available models for {category} ({data_size} data points)...")
         
         try:
-            best_model, confidence = self._evaluate_all_models(df, category)
-            print(f"✅ Selected {best_model.name} with confidence {confidence:.2f}")
-            return best_model, confidence
+            all_models = self._evaluate_all_models_for_storage(df, category)
+            print(f"✅ Evaluated {len(all_models)} successful models for storage")
+            return all_models
             
         except Exception as e:
             print(f"❌ Model evaluation failed: {e}")
-            # Fallback to data-size heuristic if evaluation fails
-            return self._fallback_model_selection(df, data_size)
+            # Fallback to single best model if evaluation fails
+            try:
+                best_model, confidence = self._evaluate_all_models(df, category)
+                return [{'model': best_model, 'confidence': confidence, 'name': best_model.name}]
+            except:
+                fallback_model, fallback_confidence = self._fallback_model_selection(df, data_size)
+                return [{'model': fallback_model, 'confidence': fallback_confidence, 'name': fallback_model.name}]
     
+    def _evaluate_all_models_for_storage(self, df, category):
+        """Evaluate all available models and return ALL successful models for storage"""
+        
+        # ✅ SCIENTIFICALLY VALID MODELS ONLY
+        # Start with time series models (always valid)
+        models_to_test = []
+        data_size = len(df)
+        
+        # Time series models (no data leakage)
+        if data_size >= 8:
+            try:
+                from predictor.ml_models import ARIMAPredictor
+                models_to_test.append(('ARIMA', ARIMAPredictor()))
+            except ImportError:
+                pass
+        
+        if data_size >= 10:
+            try:
+                from predictor.ml_models import LSTMPredictor, ProphetPredictor
+                models_to_test.extend([
+                    ('LSTM', LSTMPredictor()),
+                    ('Prophet', ProphetPredictor()),
+                ])
+            except ImportError:
+                pass
+        
+        if data_size >= 12:
+            try:
+                from predictor.ml_models import ExponentialSmoothingPredictor, HoltWintersPredictor
+                models_to_test.extend([
+                    ('Exponential Smoothing', ExponentialSmoothingPredictor()),
+                    ('Holt-Winters', HoltWintersPredictor()),
+                ])
+            except ImportError:
+                pass
+        
+        # Advanced time series models
+        if data_size >= 15:
+            try:
+                from predictor.ml_models import VARPredictor, DynamicLinearModelPredictor
+                models_to_test.extend([
+                    ('VAR', VARPredictor()),
+                    ('Dynamic Linear Model', DynamicLinearModelPredictor()),
+                ])
+            except ImportError:
+                pass
+        
+        if data_size >= 20:
+            try:
+                from predictor.ml_models import SARIMAPredictor
+                models_to_test.append(('SARIMA', SARIMAPredictor()))
+            except ImportError:
+                pass
+        
+        # Advanced ensemble (use when we have enough models)
+        if data_size >= 25:
+            try:
+                from predictor.ml_models import AdvancedEnsemblePredictor
+                models_to_test.append(('Advanced Ensemble', AdvancedEnsemblePredictor()))
+            except ImportError:
+                pass
+        
+        # Clean ML models (no data leakage)
+        if data_size >= 6:
+            try:
+                from predictor.ml_models import CleanLinearRegressionPredictor
+                models_to_test.append(('Clean Linear Regression', CleanLinearRegressionPredictor()))
+            except ImportError:
+                pass
+        
+        if data_size >= 8:
+            try:
+                from predictor.ml_models import BayesianHierarchicalPredictor
+                models_to_test.append(('Bayesian Hierarchical', BayesianHierarchicalPredictor()))
+            except ImportError:
+                pass
+        
+        if data_size >= 10:
+            try:
+                from predictor.ml_models import GaussianProcessPredictor
+                models_to_test.append(('Gaussian Process', GaussianProcessPredictor()))
+            except ImportError:
+                pass
+        
+        print(f"📊 Testing {len(models_to_test)} models: {[name for name, _ in models_to_test]}")
+        
+        model_results = {}
+        target_col = 'lowest_crs_score'
+        
+        for name, model in models_to_test:
+            try:
+                result = self._evaluate_single_model(model, df, target_col, name)
+                if result:
+                    model_results[name] = result
+                    print(f"  ✅ {name}: CV Score={result['cv_score']:.3f}, MAE={result['mae']:.2f}")
+                    
+            except Exception as e:
+                print(f"  ❌ {name}: Failed - {e}")
+                continue
+        
+        if not model_results:
+            raise ValueError("No models could be evaluated successfully")
+        
+        # Calculate confidence for all successful models
+        successful_models = []
+        for name, result in model_results.items():
+            confidence = self._calculate_model_confidence(result, data_size)
+            successful_models.append({
+                'model': result['model'],
+                'confidence': confidence,
+                'name': name,
+                'performance': {
+                    'cv_score': result['cv_score'],
+                    'mae': result['mae'],
+                    'rmse': result.get('rmse', 0),
+                    'r2': result.get('r2', 0)
+                }
+            })
+        
+        # Sort by confidence (best first)
+        successful_models.sort(key=lambda x: x['confidence'], reverse=True)
+        
+        print(f"🎯 All successful models ranked by confidence:")
+        for i, model_info in enumerate(successful_models):
+            print(f"  {i+1}. {model_info['name']}: {model_info['confidence']:.3f}")
+        
+        return successful_models
+
     def _evaluate_all_models(self, df, category):
         """Evaluate all available models and select the best based on statistical criteria"""
         
