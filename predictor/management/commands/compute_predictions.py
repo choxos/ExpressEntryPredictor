@@ -357,6 +357,31 @@ class Command(BaseCommand):
                                 predicted_score = predicted_scores[rank-1]
                             else:
                                 predicted_score = predicted_scores if not isinstance(predicted_scores, list) else predicted_scores[0]
+                        elif 'LSTM' in current_model.name:
+                            # LSTM models need sequence data
+                            try:
+                                # Get the last sequence_length rows as input
+                                sequence_length = getattr(current_model, 'sequence_length', 10)
+                                sequence_data = df['lowest_crs_score'].tail(sequence_length).values
+                                
+                                # Pad if we don't have enough data
+                                if len(sequence_data) < sequence_length:
+                                    padding = [sequence_data[0]] * (sequence_length - len(sequence_data))
+                                    sequence_data = np.array(padding + list(sequence_data))
+                                
+                                # Reshape for LSTM: (1, sequence_length, 1)
+                                sequence_data = sequence_data.reshape(1, sequence_length, 1)
+                                
+                                # Predict multiple steps
+                                predicted_scores = current_model.predict(sequence_data, steps=rank)
+                                if isinstance(predicted_scores, list) and len(predicted_scores) >= rank:
+                                    predicted_score = predicted_scores[rank-1]
+                                else:
+                                    predicted_score = predicted_scores[0] if hasattr(predicted_scores, '__len__') else predicted_scores
+                            except Exception as e:
+                                print(f"⚠️ LSTM prediction failed: {e}, using simple approach")
+                                # Fallback to simple prediction
+                                predicted_score = df['lowest_crs_score'].mean()
                         else:
                             # ML models need feature data with same engineering as training
                             # Use clean features for scientifically valid models

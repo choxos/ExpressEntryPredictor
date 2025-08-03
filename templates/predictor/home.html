@@ -289,8 +289,27 @@ async function loadLatestPredictions() {
         }
         
         apiData.data.slice(0, 3).forEach(categoryData => {
-            const prediction = categoryData.predictions[0]; // Get first prediction
-            const confidence = prediction.confidence_score;
+            // Handle new API format with grouped predictions
+            const firstPrediction = categoryData.predictions[0];
+            let prediction, confidence;
+            
+            if (firstPrediction && firstPrediction.models) {
+                // New format: predictions grouped by date with models array
+                const bestModel = firstPrediction.models[0]; // Get highest confidence model
+                prediction = {
+                    predicted_date: firstPrediction.predicted_date,
+                    predicted_crs_score: bestModel.predicted_crs_score,
+                    predicted_invitations: bestModel.predicted_invitations,
+                    uncertainty_range: bestModel.uncertainty_range,
+                    model_used: bestModel.model_name,
+                    rank: firstPrediction.rank
+                };
+                confidence = bestModel.confidence_score;
+            } else {
+                // Old format fallback
+                prediction = firstPrediction;
+                confidence = prediction.confidence_score;
+            }
             
             const col = document.createElement('div');
             col.className = 'col-md-4 mb-4';
@@ -381,8 +400,27 @@ async function loadAllPredictions() {
         row.className = 'row';
         
         apiData.data.forEach(categoryData => {
-            const prediction = categoryData.predictions[0]; // Get first prediction
-            const confidence = prediction.confidence_score;
+            // Handle new API format with grouped predictions
+            const firstPrediction = categoryData.predictions[0];
+            let prediction, confidence;
+            
+            if (firstPrediction && firstPrediction.models) {
+                // New format: predictions grouped by date with models array
+                const bestModel = firstPrediction.models[0]; // Get highest confidence model
+                prediction = {
+                    predicted_date: firstPrediction.predicted_date,
+                    predicted_crs_score: bestModel.predicted_crs_score,
+                    predicted_invitations: bestModel.predicted_invitations,
+                    uncertainty_range: bestModel.uncertainty_range,
+                    model_used: bestModel.model_name,
+                    rank: firstPrediction.rank
+                };
+                confidence = bestModel.confidence_score;
+            } else {
+                // Old format fallback
+                prediction = firstPrediction;
+                confidence = prediction.confidence_score;
+            }
             
             const col = document.createElement('div');
             col.className = 'col-lg-4 col-md-6 mb-4';
@@ -412,7 +450,7 @@ async function loadAllPredictions() {
                         </div>
                         <div class="mb-2">
                             <small class="text-muted d-block">Expected Invitations</small>
-                            <strong>${prediction.predicted_invitations.toLocaleString()}</strong>
+                            <strong>${prediction.predicted_invitations ? prediction.predicted_invitations.toLocaleString() : 'N/A'}</strong>
                         </div>
                         <div class="mt-3">
                             <small class="text-muted">Model: ${prediction.model_used}</small>
@@ -472,6 +510,9 @@ function getCategoryClass(categoryName) {
 
 // Format CRS score with 95% confidence interval
 function formatCRSWithCI(score, uncertaintyRange) {
+    // Add null safety for score
+    if (!score && score !== 0) return 'N/A';
+    
     // Handle both old format (min/max) and new format (crs_min/crs_max)
     const minScore = uncertaintyRange?.crs_min || uncertaintyRange?.min;
     const maxScore = uncertaintyRange?.crs_max || uncertaintyRange?.max;
