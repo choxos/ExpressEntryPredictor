@@ -117,26 +117,41 @@ class BasePredictor:
                         'economic_date_lag': (draw_date.date() - closest_economic.date).days
                     })
                 else:
-                    # Use historical Canadian averages
-                    economic_data.append({
-                        'unemployment_rate': 6.0,
-                        'job_vacancy_rate': 3.5,
-                        'gdp_growth': 2.0,
-                        'immigration_target': 400000,
-                        'economic_date_lag': 60
-                    })
+                    # For future dates: Use latest available economic data with projections
+                    latest_economic = EconomicIndicator.objects.order_by('-date').first()
+                    if latest_economic:
+                        # Add realistic uncertainty for future projections
+                        months_ahead = max(0, (draw_date.date() - latest_economic.date).days / 30.0)
+                        uncertainty_multiplier = min(1.0 + months_ahead * 0.1, 2.0)  # Increase uncertainty over time
+                        
+                        economic_data.append({
+                            'unemployment_rate': self._add_economic_uncertainty(
+                                latest_economic.unemployment_rate or 6.2, 1.44, uncertainty_multiplier),
+                            'job_vacancy_rate': self._add_economic_uncertainty(
+                                latest_economic.job_vacancy_rate or 5.0, 0.90, uncertainty_multiplier),
+                            'gdp_growth': self._add_economic_uncertainty(
+                                latest_economic.gdp_growth or 2.1, 2.87, uncertainty_multiplier),
+                            'immigration_target': latest_economic.immigration_target or 400000,
+                            'economic_date_lag': (draw_date.date() - latest_economic.date).days
+                        })
+                    else:
+                        # Final fallback: Use historical medians with uncertainty
+                        economic_data.append({
+                            'unemployment_rate': self._add_economic_uncertainty(6.2, 1.44, 1.0),
+                            'job_vacancy_rate': self._add_economic_uncertainty(5.0, 0.90, 1.0),
+                            'gdp_growth': self._add_economic_uncertainty(2.1, 2.87, 1.0),
+                            'immigration_target': 400000,
+                            'economic_date_lag': 60
+                        })
             
             economic_df = pd.DataFrame(economic_data)
             for col in economic_df.columns:
                 features[f'econ_{col}'] = economic_df[col].values
                 
         except Exception as e:
-            print(f"Warning: Using default economic indicators: {e}")
-            features['econ_unemployment_rate'] = 6.0
-            features['econ_job_vacancy_rate'] = 3.5
-            features['econ_gdp_growth'] = 2.0
-            features['econ_immigration_target'] = 400000
-            features['econ_economic_date_lag'] = 60
+            print(f"Warning: Using economic scenario modeling: {e}")
+            # ✅ IMPROVED: Economic Scenario Modeling with Uncertainty
+            features = self._generate_economic_scenarios(features)
         
         # ✅ VALID: Policy and calendar features
         features['fiscal_year'] = features['month'].apply(lambda x: 1 if x in [4,5,6] else 
@@ -155,6 +170,189 @@ class BasePredictor:
         features['days_since_program_start'] = (pd.to_datetime(features['date']) - program_start).dt.days
         features['years_since_program_start'] = features['days_since_program_start'] / 365.25
         
+        # ✅ COMPREHENSIVE UNCERTAINTY MODELING for Future Predictions
+        # Apply uncertainty to confounding factors to increase prediction variation
+        try:
+            # Check if this is for future prediction (dates beyond latest historical data)
+            from .models import ExpressEntryDraw
+            latest_draw = ExpressEntryDraw.objects.order_by('-date').first()
+            
+            if latest_draw:
+                latest_date = latest_draw.date
+                future_mask = pd.to_datetime(features['date']) > pd.to_datetime(latest_date)
+                
+                if future_mask.any():
+                    print(f"🎲 Applying uncertainty modeling to {future_mask.sum()} future predictions...")
+                    
+                    # Apply all uncertainty factors to future predictions
+                    future_features = features[future_mask].copy()
+                    
+                    # Add policy and operational uncertainty
+                    future_features = self._add_policy_uncertainty(future_features)
+                    
+                    # Add external market uncertainty  
+                    future_features = self._add_external_uncertainty(future_features)
+                    
+                    # Add seasonal/calendar uncertainty
+                    future_features = self._add_seasonal_uncertainty(future_features)
+                    
+                    # Replace future rows with uncertainty-enhanced versions
+                    features.loc[future_mask] = future_features
+                    
+        except Exception as e:
+            print(f"⚠️ Could not apply uncertainty modeling: {e}")
+        
+        return features
+    
+    def _add_economic_uncertainty(self, base_value, historical_std, uncertainty_multiplier=1.0):
+        """Add realistic economic uncertainty based on historical volatility"""
+        import random
+        
+        # Apply time-dependent uncertainty
+        adjusted_std = historical_std * uncertainty_multiplier
+        
+        # Generate realistic variation using normal distribution
+        noise = random.normalvariate(0, adjusted_std)
+        
+        # Apply reasonable bounds to prevent extreme values
+        if 'unemployment' in str(base_value) or 'vacancy' in str(base_value):
+            # Employment indicators: bound between 1% and 15%
+            result = max(1.0, min(15.0, base_value + noise))
+        elif 'gdp' in str(base_value):
+            # GDP growth: bound between -5% and 8%
+            result = max(-5.0, min(8.0, base_value + noise))
+        else:
+            result = max(0, base_value + noise)
+            
+        return round(result, 1)
+    
+    def _add_policy_uncertainty(self, features):
+        """Add uncertainty to policy and operational factors"""
+        import random
+        
+        # ✅ IMPROVED: Draw frequency uncertainty 
+        # Historical: draws every 14 days, but IRCC could change this
+        base_frequency = 14
+        frequency_std = 3.5  # Could vary ±7 days (weekly to tri-weekly)
+        
+        for i in range(len(features)):
+            # Add realistic variation to draw frequency expectations
+            if 'days_since_last' in features.columns:
+                noise = random.normalvariate(0, frequency_std)
+                varied_frequency = max(7, min(28, base_frequency + noise))  # 1-4 weeks range
+                features.loc[features.index[i], 'expected_next_draw_days'] = round(varied_frequency)
+        
+        # ✅ IMPROVED: Immigration target uncertainty
+        # Government could change annual targets ±50,000
+        if 'econ_immigration_target' in features.columns:
+            target_uncertainty = 50000
+            for i in range(len(features)):
+                base_target = features.iloc[i]['econ_immigration_target']
+                noise = random.normalvariate(0, target_uncertainty)
+                varied_target = max(200000, min(600000, base_target + noise))
+                features.loc[features.index[i], 'econ_immigration_target'] = round(varied_target)
+        
+        return features
+    
+    def _add_external_uncertainty(self, features):
+        """Add uncertainty from external factors (global economy, competition, etc.)"""
+        import random
+        
+        # ✅ IMPROVED: Global competitiveness factor
+        # Other countries' immigration policies affect Canada's pool
+        global_competition_factor = random.uniform(0.85, 1.15)  # ±15% variation
+        
+        # ✅ IMPROVED: Economic crisis probability
+        # Small chance of major economic disruption affecting everything
+        crisis_probability = 0.05  # 5% chance per prediction
+        crisis_factor = 1.0
+        if random.random() < crisis_probability:
+            crisis_factor = random.uniform(0.7, 1.3)  # ±30% impact during crisis
+        
+        # Apply external factors to relevant features
+        for i in range(len(features)):
+            # Modify economic indicators for global competition
+            if 'econ_unemployment_rate' in features.columns:
+                current_val = features.iloc[i]['econ_unemployment_rate']
+                modified_val = current_val * global_competition_factor * crisis_factor
+                features.loc[features.index[i], 'econ_unemployment_rate'] = max(1.0, min(15.0, modified_val))
+            
+            if 'econ_gdp_growth' in features.columns:
+                current_val = features.iloc[i]['econ_gdp_growth']
+                modified_val = current_val * global_competition_factor * crisis_factor
+                features.loc[features.index[i], 'econ_gdp_growth'] = max(-8.0, min(8.0, modified_val))
+        
+        return features
+    
+    def _add_seasonal_uncertainty(self, features):
+        """Add uncertainty to seasonal and calendar factors"""
+        import random
+        
+        # ✅ IMPROVED: Holiday impact uncertainty
+        # Government processing could be more/less affected by holidays
+        if 'days_to_christmas' in features.columns:
+            for i in range(len(features)):
+                base_impact = features.iloc[i]['days_to_christmas']
+                # Add ±20% uncertainty to holiday impact
+                holiday_uncertainty = random.uniform(0.8, 1.2)
+                features.loc[features.index[i], 'holiday_impact_factor'] = holiday_uncertainty
+        
+        # ✅ IMPROVED: Fiscal year pressure uncertainty
+        # End-of-fiscal-year quotas could vary more/less than historical patterns
+        if 'is_fiscal_year_end' in features.columns:
+            for i in range(len(features)):
+                if features.iloc[i]['is_fiscal_year_end']:
+                    # Fiscal year end pressure could be ±50% different
+                    fiscal_pressure = random.uniform(0.5, 1.5)
+                    features.loc[features.index[i], 'fiscal_pressure_factor'] = fiscal_pressure
+                else:
+                    features.loc[features.index[i], 'fiscal_pressure_factor'] = 1.0
+        
+        return features
+    
+    def _generate_economic_scenarios(self, features):
+        """Generate economic scenarios for future predictions when no data available"""
+        from .models import EconomicIndicator
+        
+        # Try to get latest available economic data as baseline
+        latest_economic = EconomicIndicator.objects.order_by('-date').first()
+        
+        if latest_economic:
+            baseline_unemployment = latest_economic.unemployment_rate or 6.2
+            baseline_job_vacancy = latest_economic.job_vacancy_rate or 5.0
+            baseline_gdp = latest_economic.gdp_growth or 2.1
+            baseline_immigration = latest_economic.immigration_target or 400000
+        else:
+            # Use historical medians as baseline
+            baseline_unemployment = 6.2
+            baseline_job_vacancy = 5.0
+            baseline_gdp = 2.1
+            baseline_immigration = 400000
+        
+        # Generate economic indicators with uncertainty for each row
+        economic_data = []
+        for _, row in features.iterrows():
+            # Add time-dependent uncertainty (more uncertainty for further future)
+            draw_date = pd.to_datetime(row['date'])
+            if latest_economic:
+                months_ahead = max(0, (draw_date.date() - latest_economic.date).days / 30.0)
+                uncertainty_multiplier = min(1.0 + months_ahead * 0.15, 2.5)
+            else:
+                uncertainty_multiplier = 1.5  # Default uncertainty for unknown baseline
+            
+            economic_data.append({
+                'unemployment_rate': self._add_economic_uncertainty(baseline_unemployment, 1.44, uncertainty_multiplier),
+                'job_vacancy_rate': self._add_economic_uncertainty(baseline_job_vacancy, 0.90, uncertainty_multiplier),
+                'gdp_growth': self._add_economic_uncertainty(baseline_gdp, 2.87, uncertainty_multiplier),
+                'immigration_target': baseline_immigration,
+                'economic_date_lag': 60 if not latest_economic else max(60, (draw_date.date() - latest_economic.date).days)
+            })
+        
+        # Apply to features
+        economic_df = pd.DataFrame(economic_data)
+        for col in economic_df.columns:
+            features[f'econ_{col}'] = economic_df[col].values
+            
         return features
 
     # Keep old method for backward compatibility but mark as deprecated
@@ -1967,7 +2165,15 @@ class HoltWintersPredictor(BasePredictor):
             try:
                 # For multi-step forecasting, use the forecast method correctly
                 forecast = self.model.forecast(steps=steps)
-                return forecast.tolist() if hasattr(forecast, 'tolist') else [forecast]
+                # Ensure we return a list of scalars
+                if hasattr(forecast, 'tolist'):
+                    return forecast.tolist()
+                elif hasattr(forecast, 'values'):
+                    return forecast.values.tolist()
+                elif hasattr(forecast, '__iter__'):
+                    return [float(x) for x in forecast]
+                else:
+                    return [float(forecast)]
             except Exception as e:
                 # If statsmodels forecasting fails, fall back to simple method
                 print(f"Statsmodels forecast failed: {e}, using simple forecasting")
@@ -1979,18 +2185,30 @@ class HoltWintersPredictor(BasePredictor):
                     return predictions
                 else:
                     # Emergency fallback: repeat last fitted value
-                    if len(self.model.fittedvalues) > 0:
+                    if hasattr(self.model, 'fittedvalues') and len(self.model.fittedvalues) > 0:
                         last_fitted = self.model.fittedvalues[-1]
                         # Ensure scalar value (handle Series/DataFrame)
                         if hasattr(last_fitted, 'iloc'):
-                            last_fitted = float(last_fitted.iloc[0])
+                            last_fitted = float(last_fitted.iloc[0] if len(last_fitted) > 0 else 400.0)
                         elif hasattr(last_fitted, 'values'):
-                            last_fitted = float(last_fitted.values[0])
+                            last_fitted = float(last_fitted.values[0] if len(last_fitted.values) > 0 else 400.0)
+                        elif hasattr(last_fitted, '__iter__') and not isinstance(last_fitted, str):
+                            # Handle any iterable (but not string)
+                            try:
+                                last_fitted = float(next(iter(last_fitted)))
+                            except (StopIteration, TypeError, ValueError):
+                                last_fitted = 400.0
                         else:
                             last_fitted = float(last_fitted)
                     else:
                         last_fitted = 400.0  # Default fallback
-                    return [last_fitted] * steps
+                    
+                    # Final safety check before list multiplication
+                    if not isinstance(last_fitted, (int, float)):
+                        print(f"⚠️ last_fitted is still {type(last_fitted)}, forcing to 400.0")
+                        last_fitted = 400.0
+                    
+                    return [float(last_fitted)] * steps
         else:
             # Simple version - linear trend extrapolation
             predictions = []

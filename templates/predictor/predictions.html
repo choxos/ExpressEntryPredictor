@@ -655,8 +655,8 @@ function createTimelineChart(categoryPredictions) {
                           'Confidence: %{customdata.confidence}%<br>' +
                           '<extra></extra>',
             customdata: points.map(p => ({
-                confidence: Math.round(p.confidence),
-                invitations: (p.invitations || 0).toLocaleString()
+                confidence: Math.round(p.confidence || 0),
+                invitations: p.invitations && !isNaN(p.invitations) ? parseInt(p.invitations).toLocaleString() : 'N/A'
             }))
         };
     });
@@ -717,6 +717,9 @@ function calculateAverageInvitations(predictions) {
     if (validInvitations.length === 0) return 'N/A';
     
     const average = validInvitations.reduce((sum, inv) => sum + inv, 0) / validInvitations.length;
+    
+    if (isNaN(average)) return 'N/A';
+    
     return Math.round(average).toLocaleString();
 }
 
@@ -742,16 +745,25 @@ function formatCRSWithCI(score, uncertaintyRange) {
 function formatInvitationsWithCI(invitations, uncertaintyRange) {
     if (!invitations && invitations !== 0) return 'N/A';
     
-    const formattedInvitations = parseInt(invitations).toLocaleString();
+    // Ensure invitations is a valid number before formatting
+    const invitationsNum = parseInt(invitations);
+    if (isNaN(invitationsNum)) return 'N/A';
+    
+    const formattedInvitations = invitationsNum.toLocaleString();
     
     // Check for invitation-specific confidence intervals
     const minInvitations = uncertaintyRange?.invitations_min || uncertaintyRange?.min_invitations;
     const maxInvitations = uncertaintyRange?.invitations_max || uncertaintyRange?.max_invitations;
     
     if (minInvitations !== undefined && maxInvitations !== undefined) {
-        const formattedMin = parseInt(minInvitations).toLocaleString();
-        const formattedMax = parseInt(maxInvitations).toLocaleString();
-        return `${formattedInvitations} (${formattedMin}–${formattedMax})`;
+        const minNum = parseInt(minInvitations);
+        const maxNum = parseInt(maxInvitations);
+        
+        if (!isNaN(minNum) && !isNaN(maxNum)) {
+            const formattedMin = minNum.toLocaleString();
+            const formattedMax = maxNum.toLocaleString();
+            return `${formattedInvitations} (${formattedMin}–${formattedMax})`;
+        }
     }
     
     return formattedInvitations;
