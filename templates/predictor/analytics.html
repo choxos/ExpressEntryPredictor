@@ -376,6 +376,20 @@ async function loadCRSTrendsByCategory() {
         const minDate = new Date(Math.min(...allDates));
         const maxDate = new Date(Math.max(...allDates));
         
+        // Calculate dynamic CRS score range from actual data
+        const allCRSScores = Object.values(categoriesData).flat()
+            .map(d => d.crs_score)
+            .filter(score => score && score > 0); // Filter out null/undefined/zero scores
+        
+        const minCRS = Math.min(...allCRSScores);
+        const maxCRS = Math.max(...allCRSScores);
+        
+        // Add some padding to the range (5% on each side)
+        const crsRange = maxCRS - minCRS;
+        const padding = Math.max(crsRange * 0.05, 10); // Minimum 10 points padding
+        const yAxisMin = Math.max(minCRS - padding, 0); // Don't go below 0
+        const yAxisMax = maxCRS + padding;
+        
         const layout = {
             title: {
                 text: 'Historical CRS Score Trends by Category (2015-2025)',
@@ -391,7 +405,7 @@ async function loadCRSTrendsByCategory() {
             yaxis: { 
                 title: 'CRS Score',
                 gridcolor: 'rgba(128,128,128,0.2)',
-                range: [300, 650] // Reasonable range for CRS scores
+                range: [yAxisMin, yAxisMax] // Dynamic range based on actual data
             },
             hovermode: 'closest',
             showlegend: true,
@@ -644,16 +658,23 @@ function getCategoryClass(categoryName) {
 
 function getCategoryColor(categoryName) {
     const categoryColors = {
-        'Provincial Nominee Program': '#007bff', // Blue
-        'Canadian Experience Class': '#28a745', // Green
-        'Federal Skilled Worker': '#17a2b8', // Teal
-        'General': '#6c757d', // Gray
-        'No Program Specified': '#6c757d', // Gray
-        'French language proficiency': '#ffc107', // Yellow
-        'Healthcare': '#dc3545', // Red
-        'STEM': '#343a40' // Dark
+        'Provincial Nominee Program': '#FF6B35', // Vibrant Orange
+        'Canadian Experience Class': '#00A8CC', // Bright Cyan
+        'Federal Skilled Worker': '#7209B7', // Rich Purple
+        'General': '#2D3748', // Dark Blue-Gray
+        'No Program Specified': '#718096', // Light Gray
+        'French language proficiency': '#E53E3E', // Bright Red
+        'Healthcare': '#38A169', // Medical Green
+        'STEM': '#3182CE', // Tech Blue
+        'Healthcare occupations': '#38A169', // Medical Green
+        'Agriculture and agri-food occupations': '#68D391', // Agriculture Green
+        'Education occupations': '#9F7AEA', // Education Purple
+        'Trade occupations': '#F56500', // Trade Orange
+        'Transport occupations': '#319795', // Transport Teal
+        'Federal Skilled Trades': '#ED8936', // Skilled Trades Gold
+        'Francophone minority communities': '#E53E3E' // French Red
     };
-    return categoryColors[categoryName] || '#6c757d'; // Default to gray
+    return categoryColors[categoryName] || '#A0AEC0'; // Light gray default
 }
 </script>
 {% endblock %} 
