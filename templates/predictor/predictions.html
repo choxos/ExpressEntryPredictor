@@ -482,7 +482,7 @@ function createCategoryContent(categoryData) {
         content += `
             <div class="col-lg-6 mb-4">
                 <div class="card prediction-card h-100 shadow-sm">
-                    <div class="card-header ${getCategoryClass(categoryName)} text-white">
+                    <div class="card-header bg-dark text-white">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
                                 <h6 class="mb-0">
@@ -872,22 +872,24 @@ function formatDateWithCI(predictedDate, uncertaintyRange) {
 
 function getModelColor(modelName) {
     const colors = {
-        'Gaussian Process': '#198754',
-        'Bayesian Hierarchical': '#0dcaf0',
-        'SARIMA': '#ffc107',
-        'LSTM': '#6f42c1',
-        'Prophet': '#fd7e14',
-        'ARIMA': '#dc3545',
-        'Holt-Winters': '#20c997',
-        'VAR': '#6c757d',
-        'Clean Linear Regression': '#0d6efd',
-        'Advanced Ensemble': '#495057'
+        'Gaussian Process': '#198754',      // Green - easy on eyes
+        'Bayesian Hierarchical': '#0dcaf0', // Light blue - soft
+        'SARIMA': '#ffc107',               // Yellow - warm but not harsh
+        'LSTM': '#6f42c1',                 // Purple - neutral
+        'Prophet': '#fd7e14',              // Orange - warm
+        'ARIMA': '#6c757d',                // Changed from red to neutral gray
+        'Holt-Winters': '#20c997',         // Teal - calming
+        'VAR': '#495057',                  // Dark gray - professional
+        'Clean Linear Regression': '#0d6efd', // Blue - trust-inspiring
+        'Advanced Ensemble': '#343a40'     // Darker gray - sophisticated
     };
     
-    return colors[modelName] || '#0d6efd';
+    return colors[modelName] || '#6c757d'; // Default to neutral gray instead of blue
 }
 
 function getCategoryClass(categoryName) {
+    if (!categoryName) return 'bg-secondary'; // Safe default for undefined category names
+    
     const categoryClasses = {
         'Provincial Nominee Program': 'bg-primary',
         'Canadian Experience Class': 'bg-success',
@@ -895,7 +897,7 @@ function getCategoryClass(categoryName) {
         'General': 'bg-secondary',
         'No Program Specified': 'bg-secondary',
         'French language proficiency': 'bg-warning',
-        'Healthcare': 'bg-danger',
+        'Healthcare': 'bg-success', // Changed from bg-danger (red) to bg-success (green)
         'STEM': 'bg-dark'
     };
     
@@ -905,7 +907,7 @@ function getCategoryClass(categoryName) {
         }
     }
     
-    return 'bg-light text-dark';
+    return 'bg-secondary'; // Changed from bg-light to bg-secondary for better contrast
 }
 
 function abbreviateCategoryName(categoryName) {
