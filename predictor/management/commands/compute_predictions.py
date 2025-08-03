@@ -544,8 +544,8 @@ class Command(BaseCommand):
                     'crs_min': ci_lower,
                     'crs_max': ci_upper,
                     'crs_margin_of_error': round(margin_of_error, 1),
-                    'date_earliest': date_lower.isoformat(),
-                    'date_latest': date_upper.isoformat(),
+                    'date_earliest': str(date_lower.isoformat()),
+                    'date_latest': str(date_upper.isoformat()),
                     'date_margin_days': date_margin_days,
                     'confidence_level': 95
                 }
@@ -596,7 +596,7 @@ class Command(BaseCommand):
                         'predicted_crs_score': predicted_score,
                         'predicted_invitations': predicted_invitations,
                         'confidence_score': confidence,
-                        'model_used': best_model.name,
+                        'model_used': str(best_model.name),
                         'model_version': '1.0',
                         'uncertainty_range': uncertainty_range,
                         'is_active': True

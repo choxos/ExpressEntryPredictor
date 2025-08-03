@@ -426,6 +426,8 @@ class BasePredictor:
                     features.loc[features.index[i], 'in_canada_allocation'] = 82980
                     features.loc[features.index[i], 'expected_crs_range'] = random.uniform(507, 547)  # Declining trend
                     features.loc[features.index[i], 'draw_frequency_weeks'] = 2  # Bi-weekly rhythm
+                    features.loc[features.index[i], 'category_status_eliminated'] = 0.0  # Active
+                    features.loc[features.index[i], 'category_status_deprioritized'] = 0.0  # Not deprioritized
                     
                 # French Language: 37.4% of invitations, largest draw volumes
                 elif 'French' in str(category_name):
@@ -433,6 +435,8 @@ class BasePredictor:
                     features.loc[features.index[i], 'francophone_target_pct'] = random.uniform(8.5, 10.0)  # Progressive targets
                     features.loc[features.index[i], 'expected_crs_range'] = random.uniform(379, 428)  # Most accessible
                     features.loc[features.index[i], 'typical_invitation_volume'] = random.uniform(4500, 7500)
+                    features.loc[features.index[i], 'category_status_eliminated'] = 0.0  # Active
+                    features.loc[features.index[i], 'category_status_deprioritized'] = 0.0  # Not deprioritized
                     
                 # Healthcare: Critical labor shortage, 36 eligible occupations
                 elif 'Healthcare' in str(category_name):
@@ -440,6 +444,8 @@ class BasePredictor:
                     features.loc[features.index[i], 'labor_shortage_severity'] = 0.9  # Critical shortage
                     features.loc[features.index[i], 'expected_crs_range'] = random.uniform(450, 510)
                     features.loc[features.index[i], 'eligible_occupations'] = 36
+                    features.loc[features.index[i], 'category_status_eliminated'] = 0.0  # Active
+                    features.loc[features.index[i], 'category_status_deprioritized'] = 0.0  # Not deprioritized
                     
                 # Education: New priority category (5 NOC codes)
                 elif 'Education' in str(category_name):
@@ -447,6 +453,8 @@ class BasePredictor:
                     features.loc[features.index[i], 'labor_shortage_severity'] = 0.8  # Education crisis
                     features.loc[features.index[i], 'expected_crs_range'] = random.uniform(450, 490)
                     features.loc[features.index[i], 'eligible_occupations'] = 5
+                    features.loc[features.index[i], 'category_status_eliminated'] = 0.0  # Active
+                    features.loc[features.index[i], 'category_status_deprioritized'] = 0.0  # Not deprioritized
                     
                 # Trade Occupations: Enhanced with construction (25 NOC codes)
                 elif 'Trade' in str(category_name):
@@ -454,6 +462,8 @@ class BasePredictor:
                     features.loc[features.index[i], 'construction_shortage'] = 0.9  # Severe construction shortage
                     features.loc[features.index[i], 'expected_crs_range'] = random.uniform(430, 480)
                     features.loc[features.index[i], 'eligible_occupations'] = 25
+                    features.loc[features.index[i], 'category_status_eliminated'] = 0.0  # Active
+                    features.loc[features.index[i], 'category_status_deprioritized'] = 0.0  # Not deprioritized
                     
                 # Provincial Nominee: Reduced allocation but guaranteed pathway
                 elif 'Provincial' in str(category_name):
@@ -461,27 +471,42 @@ class BasePredictor:
                     features.loc[features.index[i], 'pnp_allocation_reduction'] = 0.54  # 65,000 reduction
                     features.loc[features.index[i], 'expected_crs_range'] = random.uniform(663, 816)
                     features.loc[features.index[i], 'crs_bonus_points'] = 600  # Guaranteed bonus
+                    features.loc[features.index[i], 'category_status_eliminated'] = 0.0  # Active
+                    features.loc[features.index[i], 'category_status_deprioritized'] = 0.0  # Not deprioritized
                     
                 # Transport: ELIMINATED category (post-March 2024)
                 elif 'Transport' in str(category_name):
                     if draw_date > pd.to_datetime('2024-03-01'):
                         features.loc[features.index[i], 'policy_priority_weight'] = 0.0  # ELIMINATED
-                        features.loc[features.index[i], 'category_status'] = 'ELIMINATED'
+                        features.loc[features.index[i], 'category_status_eliminated'] = 1.0  # Numeric flag
+                        features.loc[features.index[i], 'category_status_deprioritized'] = 0.0  # Not just deprioritized, eliminated
                     else:
                         features.loc[features.index[i], 'policy_priority_weight'] = 0.1  # Legacy only
+                        features.loc[features.index[i], 'category_status_eliminated'] = 0.0
+                        features.loc[features.index[i], 'category_status_deprioritized'] = 0.0
                         
                 # STEM/Agriculture: Deprioritized, unlikely regular draws
                 elif any(term in str(category_name) for term in ['STEM', 'Agriculture']):
                     features.loc[features.index[i], 'policy_priority_weight'] = 0.2  # Deprioritized
-                    features.loc[features.index[i], 'category_status'] = 'DEPRIORITIZED'
+                    features.loc[features.index[i], 'category_status_deprioritized'] = 1.0  # Numeric flag
+                    features.loc[features.index[i], 'category_status_eliminated'] = 0.0  # Not eliminated, just deprioritized
                     
                 # General/No Program: ELIMINATED after April 2024
                 elif any(term in str(category_name) for term in ['General', 'No Program']):
                     if draw_date > pd.to_datetime('2024-04-01'):
                         features.loc[features.index[i], 'policy_priority_weight'] = 0.0  # ELIMINATED
-                        features.loc[features.index[i], 'category_status'] = 'ELIMINATED'
+                        features.loc[features.index[i], 'category_status_eliminated'] = 1.0  # Numeric flag
+                        features.loc[features.index[i], 'category_status_deprioritized'] = 0.0  # Not just deprioritized, eliminated
                     else:
                         features.loc[features.index[i], 'policy_priority_weight'] = 0.3  # Historical only
+                        features.loc[features.index[i], 'category_status_eliminated'] = 0.0
+                        features.loc[features.index[i], 'category_status_deprioritized'] = 0.0
+                        
+                # Default values for categories that don't match any specific policy rules
+                else:
+                    features.loc[features.index[i], 'policy_priority_weight'] = 1.0  # Normal priority
+                    features.loc[features.index[i], 'category_status_eliminated'] = 0.0  # Active
+                    features.loc[features.index[i], 'category_status_deprioritized'] = 0.0  # Not deprioritized
             
             # 🎯 CRS SCORING REVOLUTION (March 25, 2025)
             # Job offer points eliminated - major score deflation
@@ -1307,6 +1332,17 @@ class InvitationPredictor(BasePredictor):
         feature_cols = [col for col in features.columns if col not in exclude_cols]
         
         X = features[feature_cols].fillna(0)
+        
+        # Convert any remaining categorical columns to numeric for XGBoost compatibility
+        for col in X.columns:
+            if X[col].dtype == 'object':
+                # Try to convert to numeric, if fails use label encoding
+                try:
+                    X[col] = pd.to_numeric(X[col], errors='coerce').fillna(0)
+                except:
+                    # Label encode categorical strings
+                    X[col] = pd.Categorical(X[col]).codes.astype(float)
+        
         y = features[target_col]
         
         # Remove rows with missing target values
