@@ -344,7 +344,18 @@ function createCategoryTabs() {
         tabPane.setAttribute('role', 'tabpanel');
         tabPane.setAttribute('aria-labelledby', `${categoryId}-tab`);
         
-        tabPane.innerHTML = createCategoryContent(categoryData);
+        // Load category content asynchronously
+        createCategoryContent(categoryData).then(content => {
+            tabPane.innerHTML = content;
+        }).catch(error => {
+            console.error('Error loading category content:', error);
+            tabPane.innerHTML = `
+                <div class="alert alert-danger text-center">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Error loading predictions for ${categoryData.category_name}
+                </div>
+            `;
+        });
         tabsContent.appendChild(tabPane);
         
         // Set initial category for performance display
@@ -355,10 +366,26 @@ function createCategoryTabs() {
     });
 }
 
-function createCategoryContent(categoryData) {
+async function createCategoryContent(categoryData) {
     const categoryName = categoryData.category_name;
     const predictions = categoryData.predictions || [];
-    const recentDraws = categoryData.recent_draws || [];
+    
+    // Fetch recent draws directly from API instead of using category data
+    let recentDraws = [];
+    try {
+        const drawsResponse = await fetch('/api/draws/');
+        const drawsData = await drawsResponse.json();
+        const allDraws = Array.isArray(drawsData) ? drawsData : drawsData.results || [];
+        
+        // Filter draws for this category and get the 5 most recent
+        recentDraws = allDraws
+            .filter(draw => draw.category_name === categoryName)
+            .sort((a, b) => new Date(b.date) - new Date(a.date))
+            .slice(0, 5);
+    } catch (error) {
+        console.error('Error fetching recent draws:', error);
+        recentDraws = categoryData.recent_draws || []; // Fallback to category data
+    }
     
     if (predictions.length === 0) {
         return `
@@ -427,12 +454,12 @@ function createCategoryContent(categoryData) {
                                 </tr>
                             </thead>
                             <tbody>
-                                ${recentDraws.slice(0, 5).map(draw => `
+                                ${recentDraws.map(draw => `
                                     <tr>
-                                        <td>${draw.date ? formatDate(draw.date) : 'N/A'}</td>
-                                        <td><strong>${draw.lowest_crs_score || 'N/A'}</strong></td>
+                                        <td>${formatDate(draw.date)}</td>
+                                        <td><strong>${draw.lowest_crs_score}</strong></td>
                                         <td>${draw.invitations_issued ? draw.invitations_issued.toLocaleString() : 'N/A'}</td>
-                                        <td>#${draw.round_number || 'N/A'}</td>
+                                        <td>#${draw.round_number}</td>
                                     </tr>
                                 `).join('')}
                             </tbody>
