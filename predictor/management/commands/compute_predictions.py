@@ -1186,32 +1186,51 @@ class Command(BaseCommand):
             return (max_val - value) / (max_val - min_val)
     
     def _calculate_model_confidence(self, result, data_size):
-        """Calculate confidence score based on model performance and data size"""
+        """
+        Calculate confidence score based on model performance and data size.
         
-        base_confidence = 0.5
+        REMOVED ARTIFICIAL CAP: Confidence can now exceed 95% for exceptional models.
+        This allows better differentiation between high-performing models.
+        """
         
-        # CV score contribution (30%)
+        base_confidence = 0.3  # Reduced base to make room for earned confidence
+        
+        # CV score contribution (35%) - Increased weight for cross-validation performance
         cv_score = result.get('cv_score', -100)
-        cv_confidence = max(0, min(1, (cv_score + 50) / 100)) * 0.3
+        cv_confidence = max(0, min(1.2, (cv_score + 50) / 80)) * 0.35  # Allow slight boost for exceptional CV scores
         
-        # R² contribution (25%)
+        # R² contribution (25%) - Coefficient of determination importance
         r2 = result.get('r2', 0)
-        r2_confidence = max(0, min(1, r2)) * 0.25
+        r2_confidence = max(0, min(1.1, r2)) * 0.25  # Allow R² > 1.0 (perfect fit scenarios)
         
-        # Data size contribution (20%)
-        size_confidence = min(1, data_size / 50) * 0.2
+        # Data size contribution (15%) - More data = higher confidence
+        size_confidence = min(1, data_size / 50) * 0.15
         
-        # Cross-validation folds contribution (15%)
+        # Cross-validation folds contribution (15%) - More folds = better validation
         n_folds = result.get('n_cv_folds', 0)
         cv_folds_confidence = min(1, n_folds / 3) * 0.15
         
-        # MAE contribution (10%)
+        # MAE contribution (10%) - Lower error = higher confidence
         mae = result.get('mae', 100)
-        mae_confidence = max(0, min(1, (100 - mae) / 100)) * 0.1
+        mae_confidence = max(0, min(1.2, (50 - mae) / 50)) * 0.1  # Better scaling for low MAE
         
         total_confidence = base_confidence + cv_confidence + r2_confidence + size_confidence + cv_folds_confidence + mae_confidence
         
-        return min(0.95, max(0.1, total_confidence))
+        # SCIENTIFIC CONFIDENCE RANGE: 10% minimum, 99% maximum (no artificial 95% cap)
+        # This allows exceptional models to achieve confidence levels that reflect their true performance
+        final_confidence = max(0.1, min(0.99, total_confidence))
+        
+        # Debug output for confidence calculation
+        if total_confidence > 0.95:
+            print(f"🎯 HIGH CONFIDENCE MODEL DETECTED:")
+            print(f"   CV Score: {cv_score:.2f} → {cv_confidence:.3f}")
+            print(f"   R²: {r2:.3f} → {r2_confidence:.3f}")
+            print(f"   Data Size: {data_size} → {size_confidence:.3f}")
+            print(f"   CV Folds: {n_folds} → {cv_folds_confidence:.3f}")
+            print(f"   MAE: {mae:.2f} → {mae_confidence:.3f}")
+            print(f"   TOTAL: {final_confidence:.3f}")
+        
+        return final_confidence
     
     def _fallback_model_selection(self, df, data_size):
         """Fallback to simple data-size based selection if evaluation fails"""
