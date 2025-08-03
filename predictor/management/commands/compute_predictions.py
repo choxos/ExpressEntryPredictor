@@ -772,6 +772,22 @@ class Command(BaseCommand):
                     
                     print(f"🎯 {model_name} prediction (rank {rank}): CRS {predicted_score} (±{int(scaled_crs_uncertainty)}), Invitations {predicted_invitations} (±{int(scaled_invitation_uncertainty)})")
                     
+                    # 🧠 RECALCULATE CONFIDENCE with DOMAIN INTELLIGENCE
+                    # Use the actual prediction values to assess confidence with domain knowledge
+                    enhanced_confidence = self._calculate_model_confidence(
+                        result={'cv_score': -50, 'r2': 0.8, 'mae': 30, 'n_cv_folds': 5},  # Default statistical metrics
+                        data_size=len(df),
+                        predicted_crs=int(predicted_score),
+                        prediction_date=next_date,
+                        df=df
+                    )
+                    
+                    # Use enhanced confidence if it's significantly different from model baseline
+                    confidence_adjustment = enhanced_confidence / max(0.1, model_confidence)
+                    if abs(enhanced_confidence - model_confidence) > 0.15:  # Significant difference
+                        print(f"🔍 Confidence adjusted: {model_confidence:.3f} → {enhanced_confidence:.3f} (factor: {confidence_adjustment:.2f})")
+                        model_confidence = enhanced_confidence
+                    
                     # FINAL NaN SAFETY CHECKS before database save
                     # Ensure all values are valid numbers that can be saved to database
                     if pd.isna(predicted_score) or np.isnan(predicted_score):
@@ -1361,12 +1377,15 @@ class Command(BaseCommand):
         else:
             return (max_val - value) / (max_val - min_val)
     
-    def _calculate_model_confidence(self, result, data_size):
+    def _calculate_model_confidence(self, result, data_size, predicted_crs=None, prediction_date=None, df=None):
         """
-        Calculate confidence score based on model performance and data size.
+        Enhanced confidence calculation with DOMAIN-SPECIFIC INTELLIGENCE.
         
-        MATHEMATICALLY ROBUST: Uses proper normalization and weight distribution.
-        Components sum to 100% and are scaled appropriately for their domains.
+        Combines statistical metrics with Express Entry domain knowledge:
+        - Recent trend alignment
+        - Seasonal pattern alignment  
+        - Realistic score ranges
+        - Statistical performance
         """
         
         # Get metrics with safe defaults
@@ -1378,69 +1397,132 @@ class Command(BaseCommand):
         # Initialize component scores
         components = {}
         
-        # 1. Cross-Validation Performance (40%) - Most important for reliability
-        if cv_score != -np.inf and cv_score > -1000:  # CV scores are negative MAE
-            # Normalize CV score: convert negative MAE to 0-1 scale
-            # Good CV scores for CRS prediction: -5 to -50 (small errors)
-            cv_normalized = max(0, min(1, (cv_score + 100) / 95))  # -5 → 1.0, -100 → 0.0
-            components['cv_performance'] = cv_normalized * 0.40
+        # STATISTICAL COMPONENTS (65% total)
+        
+        # 1. Cross-Validation Performance (25%) - Reduced from 40%
+        if cv_score != -np.inf and cv_score > -1000:
+            cv_normalized = max(0, min(1, (cv_score + 100) / 95))
+            components['cv_performance'] = cv_normalized * 0.25
         else:
             components['cv_performance'] = 0.0
         
-        # 2. Coefficient of Determination (25%) - Goodness of fit
+        # 2. Coefficient of Determination (20%) - Reduced from 25%
         if r2 != -np.inf:
-            # R² should be capped at 1.0 (perfect fit), values > 1.0 indicate overfitting
-            r2_normalized = max(0, min(1.0, r2))  # Strict cap at 1.0
-            components['goodness_of_fit'] = r2_normalized * 0.25
+            r2_normalized = max(0, min(1.0, r2))
+            components['goodness_of_fit'] = r2_normalized * 0.20
         else:
             components['goodness_of_fit'] = 0.0
         
-        # 3. Prediction Error (20%) - Relative to CRS score range
+        # 3. Prediction Error (15%) - Reduced from 20%
         if mae != np.inf:
-            # CRS scores typically range 300-900 (600 point range)
-            # Excellent: MAE < 10, Good: MAE < 30, Poor: MAE > 100
-            mae_normalized = max(0, min(1, (60 - mae) / 60))  # MAE=0 → 1.0, MAE=60 → 0.0
-            components['prediction_accuracy'] = mae_normalized * 0.20
+            mae_normalized = max(0, min(1, (60 - mae) / 60))
+            components['prediction_accuracy'] = mae_normalized * 0.15
         else:
             components['prediction_accuracy'] = 0.0
         
-        # 4. Validation Robustness (10%) - Number of CV folds
+        # 4. Validation Robustness (5%) - Reduced from 10%
         if n_folds > 0:
-            # 3+ folds is good for small datasets, 5+ is excellent
-            folds_normalized = min(1, n_folds / 5)  # 5 folds → 1.0
-            components['validation_robustness'] = folds_normalized * 0.10
+            folds_normalized = min(1, n_folds / 5)
+            components['validation_robustness'] = folds_normalized * 0.05
         else:
             components['validation_robustness'] = 0.0
         
-        # 5. Data Adequacy (5%) - Sample size relative to model complexity
-        # Adjust thresholds for Express Entry context (some categories have limited data)
-        if data_size >= 20:  # Excellent
-            data_normalized = 1.0
-        elif data_size >= 10:  # Good
-            data_normalized = 0.8
-        elif data_size >= 5:   # Adequate
-            data_normalized = 0.6
-        else:  # Limited but workable
-            data_normalized = 0.3
-        components['data_adequacy'] = data_normalized * 0.05
+        # DOMAIN-SPECIFIC COMPONENTS (35% total) - NEW!
+        
+        # 5. Recent Trend Alignment (15%) - How well does prediction align with recent 6-month trend?
+        if predicted_crs is not None and df is not None and len(df) >= 6:
+            recent_scores = df['lowest_crs_score'].tail(6).values
+            recent_trend = np.mean(recent_scores)
+            recent_std = np.std(recent_scores)
+            
+            # Calculate how many standard deviations away from recent trend
+            if recent_std > 0:
+                z_score = abs(predicted_crs - recent_trend) / recent_std
+                # Penalize predictions more than 2 std devs from recent trend
+                trend_alignment = max(0, min(1, (3 - z_score) / 3))  # 0 std → 1.0, 3+ std → 0.0
+            else:
+                trend_alignment = 1.0 if abs(predicted_crs - recent_trend) < 20 else 0.5
+            
+            components['trend_alignment'] = trend_alignment * 0.15
+        else:
+            components['trend_alignment'] = 0.075  # Neutral score when no data
+        
+        # 6. Seasonal Alignment (10%) - How well does it align with same month in previous years?
+        if predicted_crs is not None and prediction_date is not None and df is not None:
+            try:
+                pred_month = prediction_date.month
+                # Get historical data for same month
+                df['date'] = pd.to_datetime(df['date'])
+                historical_same_month = df[df['date'].dt.month == pred_month]['lowest_crs_score']
+                
+                if len(historical_same_month) >= 2:
+                    seasonal_mean = historical_same_month.mean()
+                    seasonal_std = historical_same_month.std()
+                    
+                    if seasonal_std > 0:
+                        seasonal_z = abs(predicted_crs - seasonal_mean) / seasonal_std
+                        seasonal_alignment = max(0, min(1, (2.5 - seasonal_z) / 2.5))
+                    else:
+                        seasonal_alignment = 1.0 if abs(predicted_crs - seasonal_mean) < 30 else 0.5
+                    
+                    components['seasonal_alignment'] = seasonal_alignment * 0.10
+                else:
+                    components['seasonal_alignment'] = 0.05  # Neutral when insufficient seasonal data
+            except:
+                components['seasonal_alignment'] = 0.05
+        else:
+            components['seasonal_alignment'] = 0.05
+        
+        # 7. Realistic Range Score (10%) - Is prediction within reasonable historical bounds?
+        if predicted_crs is not None and df is not None:
+            historical_scores = df['lowest_crs_score'].values
+            hist_min, hist_max = historical_scores.min(), historical_scores.max()
+            hist_mean = historical_scores.mean()
+            hist_std = historical_scores.std()
+            
+            # Define realistic range: mean ± 2.5 std, but bounded by historical extremes
+            realistic_min = max(hist_min - 50, hist_mean - 2.5 * hist_std)  # Allow some extrapolation
+            realistic_max = min(hist_max + 50, hist_mean + 2.5 * hist_std)
+            
+            if realistic_min <= predicted_crs <= realistic_max:
+                # Within realistic range - score based on how close to center
+                center_distance = abs(predicted_crs - hist_mean) / (2.5 * hist_std)
+                realism_score = max(0.3, min(1.0, 1.0 - center_distance * 0.4))  # 0.3-1.0 range
+            else:
+                # Outside realistic range - heavy penalty
+                if predicted_crs < realistic_min:
+                    excess = (realistic_min - predicted_crs) / hist_std
+                else:
+                    excess = (predicted_crs - realistic_max) / hist_std
+                realism_score = max(0.0, 0.3 - excess * 0.1)  # Rapid decay for unrealistic predictions
+            
+            components['realism_score'] = realism_score * 0.10
+            
+            # Debug unrealistic predictions
+            if realism_score < 0.3:
+                print(f"⚠️  UNREALISTIC PREDICTION DETECTED:")
+                print(f"   Predicted CRS: {predicted_crs}")
+                print(f"   Historical range: {hist_min:.0f} - {hist_max:.0f}")
+                print(f"   Realistic range: {realistic_min:.0f} - {realistic_max:.0f}")
+                print(f"   Realism penalty: {(1.0 - realism_score):.2f}")
+        else:
+            components['realism_score'] = 0.05
         
         # Calculate total confidence (components sum to 100%)
         total_confidence = sum(components.values())
         
         # Apply confidence floor and ceiling
-        # Floor: Even poor models have some predictive value (20%)
-        # Ceiling: No model is perfect for future prediction (95%)
-        final_confidence = max(0.20, min(0.95, total_confidence))
+        final_confidence = max(0.15, min(0.95, total_confidence))
         
-        # Debug output for high confidence models
-        if total_confidence > 0.85:
-            print(f"🎯 HIGH CONFIDENCE MODEL DETECTED:")
-            print(f"   CV Score: {cv_score:.2f} → {components['cv_performance']:.3f} (40%)")
-            print(f"   R²: {r2:.3f} → {components['goodness_of_fit']:.3f} (25%)")
-            print(f"   MAE: {mae:.2f} → {components['prediction_accuracy']:.3f} (20%)")
-            print(f"   CV Folds: {n_folds} → {components['validation_robustness']:.3f} (10%)")
-            print(f"   Data Size: {data_size} → {components['data_adequacy']:.3f} (5%)")
-            print(f"   TOTAL: {final_confidence:.3f}")
+        # Debug output for models with domain issues
+        if predicted_crs is not None and (components.get('trend_alignment', 0) < 0.05 or 
+                                          components.get('realism_score', 0) < 0.05):
+            print(f"🔍 DOMAIN ANALYSIS for prediction {predicted_crs:.0f}:")
+            print(f"   📈 Trend Alignment: {components.get('trend_alignment', 0):.3f} (15%)")
+            print(f"   📅 Seasonal Alignment: {components.get('seasonal_alignment', 0):.3f} (10%)")
+            print(f"   🎯 Realism Score: {components.get('realism_score', 0):.3f} (10%)")
+            print(f"   📊 Statistical Score: {total_confidence - components.get('trend_alignment', 0) - components.get('seasonal_alignment', 0) - components.get('realism_score', 0):.3f} (65%)")
+            print(f"   ✅ FINAL CONFIDENCE: {final_confidence:.3f}")
         
         return final_confidence
     
