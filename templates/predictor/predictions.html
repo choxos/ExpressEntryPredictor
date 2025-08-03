@@ -13,11 +13,23 @@
 }
 
 .prediction-card {
-    transition: transform 0.2s ease-in-out;
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    background: white;
+    border: 1px solid #e9ecef;
 }
 
 .prediction-card:hover {
     transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.1) !important;
+}
+
+.model-prediction-item {
+    background: white !important;
+    border: 1px solid #e9ecef !important;
+}
+
+.model-prediction-item:hover {
+    background: #f8f9fa !important;
 }
 
 .model-badge {
@@ -28,7 +40,7 @@
 .confidence-bar {
     height: 8px;
     border-radius: 4px;
-    background: linear-gradient(90deg, #dc3545 0%, #ffc107 50%, #28a745 100%);
+    background: linear-gradient(90deg, #e9ecef 0%, #6c757d 50%, #0d6efd 100%);
     position: relative;
     overflow: hidden;
 }
@@ -497,21 +509,21 @@ async function createCategoryContent(categoryData) {
         
         content += `
             <div class="col-lg-6 mb-4">
-                <div class="card prediction-card h-100 shadow-sm">
-                    <div class="card-header bg-dark text-white">
+                <div class="card prediction-card h-100 shadow-sm border">
+                    <div class="card-header bg-white border-bottom">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
-                                <h6 class="mb-0">
-                                    <i class="fas fa-calendar me-2"></i>
+                                <h6 class="mb-0 text-dark">
+                                    <i class="fas fa-calendar me-2 text-primary"></i>
                                     ${displayDate}
                                 </h6>
-                                <small class="opacity-75">${models.length} Models Predicting</small>
+                                <small class="text-muted">${models.length} Models Predicting</small>
                             </div>
                             <div class="text-end">
-                                <span class="badge bg-white text-dark fs-6">
+                                <span class="badge bg-primary text-white fs-6">
                                     ${Math.round(avgConfidence)}%
                                 </span>
-                                <div class="small opacity-75">Avg. Confidence</div>
+                                <div class="small text-muted">Avg. Confidence</div>
                             </div>
                         </div>
                     </div>
@@ -546,16 +558,16 @@ async function createCategoryContent(categoryData) {
                                 const confidence = model.confidence_score || 0;
                                 
                                 return `
-                                    <div class="model-prediction-item mb-3 p-3 border-0 rounded shadow-sm" style="background: linear-gradient(135deg, ${modelColor}15 0%, ${modelColor}05 100%); border-left: 4px solid ${modelColor} !important;">
+                                    <div class="model-prediction-item mb-3 p-3 border rounded shadow-sm bg-white" style="border-left: 4px solid ${modelColor} !important;">
                                         <div class="d-flex justify-content-between align-items-start mb-3">
                                             <div>
-                                                <h6 class="mb-1" style="color: ${modelColor};">
-                                                    <i class="fas fa-brain me-2"></i>
+                                                <h6 class="mb-1 text-dark">
+                                                    <i class="fas fa-brain me-2" style="color: ${modelColor};"></i>
                                                     ${model.model_name || 'Unknown Model'}
                                                 </h6>
                                                 <small class="text-muted">AI Model Prediction</small>
                                             </div>
-                                            <span class="badge rounded-pill" style="background-color: ${modelColor}; color: white; font-size: 0.75rem;">
+                                            <span class="badge rounded-pill text-white" style="background-color: ${modelColor}; font-size: 0.75rem;">
                                                 ${Math.round(confidence)}% Confidence
                                             </span>
                                         </div>
@@ -589,10 +601,10 @@ async function createCategoryContent(categoryData) {
                                         <div class="mt-3">
                                             <div class="d-flex justify-content-between align-items-center mb-1">
                                                 <small class="text-muted">Model Confidence</small>
-                                                <small class="fw-bold" style="color: ${modelColor};">${confidence}%</small>
+                                                <small class="fw-bold text-primary">${confidence}%</small>
                                             </div>
-                                            <div class="progress" style="height: 6px;">
-                                                <div class="progress-bar" role="progressbar" style="width: ${confidence}%; background-color: ${modelColor};" aria-valuenow="${confidence}" aria-valuemin="0" aria-valuemax="100"></div>
+                                            <div class="progress" style="height: 6px; background-color: #f8f9fa;">
+                                                <div class="progress-bar" role="progressbar" style="width: ${confidence}%; background-color: #0d6efd;" aria-valuenow="${confidence}" aria-valuemin="0" aria-valuemax="100"></div>
                                             </div>
                                         </div>
                                         
