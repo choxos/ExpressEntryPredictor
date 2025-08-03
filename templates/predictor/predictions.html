@@ -651,14 +651,45 @@ function displayModelPerformance(categoryPredictions) {
     const categoryData = categoryPredictions[0];
     const predictions = categoryData.predictions || [];
     
-    // Calculate metrics for this category
-    const avgConfidence = predictions.length > 0 ? 
-        predictions.reduce((sum, p) => sum + (p.confidence_score || 0), 0) / predictions.length : 0;
+    // Handle new multi-model API structure
+    let allModels = [];
+    let allConfidences = [];
+    let allInvitations = [];
+    let nextCRSScore = 'N/A';
     
-    const modelTypes = new Set(predictions.map(p => p.model_used || 'Unknown'));
-    const nextPrediction = predictions[0];
+    predictions.forEach(predictionGroup => {
+        if (predictionGroup.models && predictionGroup.models.length > 0) {
+            // New format: predictions grouped by date with models array
+            predictionGroup.models.forEach(model => {
+                allModels.push(model.model_name || 'Unknown');
+                allConfidences.push(model.confidence_score || 0);
+                allInvitations.push(model.predicted_invitations || 0);
+            });
+            
+            // Get next CRS score from the first prediction group (earliest date)
+            if (nextCRSScore === 'N/A' && predictionGroup.models[0]) {
+                nextCRSScore = predictionGroup.models[0].predicted_crs_score || 'N/A';
+            }
+        } else {
+            // Old format fallback
+            allModels.push(predictionGroup.model_used || 'Unknown');
+            allConfidences.push(predictionGroup.confidence_score || 0);
+            allInvitations.push(predictionGroup.predicted_invitations || 0);
+            
+            if (nextCRSScore === 'N/A') {
+                nextCRSScore = predictionGroup.predicted_crs_score || 'N/A';
+            }
+        }
+    });
     
-    const avgInvitations = calculateAverageInvitations(predictions);
+    // Calculate metrics
+    const avgConfidence = allConfidences.length > 0 ? 
+        allConfidences.reduce((sum, c) => sum + c, 0) / allConfidences.length : 0;
+    
+    const uniqueModels = new Set(allModels);
+    
+    const avgInvitations = allInvitations.length > 0 ? 
+        Math.round(allInvitations.reduce((sum, i) => sum + i, 0) / allInvitations.length) : 0;
     
     const lastUpdate = categoryData.last_updated ? 
         new Date(categoryData.last_updated).toLocaleDateString() : 'Unknown';
@@ -672,19 +703,19 @@ function displayModelPerformance(categoryPredictions) {
         },
         {
             title: 'Avg. Invitations',
-            value: avgInvitations,
+            value: avgInvitations > 0 ? avgInvitations.toLocaleString() : 'N/A',
             icon: 'fas fa-users',
             color: 'success'
         },
         {
             title: 'Active Models',
-            value: `${modelTypes.size} Models`,
+            value: `${uniqueModels.size} Models`,
             icon: 'fas fa-cogs',
             color: 'info'
         },
         {
             title: 'Next CRS Score',
-            value: nextPrediction ? nextPrediction.predicted_crs_score : 'N/A',
+            value: typeof nextCRSScore === 'number' ? Math.round(nextCRSScore) : nextCRSScore,
             icon: 'fas fa-trophy',
             color: 'warning'
         }
@@ -714,27 +745,48 @@ function createTimelineChart(categoryPredictions) {
         return;
     }
     
-    const chartData = [];
     const categoryData = categoryPredictions[0];
     const predictions = categoryData.predictions || [];
     
-    // Group predictions by model
+    // Handle new multi-model API structure - extract all model predictions
     const modelGroups = {};
-    predictions.forEach(pred => {
-        const modelName = pred.model_used || 'Unknown';
-        if (!modelGroups[modelName]) {
-            modelGroups[modelName] = [];
+    
+    predictions.forEach(predictionGroup => {
+        const date = predictionGroup.predicted_date;
+        
+        if (predictionGroup.models && predictionGroup.models.length > 0) {
+            // New format: predictions grouped by date with models array
+            predictionGroup.models.forEach(model => {
+                const modelName = model.model_name || 'Unknown';
+                if (!modelGroups[modelName]) {
+                    modelGroups[modelName] = [];
+                }
+                modelGroups[modelName].push({
+                    x: date,
+                    y: model.predicted_crs_score || 0,
+                    confidence: model.confidence_score || 75,
+                    invitations: model.predicted_invitations || 0
+                });
+            });
+        } else {
+            // Old format fallback
+            const modelName = predictionGroup.model_used || 'Unknown';
+            if (!modelGroups[modelName]) {
+                modelGroups[modelName] = [];
+            }
+            modelGroups[modelName].push({
+                x: predictionGroup.predicted_date || new Date(),
+                y: predictionGroup.predicted_crs_score || 0,
+                confidence: predictionGroup.confidence_score || 75,
+                invitations: predictionGroup.predicted_invitations || 0
+            });
         }
-        modelGroups[modelName].push({
-                                        x: pred.predicted_date || new Date(),
-                            y: pred.predicted_crs_score || 0,
-                            confidence: pred.confidence_score || 75,
-                            invitations: pred.predicted_invitations || 0
-        });
     });
     
-    const traces = Object.keys(modelGroups).map(modelName => {
+    // Create traces for each model with distinct colors
+    const traces = Object.keys(modelGroups).map((modelName, index) => {
         const points = modelGroups[modelName].sort((a, b) => new Date(a.x) - new Date(b.x));
+        const modelColor = getModelColor(modelName);
         
         return {
             x: points.map(p => p.x),
@@ -742,9 +794,11 @@ function createTimelineChart(categoryPredictions) {
             mode: 'lines+markers',
             name: modelName,
             line: {
+                color: modelColor,
                 width: 3
             },
             marker: {
+                color: modelColor,
                 size: 8,
                 opacity: 0.8
             },
@@ -761,36 +815,41 @@ function createTimelineChart(categoryPredictions) {
         };
     });
     
+    if (traces.length === 0) {
+        document.getElementById('timelineChart').innerHTML = '<p class="text-center text-muted">No model predictions available for chart</p>';
+        return;
+    }
+    
     const layout = {
         title: {
-            text: `${categoryData.category_name} - CRS Predictions by Model`,
+            text: `${categoryData.category_name} - Multi-Model CRS Predictions`,
             font: { size: 16 },
             y: 0.95
         },
         xaxis: {
-            title: 'Date',
+            title: 'Prediction Date',
             type: 'date'
         },
         yaxis: {
-            title: 'CRS Score',
-            range: [300, 900]
+            title: 'Predicted CRS Score',
+            rangemode: 'tozero'
         },
         hovermode: 'closest',
         showlegend: true,
         legend: {
-            orientation: 'h',
-            x: 0.5,
-            xanchor: 'center',
-            y: -0.15,
+            orientation: 'v',
+            x: 1.02,
+            xanchor: 'left',
+            y: 1,
             yanchor: 'top'
         },
         margin: {
             l: 60,
-            r: 40,
+            r: 150,
             t: 80,
-            b: 120
+            b: 60
         },
-        height: 450
+        height: 500
     };
     
     Plotly.newPlot('timelineChart', traces, layout, {responsive: true});
