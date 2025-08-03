@@ -1290,45 +1290,81 @@ class Command(BaseCommand):
         """
         Calculate confidence score based on model performance and data size.
         
-        REMOVED ARTIFICIAL CAP: Confidence can now exceed 95% for exceptional models.
-        This allows better differentiation between high-performing models.
+        MATHEMATICALLY ROBUST: Uses proper normalization and weight distribution.
+        Components sum to 100% and are scaled appropriately for their domains.
         """
         
-        base_confidence = 0.3  # Reduced base to make room for earned confidence
-        
-        # CV score contribution (35%) - Increased weight for cross-validation performance
-        cv_score = result.get('cv_score', -100)
-        cv_confidence = max(0, min(1.2, (cv_score + 50) / 80)) * 0.35  # Allow slight boost for exceptional CV scores
-        
-        # R² contribution (25%) - Coefficient of determination importance
-        r2 = result.get('r2', 0)
-        r2_confidence = max(0, min(1.1, r2)) * 0.25  # Allow R² > 1.0 (perfect fit scenarios)
-        
-        # Data size contribution (15%) - More data = higher confidence
-        size_confidence = min(1, data_size / 50) * 0.15
-        
-        # Cross-validation folds contribution (15%) - More folds = better validation
+        # Get metrics with safe defaults
+        cv_score = result.get('cv_score', -np.inf)
+        r2 = result.get('r2', -np.inf)
+        mae = result.get('mae', np.inf)
         n_folds = result.get('n_cv_folds', 0)
-        cv_folds_confidence = min(1, n_folds / 3) * 0.15
         
-        # MAE contribution (10%) - Lower error = higher confidence
-        mae = result.get('mae', 100)
-        mae_confidence = max(0, min(1.2, (50 - mae) / 50)) * 0.1  # Better scaling for low MAE
+        # Initialize component scores
+        components = {}
         
-        total_confidence = base_confidence + cv_confidence + r2_confidence + size_confidence + cv_folds_confidence + mae_confidence
+        # 1. Cross-Validation Performance (40%) - Most important for reliability
+        if cv_score != -np.inf and cv_score > -1000:  # CV scores are negative MAE
+            # Normalize CV score: convert negative MAE to 0-1 scale
+            # Good CV scores for CRS prediction: -5 to -50 (small errors)
+            cv_normalized = max(0, min(1, (cv_score + 100) / 95))  # -5 → 1.0, -100 → 0.0
+            components['cv_performance'] = cv_normalized * 0.40
+        else:
+            components['cv_performance'] = 0.0
         
-        # SCIENTIFIC CONFIDENCE RANGE: 10% minimum, 99% maximum (no artificial 95% cap)
-        # This allows exceptional models to achieve confidence levels that reflect their true performance
-        final_confidence = max(0.1, min(0.99, total_confidence))
+        # 2. Coefficient of Determination (25%) - Goodness of fit
+        if r2 != -np.inf:
+            # R² should be capped at 1.0 (perfect fit), values > 1.0 indicate overfitting
+            r2_normalized = max(0, min(1.0, r2))  # Strict cap at 1.0
+            components['goodness_of_fit'] = r2_normalized * 0.25
+        else:
+            components['goodness_of_fit'] = 0.0
         
-        # Debug output for confidence calculation
-        if total_confidence > 0.95:
+        # 3. Prediction Error (20%) - Relative to CRS score range
+        if mae != np.inf:
+            # CRS scores typically range 300-900 (600 point range)
+            # Excellent: MAE < 10, Good: MAE < 30, Poor: MAE > 100
+            mae_normalized = max(0, min(1, (60 - mae) / 60))  # MAE=0 → 1.0, MAE=60 → 0.0
+            components['prediction_accuracy'] = mae_normalized * 0.20
+        else:
+            components['prediction_accuracy'] = 0.0
+        
+        # 4. Validation Robustness (10%) - Number of CV folds
+        if n_folds > 0:
+            # 3+ folds is good for small datasets, 5+ is excellent
+            folds_normalized = min(1, n_folds / 5)  # 5 folds → 1.0
+            components['validation_robustness'] = folds_normalized * 0.10
+        else:
+            components['validation_robustness'] = 0.0
+        
+        # 5. Data Adequacy (5%) - Sample size relative to model complexity
+        # Adjust thresholds for Express Entry context (some categories have limited data)
+        if data_size >= 20:  # Excellent
+            data_normalized = 1.0
+        elif data_size >= 10:  # Good
+            data_normalized = 0.8
+        elif data_size >= 5:   # Adequate
+            data_normalized = 0.6
+        else:  # Limited but workable
+            data_normalized = 0.3
+        components['data_adequacy'] = data_normalized * 0.05
+        
+        # Calculate total confidence (components sum to 100%)
+        total_confidence = sum(components.values())
+        
+        # Apply confidence floor and ceiling
+        # Floor: Even poor models have some predictive value (20%)
+        # Ceiling: No model is perfect for future prediction (95%)
+        final_confidence = max(0.20, min(0.95, total_confidence))
+        
+        # Debug output for high confidence models
+        if total_confidence > 0.85:
             print(f"🎯 HIGH CONFIDENCE MODEL DETECTED:")
-            print(f"   CV Score: {cv_score:.2f} → {cv_confidence:.3f}")
-            print(f"   R²: {r2:.3f} → {r2_confidence:.3f}")
-            print(f"   Data Size: {data_size} → {size_confidence:.3f}")
-            print(f"   CV Folds: {n_folds} → {cv_folds_confidence:.3f}")
-            print(f"   MAE: {mae:.2f} → {mae_confidence:.3f}")
+            print(f"   CV Score: {cv_score:.2f} → {components['cv_performance']:.3f} (40%)")
+            print(f"   R²: {r2:.3f} → {components['goodness_of_fit']:.3f} (25%)")
+            print(f"   MAE: {mae:.2f} → {components['prediction_accuracy']:.3f} (20%)")
+            print(f"   CV Folds: {n_folds} → {components['validation_robustness']:.3f} (10%)")
+            print(f"   Data Size: {data_size} → {components['data_adequacy']:.3f} (5%)")
             print(f"   TOTAL: {final_confidence:.3f}")
         
         return final_confidence
