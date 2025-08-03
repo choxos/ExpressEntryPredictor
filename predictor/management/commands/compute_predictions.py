@@ -459,10 +459,25 @@ class Command(BaseCommand):
                                 sequence_length = getattr(current_model, 'sequence_length', 10)
                                 sequence_data = df['lowest_crs_score'].tail(sequence_length).values
                                 
-                                # Pad if we don't have enough data
+                                # Ensure we have enough data points for LSTM
                                 if len(sequence_data) < sequence_length:
-                                    padding = [sequence_data[0]] * (sequence_length - len(sequence_data))
-                                    sequence_data = np.array(padding + list(sequence_data))
+                                    # Use the last available value to pad the sequence
+                                    if len(sequence_data) > 0:
+                                        last_value = float(sequence_data[-1])
+                                    else:
+                                        last_value = float(df['lowest_crs_score'].mean())
+                                    
+                                    # Create a properly sized sequence
+                                    padded_sequence = [last_value] * sequence_length
+                                    # Replace the end with actual data if available
+                                    if len(sequence_data) > 0:
+                                        padded_sequence[-len(sequence_data):] = sequence_data.tolist()
+                                    
+                                    sequence_data = np.array(padded_sequence)
+                                
+                                # Verify we have the right size before reshaping
+                                if len(sequence_data) != sequence_length:
+                                    raise ValueError(f"Sequence length mismatch: expected {sequence_length}, got {len(sequence_data)}")
                                 
                                 # Reshape for LSTM: (1, sequence_length, 1)
                                 sequence_data = sequence_data.reshape(1, sequence_length, 1)
