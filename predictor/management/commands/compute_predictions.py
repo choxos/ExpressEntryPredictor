@@ -274,17 +274,19 @@ class Command(BaseCommand):
         ]):
             return 'HIGH'
         
-        # HIGH PRIORITY: Critical labor shortage sectors
+        # HIGH PRIORITY: Critical labor shortage sectors (but less frequent than CEC/French)
         if any(term in ircc_category for term in [
-            'Healthcare',  # 36 eligible occupations
-            'Trade',  # 25 NOC codes, construction focus
-            'Education'  # New priority category, 5 NOC codes
+            'Healthcare',  # 36 eligible occupations - monthly draws
         ]):
-            return 'HIGH'
+            return 'MEDIUM'  # Changed from HIGH to MEDIUM for realistic frequency
         
-        # MEDIUM PRIORITY: Reduced but active
-        if 'Provincial Nominee' in ircc_category:
-            return 'MEDIUM'  # Reduced from 120K to 55K but still active
+        # MEDIUM PRIORITY: Important sectors but less frequent draws
+        if any(term in ircc_category for term in [
+            'Provincial Nominee',  # Reduced from 120K to 55K but still active
+            'Trade',  # 25 NOC codes, sporadic scheduling based on labor market
+            'Education'  # New priority, sporadic scheduling based on labor market
+        ]):
+            return 'MEDIUM'
         
         # LOW PRIORITY: Deprioritized categories
         if any(term in ircc_category for term in [
@@ -1587,11 +1589,11 @@ class Command(BaseCommand):
         draw_calendar = {}
         current_date = start_date
         
-        # Category priorities for date assignment (2025 policy-based)
+        # Category priorities for date assignment (DATA-DRIVEN based on actual frequency)
         priority_categories = {
-            'HIGH': ['Canadian Experience Class', 'French-language proficiency'],
-            'MEDIUM': ['Healthcare and social services occupations', 'Trade occupations', 'Education occupations'],
-            'LOW': ['Provincial Nominee Program', 'STEM occupations', 'Agriculture and agri-food occupations']
+            'HIGH': ['Provincial Nominee Program'],  # Most frequent (bi-weekly)
+            'MEDIUM': ['Canadian Experience Class', 'French-language proficiency', 'Healthcare and social services occupations'],  # Monthly
+            'LOW': ['Trade occupations', 'Education occupations', 'STEM occupations', 'Agriculture and agri-food occupations']  # Quarterly/rare
         }
         
         # Flatten priorities with order
@@ -1626,20 +1628,20 @@ class Command(BaseCommand):
         """
         category_schedules = {}
         
-        # Calculate prediction frequency for each category based on 2025 policy
+        # Calculate prediction frequency for each category based on ACTUAL DATA
         for ircc_category in ircc_groups.keys():
-            priority = self.get_category_priority_2025(ircc_category)
             adjusted_count = self.get_adjusted_prediction_count(ircc_category, num_predictions)
             
-            if priority == 'HIGH':
-                # CEC and French: bi-weekly draws (every 2 weeks)
-                frequency = 2  # weeks between draws
-            elif priority == 'MEDIUM':
-                # Healthcare, Trades, Education: monthly draws
-                frequency = 4  # weeks between draws  
+            # DATA-DRIVEN FREQUENCIES (based on 2024-2025 actual patterns)
+            if any(term in ircc_category for term in ['Provincial Nominee']):
+                frequency = 2  # PNP: 16 days average → bi-weekly
+            elif any(term in ircc_category for term in ['Canadian Experience', 'French', 'Healthcare']):
+                frequency = 4  # CEC: 25 days, French: 32 days, Healthcare: 41 days → monthly
+            elif any(term in ircc_category for term in ['Trade', 'Education']):
+                frequency = 16  # Trade: 111 days, Education: very rare → quarterly+
             else:
-                # LOW priority: quarterly draws
-                frequency = 12  # weeks between draws
+                # STEM, Agriculture: quarterly
+                frequency = 12  # 12 weeks between draws
             
             # Generate date schedule for this category
             dates = []
@@ -1652,17 +1654,21 @@ class Command(BaseCommand):
             while len(dates) < predictions_needed and current_week < len(draw_calendar):
                 week_info = draw_calendar[current_week]
                 
-                # Determine if this category should draw this week
+                # Determine if this category should draw this week based on frequency
                 if current_week % frequency == 0:  # Respects frequency pattern
                     
-                    # HIGH priority gets primary dates
-                    if priority == 'HIGH' and week_info['assigned_primary'] is None:
-                        dates.append(week_info['primary'])
-                        draw_calendar[current_week]['assigned_primary'] = ircc_category
-                        weeks_assigned.append(current_week)
+                    # Assign dates based on frequency (most frequent gets best slots)
+                    if frequency == 2:  # Bi-weekly (PNP) - gets primary slots
+                        if week_info['assigned_primary'] is None:
+                            dates.append(week_info['primary'])
+                            draw_calendar[current_week]['assigned_primary'] = ircc_category
+                            weeks_assigned.append(current_week)
+                        elif week_info['assigned_secondary'] is None:
+                            dates.append(week_info['secondary'])
+                            draw_calendar[current_week]['assigned_secondary'] = ircc_category
+                            weeks_assigned.append(current_week)
                     
-                    # MEDIUM priority gets secondary dates or available primary
-                    elif priority == 'MEDIUM':
+                    elif frequency == 4:  # Monthly (CEC, French, Healthcare) - gets secondary or available primary
                         if week_info['assigned_secondary'] is None:
                             dates.append(week_info['secondary'])
                             draw_calendar[current_week]['assigned_secondary'] = ircc_category
@@ -1672,8 +1678,7 @@ class Command(BaseCommand):
                             draw_calendar[current_week]['assigned_primary'] = ircc_category
                             weeks_assigned.append(current_week)
                     
-                    # LOW priority gets any remaining slots
-                    elif priority == 'LOW':
+                    else:  # Quarterly+ (Trade, Education, STEM, Agriculture) - gets any remaining slots
                         if week_info['assigned_primary'] is None:
                             dates.append(week_info['primary'])
                             draw_calendar[current_week]['assigned_primary'] = ircc_category
@@ -1687,7 +1692,9 @@ class Command(BaseCommand):
             
             category_schedules[ircc_category] = dates
             
-            print(f"📅 {ircc_category} ({priority}): {len(dates)} draws, frequency every {frequency} weeks")
+            # Determine frequency description based on actual weeks
+            freq_desc = {2: 'bi-weekly', 4: 'monthly', 12: 'quarterly', 16: 'quarterly+'}
+            print(f"📅 {ircc_category} ({freq_desc.get(frequency, f'{frequency}w')}): {len(dates)} draws, frequency every {frequency} weeks")
             if dates:
                 print(f"   First: {dates[0]}, Last: {dates[-1] if dates else 'None'}")
         
