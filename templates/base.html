@@ -22,6 +22,7 @@
     
     <style>
         :root {
+            /* Light Theme Colors */
             --primary-color: #DC143C;      /* Canadian Red (Crimson) */
             --secondary-color: #8B0000;    /* Dark Red */
             --accent-color: #CD212A;       /* Official Canada Red */
@@ -32,13 +33,230 @@
             --dark-text: #2F2F2F;          /* Charcoal */
             --maple-red: #FF0000;          /* Pure Red (Maple Leaf) */
             --canada-white: #FFFFFF;       /* Pure White */
+            
+            /* Theme Variables */
+            --bg-color: #ffffff;
+            --text-color: #2F2F2F;
+            --card-bg: #ffffff;
+            --navbar-bg: var(--primary-color);
+            --footer-bg: var(--primary-color);
+            --border-color: #e9ecef;
+            --shadow: 0 4px 15px rgba(0,0,0,0.1);
+            --shadow-hover: 0 8px 25px rgba(0,0,0,0.15);
+            --dropdown-bg: #ffffff;
+            --dropdown-text: #2F2F2F;
+            --input-bg: #ffffff;
+            --input-border: #ced4da;
+            --table-bg: #ffffff;
+            --table-stripe: #f8f9fa;
+        }
+        
+        /* Dark Theme */
+        [data-theme="dark"] {
+            /* Dark Theme Colors */
+            --primary-color: #FF4444;      /* Brighter red for dark theme */
+            --secondary-color: #CC3333;    /* Darker red */
+            --accent-color: #FF6666;       /* Light red accent */
+            --success-color: #4CAF50;      /* Green for dark theme */
+            --warning-color: #FFC107;      /* Amber warning */
+            --danger-color: #F44336;       /* Red danger */
+            --light-bg: #121212;           /* Very dark background */
+            --dark-text: #E0E0E0;          /* Light text */
+            --maple-red: #FF4444;          /* Brighter red maple */
+            --canada-white: #1E1E1E;       /* Dark white */
+            
+            /* Dark Theme Variables */
+            --bg-color: #121212;
+            --text-color: #E0E0E0;
+            --card-bg: #1E1E1E;
+            --navbar-bg: #1A1A1A;
+            --footer-bg: #1A1A1A;
+            --border-color: #333333;
+            --shadow: 0 4px 15px rgba(0,0,0,0.3);
+            --shadow-hover: 0 8px 25px rgba(0,0,0,0.4);
+            --dropdown-bg: #2A2A2A;
+            --dropdown-text: #E0E0E0;
+            --input-bg: #2A2A2A;
+            --input-border: #444444;
+            --table-bg: #1E1E1E;
+            --table-stripe: #2A2A2A;
         }
         
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: var(--light-bg);
-            color: var(--dark-text);
+            background-color: var(--bg-color);
+            color: var(--text-color);
             padding-top: 70px; /* Adjust based on navbar height */
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+        
+        /* Dark Theme Overrides */
+        [data-theme="dark"] .navbar {
+            background-color: var(--navbar-bg) !important;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        [data-theme="dark"] .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+        }
+        
+        [data-theme="dark"] .dropdown-menu {
+            background-color: var(--dropdown-bg);
+            border: 1px solid var(--border-color);
+        }
+        
+        [data-theme="dark"] .dropdown-item {
+            color: var(--dropdown-text);
+        }
+        
+        [data-theme="dark"] .dropdown-item:hover {
+            background-color: var(--border-color);
+            color: var(--text-color);
+        }
+        
+        [data-theme="dark"] .table {
+            background-color: var(--table-bg);
+            color: var(--text-color);
+        }
+        
+        [data-theme="dark"] .table-striped > tbody > tr:nth-of-type(odd) > td,
+        [data-theme="dark"] .table-striped > tbody > tr:nth-of-type(odd) > th {
+            background-color: var(--table-stripe);
+        }
+        
+        [data-theme="dark"] .form-control {
+            background-color: var(--input-bg);
+            border-color: var(--input-border);
+            color: var(--text-color);
+        }
+        
+        [data-theme="dark"] .form-control:focus {
+            background-color: var(--input-bg);
+            border-color: var(--primary-color);
+            color: var(--text-color);
+            box-shadow: 0 0 0 0.2rem rgba(255, 68, 68, 0.25);
+        }
+        
+        [data-theme="dark"] .form-select {
+            background-color: var(--input-bg);
+            border-color: var(--input-border);
+            color: var(--text-color);
+        }
+        
+        [data-theme="dark"] .btn-outline-primary {
+            color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+        
+        [data-theme="dark"] .btn-outline-primary:hover {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+            color: #ffffff;
+        }
+        
+        [data-theme="dark"] .alert {
+            background-color: var(--card-bg);
+            border-color: var(--border-color);
+            color: var(--text-color);
+        }
+        
+        [data-theme="dark"] .modal-content {
+            background-color: var(--card-bg);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+        }
+        
+        [data-theme="dark"] .modal-header {
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        [data-theme="dark"] .modal-footer {
+            border-top: 1px solid var(--border-color);
+        }
+        
+        [data-theme="dark"] .pagination .page-link {
+            background-color: var(--card-bg);
+            border-color: var(--border-color);
+            color: var(--text-color);
+        }
+        
+        [data-theme="dark"] .pagination .page-link:hover {
+            background-color: var(--border-color);
+            border-color: var(--border-color);
+            color: var(--text-color);
+        }
+        
+        [data-theme="dark"] .nav-tabs .nav-link {
+            background-color: var(--card-bg);
+            border-color: var(--border-color);
+            color: var(--text-color);
+        }
+        
+        [data-theme="dark"] .nav-tabs .nav-link.active {
+            background-color: var(--bg-color);
+            border-color: var(--border-color);
+            color: var(--primary-color);
+        }
+        
+        [data-theme="dark"] .list-group-item {
+            background-color: var(--card-bg);
+            border-color: var(--border-color);
+            color: var(--text-color);
+        }
+        
+        /* Theme Toggle Button */
+        .theme-toggle {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: var(--primary-color);
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .theme-toggle:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 25px rgba(0,0,0,0.4);
+        }
+        
+        .theme-toggle .sun-icon {
+            display: block;
+        }
+        
+        .theme-toggle .moon-icon {
+            display: none;
+        }
+        
+        [data-theme="dark"] .theme-toggle .sun-icon {
+            display: none;
+        }
+        
+        [data-theme="dark"] .theme-toggle .moon-icon {
+            display: block;
+        }
+        
+        /* Mobile responsive for theme toggle */
+        @media (max-width: 768px) {
+            .theme-toggle {
+                width: 50px;
+                height: 50px;
+                bottom: 15px;
+                right: 15px;
+                font-size: 1.2rem;
+            }
         }
         
         .navbar-brand {
@@ -121,13 +339,15 @@
         .card {
             border: none;
             border-radius: 15px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            box-shadow: var(--shadow);
+            transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.3s ease;
+            background-color: var(--card-bg);
+            color: var(--text-color);
         }
         
         .card:hover {
             transform: translateY(-5px);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            box-shadow: var(--shadow-hover);
         }
         
         .btn-primary {
@@ -170,7 +390,7 @@
         }
         
         .footer {
-            background: var(--primary-color);
+            background: var(--footer-bg);
             color: white;
             padding: 2rem 0;
             margin-top: 3rem;
@@ -183,10 +403,11 @@
         }
         
         .prediction-timeline {
-            background: white;
+            background: var(--card-bg);
             border-radius: 15px;
             padding: 1.5rem;
             margin: 1rem 0;
+            color: var(--text-color);
         }
         
         .draw-category {
@@ -280,6 +501,12 @@
         </div>
     </nav>
 
+    <!-- Theme Toggle Button -->
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+        <i class="fas fa-sun sun-icon"></i>
+        <i class="fas fa-moon moon-icon"></i>
+    </button>
+
     <!-- Main Content -->
     <main>
         {% block content %}{% endblock %}
@@ -314,6 +541,138 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <!-- Axios for API calls -->
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    
+    <!-- Theme Toggle JavaScript -->
+    <script>
+        // Theme management
+        const themeToggle = document.getElementById('themeToggle');
+        const htmlElement = document.documentElement;
+        
+        // Check for saved theme preference or default to light mode
+        const currentTheme = localStorage.getItem('theme') || 'light';
+        
+        // Apply the theme on page load
+        if (currentTheme === 'dark') {
+            htmlElement.setAttribute('data-theme', 'dark');
+        }
+        
+        // Theme toggle functionality
+        themeToggle.addEventListener('click', function() {
+            const currentTheme = htmlElement.getAttribute('data-theme');
+            
+            if (currentTheme === 'dark') {
+                // Switch to light theme
+                htmlElement.removeAttribute('data-theme');
+                localStorage.setItem('theme', 'light');
+                updateChartsTheme('light');
+            } else {
+                // Switch to dark theme
+                htmlElement.setAttribute('data-theme', 'dark');
+                localStorage.setItem('theme', 'dark');
+                updateChartsTheme('dark');
+            }
+        });
+        
+        // Function to update chart themes
+        function updateChartsTheme(theme) {
+            // Update Plotly charts if they exist
+            const charts = document.querySelectorAll('[id*="Chart"], [id*="chart"]');
+            charts.forEach(chartElement => {
+                if (chartElement && typeof Plotly !== 'undefined') {
+                    const update = getPlotlyThemeUpdate(theme);
+                    Plotly.relayout(chartElement, update).catch(() => {
+                        // Ignore errors for charts that haven't been created yet
+                    });
+                }
+            });
+            
+            // Update Chart.js charts if they exist
+            if (typeof Chart !== 'undefined' && Chart.instances) {
+                Object.values(Chart.instances).forEach(chart => {
+                    if (chart && chart.options) {
+                        updateChartJsTheme(chart, theme);
+                        chart.update();
+                    }
+                });
+            }
+        }
+        
+        // Get Plotly theme update configuration
+        function getPlotlyThemeUpdate(theme) {
+            if (theme === 'dark') {
+                return {
+                    'paper_bgcolor': '#1E1E1E',
+                    'plot_bgcolor': '#1E1E1E',
+                    'font.color': '#E0E0E0',
+                    'xaxis.gridcolor': '#444444',
+                    'yaxis.gridcolor': '#444444',
+                    'xaxis.linecolor': '#666666',
+                    'yaxis.linecolor': '#666666',
+                    'xaxis.tickfont.color': '#E0E0E0',
+                    'yaxis.tickfont.color': '#E0E0E0',
+                    'xaxis.title.font.color': '#E0E0E0',
+                    'yaxis.title.font.color': '#E0E0E0',
+                    'title.font.color': '#E0E0E0'
+                };
+            } else {
+                return {
+                    'paper_bgcolor': '#ffffff',
+                    'plot_bgcolor': '#ffffff',
+                    'font.color': '#2F2F2F',
+                    'xaxis.gridcolor': '#e0e0e0',
+                    'yaxis.gridcolor': '#e0e0e0',
+                    'xaxis.linecolor': '#cccccc',
+                    'yaxis.linecolor': '#cccccc',
+                    'xaxis.tickfont.color': '#2F2F2F',
+                    'yaxis.tickfont.color': '#2F2F2F',
+                    'xaxis.title.font.color': '#2F2F2F',
+                    'yaxis.title.font.color': '#2F2F2F',
+                    'title.font.color': '#2F2F2F'
+                };
+            }
+        }
+        
+        // Update Chart.js theme
+        function updateChartJsTheme(chart, theme) {
+            if (theme === 'dark') {
+                chart.options.plugins.legend.labels.color = '#E0E0E0';
+                chart.options.scales.x.ticks.color = '#E0E0E0';
+                chart.options.scales.y.ticks.color = '#E0E0E0';
+                chart.options.scales.x.grid.color = '#444444';
+                chart.options.scales.y.grid.color = '#444444';
+            } else {
+                chart.options.plugins.legend.labels.color = '#2F2F2F';
+                chart.options.scales.x.ticks.color = '#2F2F2F';
+                chart.options.scales.y.ticks.color = '#2F2F2F';
+                chart.options.scales.x.grid.color = '#e0e0e0';
+                chart.options.scales.y.grid.color = '#e0e0e0';
+            }
+        }
+        
+        // Apply theme to charts on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            setTimeout(() => {
+                updateChartsTheme(savedTheme);
+            }, 500); // Small delay to ensure charts are loaded
+        });
+        
+        // Global function to get current theme for use in chart creation
+        window.getCurrentTheme = function() {
+            return htmlElement.getAttribute('data-theme') || 'light';
+        };
+        
+        // Global function to apply theme to newly created charts
+        window.applyThemeToChart = function(chartElement) {
+            const currentTheme = getCurrentTheme();
+            if (typeof Plotly !== 'undefined' && chartElement) {
+                const update = getPlotlyThemeUpdate(currentTheme);
+                Plotly.relayout(chartElement, update).catch(() => {
+                    // Ignore errors
+                });
+            }
+        };
+    </script>
     
     {% block extra_js %}{% endblock %}
 </body>

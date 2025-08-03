@@ -399,35 +399,50 @@ async function loadMonthlyDrawTrends() {
             layout: {
                 title: {
                     text: 'Monthly Draws & Invitations Trends (2015-2025)',
-                    font: { size: 18 }
+                    font: { 
+                        size: 18,
+                        color: (window.getCurrentTheme && window.getCurrentTheme() === 'dark') ? '#E0E0E0' : '#2F2F2F'
+                    }
                 },
                 xaxis: { 
                     title: 'Month',
-                    tickangle: -45
+                    tickangle: -45,
+                    gridcolor: (window.getCurrentTheme && window.getCurrentTheme() === 'dark') ? '#444444' : '#e0e0e0',
+                    linecolor: (window.getCurrentTheme && window.getCurrentTheme() === 'dark') ? '#666666' : '#cccccc',
+                    tickfont: { color: (window.getCurrentTheme && window.getCurrentTheme() === 'dark') ? '#E0E0E0' : '#2F2F2F' },
+                    titlefont: { color: (window.getCurrentTheme && window.getCurrentTheme() === 'dark') ? '#E0E0E0' : '#2F2F2F' }
                 },
                 yaxis: { 
                     title: 'Number of Draws',
                     titlefont: { color: '#28a745' },
-                    tickfont: { color: '#28a745' },
+                    tickfont: { color: (window.getCurrentTheme && window.getCurrentTheme() === 'dark') ? '#E0E0E0' : '#28a745' },
                     rangemode: 'tozero',
-                    side: 'left'
+                    side: 'left',
+                    gridcolor: (window.getCurrentTheme && window.getCurrentTheme() === 'dark') ? '#444444' : '#e0e0e0',
+                    linecolor: (window.getCurrentTheme && window.getCurrentTheme() === 'dark') ? '#666666' : '#cccccc'
                 },
                 yaxis2: {
                     title: 'Total Invitations',
                     titlefont: { color: '#007bff' },
-                    tickfont: { color: '#007bff' },
+                    tickfont: { color: (window.getCurrentTheme && window.getCurrentTheme() === 'dark') ? '#E0E0E0' : '#007bff' },
                     rangemode: 'tozero',
                     side: 'right',
-                    overlaying: 'y'
+                    overlaying: 'y',
+                    gridcolor: (window.getCurrentTheme && window.getCurrentTheme() === 'dark') ? '#444444' : '#e0e0e0',
+                    linecolor: (window.getCurrentTheme && window.getCurrentTheme() === 'dark') ? '#666666' : '#cccccc'
                 },
                 legend: {
                     x: 0.02,
                     y: 0.98,
-                    bgcolor: 'rgba(255,255,255,0.8)',
-                    bordercolor: '#cccccc',
-                    borderwidth: 1
+                    bgcolor: (window.getCurrentTheme && window.getCurrentTheme() === 'dark') ? 'rgba(30,30,30,0.8)' : 'rgba(255,255,255,0.8)',
+                    bordercolor: (window.getCurrentTheme && window.getCurrentTheme() === 'dark') ? '#666666' : '#cccccc',
+                    borderwidth: 1,
+                    font: { color: (window.getCurrentTheme && window.getCurrentTheme() === 'dark') ? '#E0E0E0' : '#2F2F2F' }
                 },
-                hovermode: 'x unified'
+                hovermode: 'x unified',
+                paper_bgcolor: (window.getCurrentTheme && window.getCurrentTheme() === 'dark') ? '#1E1E1E' : '#ffffff',
+                plot_bgcolor: (window.getCurrentTheme && window.getCurrentTheme() === 'dark') ? '#1E1E1E' : '#ffffff',
+                font: { color: (window.getCurrentTheme && window.getCurrentTheme() === 'dark') ? '#E0E0E0' : '#2F2F2F' }
             }
         };
         

@@ -820,19 +820,34 @@ function createTimelineChart(categoryPredictions) {
         return;
     }
     
+    // Get current theme for chart styling
+    const currentTheme = window.getCurrentTheme ? window.getCurrentTheme() : 'light';
+    const isDark = currentTheme === 'dark';
+    
     const layout = {
         title: {
             text: `${categoryData.category_name} - Multi-Model CRS Predictions`,
-            font: { size: 16 },
+            font: { 
+                size: 16,
+                color: isDark ? '#E0E0E0' : '#2F2F2F'
+            },
             y: 0.95
         },
         xaxis: {
             title: 'Prediction Date',
-            type: 'date'
+            type: 'date',
+            gridcolor: isDark ? '#444444' : '#e0e0e0',
+            linecolor: isDark ? '#666666' : '#cccccc',
+            tickfont: { color: isDark ? '#E0E0E0' : '#2F2F2F' },
+            titlefont: { color: isDark ? '#E0E0E0' : '#2F2F2F' }
         },
         yaxis: {
             title: 'Predicted CRS Score',
-            rangemode: 'tozero'
+            rangemode: 'tozero',
+            gridcolor: isDark ? '#444444' : '#e0e0e0',
+            linecolor: isDark ? '#666666' : '#cccccc',
+            tickfont: { color: isDark ? '#E0E0E0' : '#2F2F2F' },
+            titlefont: { color: isDark ? '#E0E0E0' : '#2F2F2F' }
         },
         hovermode: 'closest',
         showlegend: true,
@@ -841,7 +856,8 @@ function createTimelineChart(categoryPredictions) {
             x: 1.02,
             xanchor: 'left',
             y: 1,
-            yanchor: 'top'
+            yanchor: 'top',
+            font: { color: isDark ? '#E0E0E0' : '#2F2F2F' }
         },
         margin: {
             l: 60,
@@ -849,10 +865,20 @@ function createTimelineChart(categoryPredictions) {
             t: 80,
             b: 60
         },
-        height: 500
+        height: 500,
+        paper_bgcolor: isDark ? '#1E1E1E' : '#ffffff',
+        plot_bgcolor: isDark ? '#1E1E1E' : '#ffffff',
+        font: { color: isDark ? '#E0E0E0' : '#2F2F2F' }
     };
     
     Plotly.newPlot('timelineChart', traces, layout, {responsive: true});
+    
+    // Apply theme to the newly created chart
+    if (window.applyThemeToChart) {
+        setTimeout(() => {
+            window.applyThemeToChart(document.getElementById('timelineChart'));
+        }, 100);
+    }
 }
 
 function refreshPredictions() {

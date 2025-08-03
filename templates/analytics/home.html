@@ -256,19 +256,43 @@ function createMovingAveragesChart(movingAverages) {
         line: { color: '#28a745', width: 3 }
     };
     
+    // Get current theme for chart styling
+    const currentTheme = window.getCurrentTheme ? window.getCurrentTheme() : 'light';
+    const isDark = currentTheme === 'dark';
+    
     const layout = {
-        title: 'Moving Averages Trend Analysis',
-        xaxis: { title: 'Date' },
+        title: {
+            text: 'Moving Averages Trend Analysis',
+            font: { color: isDark ? '#E0E0E0' : '#2F2F2F' }
+        },
+        xaxis: { 
+            title: 'Date',
+            gridcolor: isDark ? '#444444' : '#e0e0e0',
+            linecolor: isDark ? '#666666' : '#cccccc',
+            tickfont: { color: isDark ? '#E0E0E0' : '#2F2F2F' },
+            titlefont: { color: isDark ? '#E0E0E0' : '#2F2F2F' }
+        },
         yaxis: {
             title: 'CRS Score',
-            side: 'left'
+            side: 'left',
+            gridcolor: isDark ? '#444444' : '#e0e0e0',
+            linecolor: isDark ? '#666666' : '#cccccc',
+            tickfont: { color: isDark ? '#E0E0E0' : '#2F2F2F' },
+            titlefont: { color: isDark ? '#E0E0E0' : '#2F2F2F' }
         },
         yaxis2: {
             title: 'Invitations',
             side: 'right',
-            overlaying: 'y'
+            overlaying: 'y',
+            gridcolor: isDark ? '#444444' : '#e0e0e0',
+            linecolor: isDark ? '#666666' : '#cccccc',
+            tickfont: { color: isDark ? '#E0E0E0' : '#2F2F2F' },
+            titlefont: { color: isDark ? '#E0E0E0' : '#2F2F2F' }
         },
-        hovermode: 'x unified'
+        hovermode: 'x unified',
+        paper_bgcolor: isDark ? '#1E1E1E' : '#ffffff',
+        plot_bgcolor: isDark ? '#1E1E1E' : '#ffffff',
+        font: { color: isDark ? '#E0E0E0' : '#2F2F2F' }
     };
     
     Plotly.newPlot('movingAveragesChart', [trace1, trace2], layout, {responsive: true});
@@ -299,18 +323,42 @@ function createSeasonalChart(seasonalPatterns) {
         marker: { size: 8 }
     };
     
+    // Get current theme for chart styling
+    const currentTheme = window.getCurrentTheme ? window.getCurrentTheme() : 'light';
+    const isDark = currentTheme === 'dark';
+    
     const layout = {
-        title: 'Seasonal Patterns by Month',
-        xaxis: { title: 'Month' },
+        title: {
+            text: 'Seasonal Patterns by Month',
+            font: { color: isDark ? '#E0E0E0' : '#2F2F2F' }
+        },
+        xaxis: { 
+            title: 'Month',
+            gridcolor: isDark ? '#444444' : '#e0e0e0',
+            linecolor: isDark ? '#666666' : '#cccccc',
+            tickfont: { color: isDark ? '#E0E0E0' : '#2F2F2F' },
+            titlefont: { color: isDark ? '#E0E0E0' : '#2F2F2F' }
+        },
         yaxis: {
             title: 'Average CRS Score',
-            side: 'left'
+            side: 'left',
+            gridcolor: isDark ? '#444444' : '#e0e0e0',
+            linecolor: isDark ? '#666666' : '#cccccc',
+            tickfont: { color: isDark ? '#E0E0E0' : '#2F2F2F' },
+            titlefont: { color: isDark ? '#E0E0E0' : '#2F2F2F' }
         },
         yaxis2: {
             title: 'Number of Draws',
             side: 'right',
-            overlaying: 'y'
-        }
+            overlaying: 'y',
+            gridcolor: isDark ? '#444444' : '#e0e0e0',
+            linecolor: isDark ? '#666666' : '#cccccc',
+            tickfont: { color: isDark ? '#E0E0E0' : '#2F2F2F' },
+            titlefont: { color: isDark ? '#E0E0E0' : '#2F2F2F' }
+        },
+        paper_bgcolor: isDark ? '#1E1E1E' : '#ffffff',
+        plot_bgcolor: isDark ? '#1E1E1E' : '#ffffff',
+        font: { color: isDark ? '#E0E0E0' : '#2F2F2F' }
     };
     
     Plotly.newPlot('seasonalChart', [trace1, trace2], layout, {responsive: true});
