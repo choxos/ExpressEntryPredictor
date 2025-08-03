@@ -303,8 +303,8 @@ function displayCategoryBreakdown(breakdown) {
 
 async function loadCRSTrendsByCategory() {
     try {
-        // Get comprehensive historical draws data
-        const response = await axios.get('/api/draws/?limit=200'); // Get more historical data
+        // Get ALL historical draws data for complete timeline
+        const response = await axios.get('/api/draws/'); // No limit - get all historical data
         const drawsData = response.data.results || response.data;
         
         if (!drawsData || drawsData.length === 0) {
@@ -332,42 +332,61 @@ async function loadCRSTrendsByCategory() {
             categoriesData[category].sort((a, b) => new Date(a.date) - new Date(b.date));
         });
         
-        // Create traces for each category
+        // Create traces for each category with improved gap handling
         const traces = Object.keys(categoriesData).map((categoryName, index) => {
             const categoryDraws = categoriesData[categoryName];
             const color = getCategoryColor(categoryName);
+            
+            // Determine if this is an active or legacy category
+            const latestDraw = new Date(Math.max(...categoryDraws.map(d => new Date(d.date))));
+            const currentDate = new Date();
+            const monthsOld = (currentDate - latestDraw) / (1000 * 60 * 60 * 24 * 30);
+            const isLegacy = monthsOld > 12; // Consider legacy if no draws in 12+ months
             
             return {
                 x: categoryDraws.map(draw => draw.date),
                 y: categoryDraws.map(draw => draw.crs_score),
                 type: 'scatter',
                 mode: 'lines+markers',
-                name: categoryName,
+                name: categoryName + (isLegacy ? ' (Legacy)' : ''),
                 line: { 
                     color: color, 
-                    width: 3 
+                    width: isLegacy ? 2 : 3,
+                    dash: isLegacy ? 'dot' : 'solid'
                 },
                 marker: { 
-                    size: 8,
+                    size: isLegacy ? 6 : 8,
                     color: color,
-                    opacity: 0.8
+                    opacity: isLegacy ? 0.6 : 0.8,
+                    symbol: isLegacy ? 'circle-open' : 'circle'
                 },
                 hovertemplate: '<b>%{fullData.name}</b><br>' +
                              'Date: %{x}<br>' +
                              'CRS Score: %{y}<br>' +
-                             '<extra></extra>'
+                             'Invitations: %{customdata}<br>' +
+                             '<extra></extra>',
+                customdata: categoryDraws.map(draw => draw.invitations?.toLocaleString() || 'N/A'),
+                connectgaps: false, // Don't connect large gaps between data points
+                visible: isLegacy ? 'legendonly' : true // Hide legacy categories by default
             };
         });
         
+        // Calculate date range for better x-axis
+        const allDates = Object.values(categoriesData).flat().map(d => new Date(d.date));
+        const minDate = new Date(Math.min(...allDates));
+        const maxDate = new Date(Math.max(...allDates));
+        
         const layout = {
             title: {
-                text: 'Historical CRS Score Trends by Category',
+                text: 'Historical CRS Score Trends by Category (2015-2025)',
                 font: { size: 20 }
             },
             xaxis: { 
                 title: 'Date',
                 type: 'date',
-                gridcolor: 'rgba(128,128,128,0.2)'
+                range: [minDate, maxDate],
+                gridcolor: 'rgba(128,128,128,0.2)',
+                tickformat: '%Y-%m'
             },
             yaxis: { 
                 title: 'CRS Score',
@@ -393,7 +412,18 @@ async function loadCRSTrendsByCategory() {
                 r: 40,
                 t: 80,
                 b: 120
-            }
+            },
+            annotations: [{
+                text: 'Tip: Legacy categories (dotted lines) are hidden by default. Click legend to show.',
+                showarrow: false,
+                xref: 'paper',
+                yref: 'paper',
+                x: 0.02,
+                y: 1.02,
+                xanchor: 'left',
+                yanchor: 'bottom',
+                font: { size: 12, color: 'gray' }
+            }]
         };
         
         Plotly.newPlot('crsChart', traces, layout, {responsive: true, displayModeBar: false});
