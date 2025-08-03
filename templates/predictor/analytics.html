@@ -74,7 +74,7 @@
                 <div class="card-header">
                     <h5 class="mb-0">
                         <i class="fas fa-calendar me-2"></i>
-                        Monthly Draw Count
+                        Monthly Draws & Invitations
                     </h5>
                 </div>
                 <div class="card-body">
@@ -322,16 +322,25 @@ async function loadMonthlyDrawTrends() {
             return;
         }
         
-        // Group draws by month
-        const monthlyCount = {};
+        // Group draws by month - count draws AND sum invitations
+        const monthlyStats = {};
         drawsData.forEach(draw => {
             const date = new Date(draw.date);
             const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-            monthlyCount[monthKey] = (monthlyCount[monthKey] || 0) + 1;
+            
+            if (!monthlyStats[monthKey]) {
+                monthlyStats[monthKey] = {
+                    drawCount: 0,
+                    totalInvitations: 0
+                };
+            }
+            
+            monthlyStats[monthKey].drawCount += 1;
+            monthlyStats[monthKey].totalInvitations += (draw.invitations_issued || 0);
         });
         
         // Sort months chronologically
-        const sortedMonths = Object.keys(monthlyCount).sort();
+        const sortedMonths = Object.keys(monthlyStats).sort();
         
         // Format month labels for better readability
         const formattedMonths = sortedMonths.map(month => {
@@ -341,29 +350,55 @@ async function loadMonthlyDrawTrends() {
         });
         
         const monthlyData = {
-            data: [{
-                x: formattedMonths,
-                y: sortedMonths.map(month => monthlyCount[month]),
-                type: 'scatter',
-                mode: 'lines+markers',
-                name: 'Monthly Draw Count',
-                line: { 
-                    color: '#28a745',
-                    width: 3
+            data: [
+                // First trace: Draw Count (left y-axis)
+                {
+                    x: formattedMonths,
+                    y: sortedMonths.map(month => monthlyStats[month].drawCount),
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    name: 'Number of Draws',
+                    yaxis: 'y',
+                    line: { 
+                        color: '#28a745',
+                        width: 3
+                    },
+                    marker: { 
+                        size: 8,
+                        color: '#28a745',
+                        opacity: 0.8
+                    },
+                    hovertemplate: '<b>Draw Count</b><br>' +
+                                 'Month: %{x}<br>' +
+                                 'Draws: %{y}<br>' +
+                                 '<extra></extra>'
                 },
-                marker: { 
-                    size: 6,
-                    color: '#28a745',
-                    opacity: 0.8
-                },
-                hovertemplate: '<b>Monthly Draw Count</b><br>' +
-                             'Month: %{x}<br>' +
-                             'Draws: %{y}<br>' +
-                             '<extra></extra>'
-            }],
+                // Second trace: Total Invitations (right y-axis)
+                {
+                    x: formattedMonths,
+                    y: sortedMonths.map(month => monthlyStats[month].totalInvitations),
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    name: 'Total Invitations',
+                    yaxis: 'y2',
+                    line: { 
+                        color: '#007bff',
+                        width: 3
+                    },
+                    marker: { 
+                        size: 8,
+                        color: '#007bff',
+                        opacity: 0.8
+                    },
+                    hovertemplate: '<b>Total Invitations</b><br>' +
+                                 'Month: %{x}<br>' +
+                                 'Invitations: %{y:,}<br>' +
+                                 '<extra></extra>'
+                }
+            ],
             layout: {
                 title: {
-                    text: 'Monthly Draw Count Trends (2015-2025)',
+                    text: 'Monthly Draws & Invitations Trends (2015-2025)',
                     font: { size: 18 }
                 },
                 xaxis: { 
@@ -372,10 +407,27 @@ async function loadMonthlyDrawTrends() {
                 },
                 yaxis: { 
                     title: 'Number of Draws',
-                    rangemode: 'tozero'
+                    titlefont: { color: '#28a745' },
+                    tickfont: { color: '#28a745' },
+                    rangemode: 'tozero',
+                    side: 'left'
                 },
-                showlegend: false,
-                hovermode: 'closest'
+                yaxis2: {
+                    title: 'Total Invitations',
+                    titlefont: { color: '#007bff' },
+                    tickfont: { color: '#007bff' },
+                    rangemode: 'tozero',
+                    side: 'right',
+                    overlaying: 'y'
+                },
+                legend: {
+                    x: 0.02,
+                    y: 0.98,
+                    bgcolor: 'rgba(255,255,255,0.8)',
+                    bordercolor: '#cccccc',
+                    borderwidth: 1
+                },
+                hovermode: 'x unified'
             }
         };
         
