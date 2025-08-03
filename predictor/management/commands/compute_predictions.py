@@ -646,11 +646,11 @@ class Command(BaseCommand):
                 global_df = pd.DataFrame(global_draws)
                 small_model = SmallDatasetPredictor(global_data=global_df)
                 confidence = 0.2 + (data_size * 0.1)
-                return small_model, confidence
+                return [{'model': small_model, 'confidence': confidence, 'name': 'Small Dataset Predictor'}]
             except Exception as e:
                 fallback_model = CleanLinearRegressionPredictor()
                 fallback_model.name = "Linear Regression (Fallback)"
-                return fallback_model, 0.2
+                return [{'model': fallback_model, 'confidence': 0.2, 'name': 'Linear Regression (Fallback)'}]
         
         # For all other cases, evaluate all models and select the best
         print(f"🔍 Evaluating all available models for {category} ({data_size} data points)...")
