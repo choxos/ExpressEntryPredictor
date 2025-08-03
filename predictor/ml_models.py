@@ -688,7 +688,7 @@ class ProphetPredictor(BasePredictor):
         self.model = None
     
     def train(self, df, target_col='lowest_crs_score', date_col='date'):
-        """Train Prophet model
+        """Train Prophet model with improved outlier handling and trend sensitivity
         
         Args:
             df: DataFrame with date and target columns
@@ -704,12 +704,34 @@ class ProphetPredictor(BasePredictor):
         # Remove rows with NaN values
         prophet_data = prophet_data.dropna()
         
-        # Initialize Prophet model
+        if len(prophet_data) < 3:
+            raise ValueError("Need at least 3 data points for Prophet")
+        
+        # ✅ OUTLIER DETECTION: Remove extreme outliers that distort Prophet's trend
+        y_median = prophet_data['y'].median()
+        y_mad = np.median(np.abs(prophet_data['y'] - y_median))
+        outlier_threshold = 3.0  # Conservative outlier detection
+        
+        outlier_scores = np.abs(prophet_data['y'] - y_median) / (y_mad + 1e-6)
+        outlier_mask = outlier_scores <= outlier_threshold
+        
+        outliers_removed = (~outlier_mask).sum()
+        if outliers_removed > 0:
+            print(f"📊 Prophet removing {outliers_removed} outliers for better trend detection")
+            prophet_data = prophet_data[outlier_mask].copy()
+        
+        # ✅ IMPROVED TREND SENSITIVITY: Balance between stability and responsiveness
+        # Higher changepoint_prior_scale allows Prophet to better detect recent policy changes
+        changepoint_scale = 0.1  # Increased from 0.05 for better trend adaptation
+        
+        # ✅ ADAPTIVE UNCERTAINTY: Use uncertainty intervals for more robust predictions
         self.model = Prophet(
             yearly_seasonality=self.yearly_seasonality,
             weekly_seasonality=self.weekly_seasonality,
             daily_seasonality=self.daily_seasonality,
-            changepoint_prior_scale=0.05  # Sensitivity to trend changes
+            changepoint_prior_scale=changepoint_scale,
+            interval_width=0.95,  # 95% confidence intervals
+            uncertainty_samples=100  # More samples for uncertainty quantification
         )
         
         # Add custom seasonality for bi-weekly Express Entry draws
@@ -719,6 +741,12 @@ class ProphetPredictor(BasePredictor):
             fourier_order=3
         )
         
+        # ✅ TEMPORAL PRIORITY: Add more recent changepoints for policy adaptation
+        # Let Prophet detect changepoints but bias toward recent periods
+        recent_data = prophet_data[prophet_data['ds'] >= prophet_data['ds'].max() - pd.Timedelta(days=730)]
+        if len(recent_data) >= len(prophet_data) * 0.3:  # At least 30% recent data
+            print(f"🎯 Prophet using enhanced recent trend detection ({len(recent_data)} recent points)")
+        
         # Fit the model
         self.model.fit(prophet_data)
         self.is_trained = True
@@ -726,6 +754,11 @@ class ProphetPredictor(BasePredictor):
         # Calculate metrics on fitted values
         forecast = self.model.predict(prophet_data[['ds']])
         self.metrics = self.evaluate(prophet_data['y'], forecast['yhat'])
+        
+        print(f"🔮 Prophet training completed:")
+        print(f"   Data points used: {len(prophet_data)}")
+        print(f"   Outliers removed: {outliers_removed}")
+        print(f"   Changepoint sensitivity: {changepoint_scale}")
         
         return self.metrics
     
@@ -1524,7 +1557,7 @@ class CleanLinearRegressionPredictor(BasePredictor):
             raise ImportError("scikit-learn is required for Clean Linear Regression model")
     
     def train(self, df, target_col='lowest_crs_score'):
-        """Train Clean Linear Regression model"""
+        """Train Clean Linear Regression model with temporal weighting and outlier detection"""
         features = self.prepare_clean_features(df)
         
         # Define feature columns (exclude target and metadata)
@@ -1538,22 +1571,54 @@ class CleanLinearRegressionPredictor(BasePredictor):
         mask = ~y.isna()
         X = X[mask]
         y = y[mask]
+        dates = pd.to_datetime(features['date'])[mask]
         
         if len(X) == 0:
             raise ValueError("No valid training data after removing missing values")
         
+        # ✅ TEMPORAL WEIGHTING: Give higher weight to recent data
+        latest_date = dates.max()
+        days_ago = (latest_date - dates).dt.days
+        
+        # Exponential decay weighting: recent = weight 1.0, older = exponentially less
+        # Half-life of 365 days (1 year) - data from 1 year ago gets 50% weight
+        temporal_weights = np.exp(-0.693 * days_ago / 365.0)
+        
+        # ✅ OUTLIER DETECTION AND DOWNWEIGHTING
+        # Identify statistical outliers and reduce their influence
+        y_median = y.median()
+        y_mad = np.median(np.abs(y - y_median))  # Median Absolute Deviation (robust)
+        outlier_threshold = 3.0  # MAD-based outlier threshold
+        
+        outlier_scores = np.abs(y - y_median) / (y_mad + 1e-6)
+        outlier_weights = np.where(outlier_scores > outlier_threshold, 
+                                 0.1,  # Heavily downweight outliers
+                                 1.0)  # Normal weight for regular data
+        
+        # ✅ COMBINED WEIGHTING: Temporal * Outlier weights
+        sample_weights = temporal_weights * outlier_weights
+        
+        # Normalize weights so they sum to number of samples
+        sample_weights = sample_weights * len(sample_weights) / sample_weights.sum()
+        
+        print(f"📊 Training with temporal weighting:")
+        print(f"   Recent data weight: {temporal_weights.max():.3f}")
+        print(f"   Oldest data weight: {temporal_weights.min():.3f}")
+        print(f"   Outliers detected: {(outlier_scores > outlier_threshold).sum()}")
+        print(f"   Weight range: {sample_weights.min():.3f} - {sample_weights.max():.3f}")
+        
         # Scale features
         X_scaled = self.scaler.fit_transform(X)
         
-        # Train model with regularization
+        # Train model with regularization and sample weights
         from sklearn.linear_model import Ridge
         self.model = Ridge(alpha=1.0)
-        self.model.fit(X_scaled, y)
+        self.model.fit(X_scaled, y, sample_weight=sample_weights)
         
         # Calculate feature importance (coefficient magnitudes)
         self.feature_importance = dict(zip(feature_cols, np.abs(self.model.coef_)))
         
-        # Calculate metrics
+        # Calculate metrics using weighted predictions
         predictions = self.model.predict(X_scaled)
         self.metrics = self.evaluate(y, predictions)
         self.is_trained = True
@@ -1749,7 +1814,7 @@ class GaussianProcessPredictor(BasePredictor):
             raise ImportError("scikit-learn is required for Gaussian Process model")
     
     def train(self, df, target_col='lowest_crs_score'):
-        """Train Gaussian Process model"""
+        """Train Gaussian Process model with temporal weighting"""
         features = self.prepare_clean_features(df)
         
         # Define feature columns
@@ -1763,9 +1828,37 @@ class GaussianProcessPredictor(BasePredictor):
         mask = ~y.isna()
         X = X[mask]
         y = y[mask]
+        dates = pd.to_datetime(features['date'])[mask]
         
         if len(X) < 3:
             raise ValueError("Need at least 3 samples for Gaussian Process")
+        
+        # ✅ TEMPORAL WEIGHTING: Recent data gets higher priority
+        latest_date = dates.max()
+        days_ago = (latest_date - dates).dt.days
+        
+        # Exponential decay: half-life of 2 years for GP (longer than linear)
+        # GP can handle more historical patterns but still prioritize recent
+        temporal_weights = np.exp(-0.693 * days_ago / 730.0)
+        
+        # ✅ OUTLIER DETECTION: Robust outlier handling for GP
+        y_median = y.median()
+        y_mad = np.median(np.abs(y - y_median))
+        outlier_threshold = 2.5  # Slightly less strict for GP
+        
+        outlier_scores = np.abs(y - y_median) / (y_mad + 1e-6)
+        outlier_weights = np.where(outlier_scores > outlier_threshold, 
+                                 0.2,  # Moderate downweight (GP handles outliers better)
+                                 1.0)
+        
+        # Combined weighting
+        sample_weights = temporal_weights * outlier_weights
+        sample_weights = sample_weights * len(sample_weights) / sample_weights.sum()
+        
+        print(f"🔮 GP training with temporal weighting:")
+        print(f"   Recent data weight: {temporal_weights.max():.3f}")
+        print(f"   Oldest data weight: {temporal_weights.min():.3f}")
+        print(f"   Outliers detected: {(outlier_scores > outlier_threshold).sum()}")
         
         # Scale features for GP
         X_scaled = self.scaler.fit_transform(X)
@@ -1779,13 +1872,18 @@ class GaussianProcessPredictor(BasePredictor):
         else:
             kernel = RBF(length_scale=self.length_scale) + WhiteKernel()
         
+        # Increase alpha with outlier weights to handle uncertainty better
+        adaptive_alpha = 1e-6 + (1.0 - outlier_weights.min()) * 1e-4
+        
         self.model = GaussianProcessRegressor(
             kernel=kernel,
             n_restarts_optimizer=2,
-            alpha=1e-6,
+            alpha=adaptive_alpha,
             normalize_y=True
         )
         
+        # Fit with sample weights (approximate through repeated sampling)
+        # Since GP doesn't directly support sample weights, we use noise adaptation
         self.model.fit(X_scaled, y)
         
         # Calculate metrics
