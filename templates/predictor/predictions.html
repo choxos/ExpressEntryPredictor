@@ -430,9 +430,9 @@ function createCategoryContent(categoryData) {
                                 ${recentDraws.slice(0, 5).map(draw => `
                                     <tr>
                                         <td>${draw.date ? formatDate(draw.date) : 'N/A'}</td>
-                                        <td><strong>${draw.lowest_crs_score || 'N/A'}</strong></td>
-                                        <td>${draw.invitations_issued ? draw.invitations_issued.toLocaleString() : 'N/A'}</td>
-                                        <td>#${draw.round_number || 'N/A'}</td>
+                                        <td><strong>${draw.lowest_crs_score !== null && draw.lowest_crs_score !== undefined ? draw.lowest_crs_score : 'N/A'}</strong></td>
+                                        <td>${draw.invitations_issued !== null && draw.invitations_issued !== undefined ? draw.invitations_issued.toLocaleString() : 'N/A'}</td>
+                                        <td>#${draw.round_number !== null && draw.round_number !== undefined ? draw.round_number : 'N/A'}</td>
                                     </tr>
                                 `).join('')}
                             </tbody>
@@ -443,82 +443,100 @@ function createCategoryContent(categoryData) {
         `;
     }
     
-    // Predictions by model
-    content += `<div class="row">`;
+    // All predictions in two-column card layout
+    content += `
+        <div class="row mb-4">
+            <div class="col-12">
+                <h5><i class="fas fa-crystal-ball me-2"></i>All Predictions (${predictions.length})</h5>
+                <p class="text-muted mb-3">Individual prediction cards from all AI models</p>
+            </div>
+        </div>
+        <div class="row">
+    `;
     
-    Object.entries(predictionsByModel).forEach(([modelName, modelPredictions]) => {
-        const avgConfidence = modelPredictions.reduce((sum, p) => sum + (p.confidence_score || 0), 0) / modelPredictions.length;
-        const modelColor = getModelColor(modelName);
+    // Sort all predictions by date for chronological display
+    const sortedPredictions = predictions.sort((a, b) => new Date(a.predicted_date) - new Date(b.predicted_date));
+    
+    sortedPredictions.forEach((pred, index) => {
+        const modelColor = getModelColor(pred.model_used || 'Unknown');
+        const confidence = pred.confidence_score || 0;
         
         content += `
             <div class="col-lg-6 mb-4">
-                <div class="card prediction-card h-100">
-                    <div class="card-header" style="background: ${modelColor}; color: white;">
-                        <div class="d-flex justify-content-between align-items-center">
+                <div class="card prediction-card h-100 shadow-sm">
+                    <div class="card-header d-flex justify-content-between align-items-center" style="background: ${modelColor}; color: white;">
+                        <div>
                             <h6 class="mb-0">
                                 <i class="fas fa-brain me-2"></i>
-                                ${modelName}
+                                ${pred.model_used || 'Unknown Model'}
                             </h6>
-                            <span class="badge bg-light text-dark">
-                                ${Math.round(avgConfidence)}% Avg. Confidence
+                            <small class="opacity-75">Prediction #${index + 1}</small>
+                        </div>
+                        <div class="text-end">
+                            <span class="badge bg-light text-dark fs-6">
+                                ${Math.round(confidence)}%
                             </span>
+                            <div class="small opacity-75">Confidence</div>
                         </div>
                     </div>
                     <div class="card-body">
+                        <!-- Confidence bar -->
                         <div class="confidence-bar mb-3">
-                            <div class="confidence-indicator" style="width: ${avgConfidence}%"></div>
+                            <div class="confidence-indicator" style="width: ${confidence}%; background: ${modelColor};"></div>
                         </div>
                         
-                        <h6 class="mb-3">
-                            <i class="fas fa-calendar me-2"></i>
-                            Upcoming Predictions (${modelPredictions.length})
-                        </h6>
-                        
-                        <div class="prediction-timeline">
-                            ${modelPredictions.slice(0, 6).map((pred, index) => `
-                                <div class="prediction-timeline-item">
-                                    <div class="row">
-                                        <div class="col-md-6">
-                                            <div class="crs-highlight">
-                                                <div class="mb-1">
-                                                    <strong class="text-primary">${pred.predicted_date ? formatDateWithCI(pred.predicted_date, pred.uncertainty_range) : 'N/A'}</strong>
-                                                </div>
-                                                <div class="uncertainty-range">
-                                                    <i class="fas fa-trophy me-1 text-warning"></i>
-                                                    <strong>CRS: ${pred.predicted_crs_score ? formatCRSWithCI(pred.predicted_crs_score, pred.uncertainty_range) : 'N/A'}</strong>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <div class="invitation-highlight">
-                                                <div class="mb-1">
-                                                    <strong class="text-success">${pred.predicted_invitations ? formatInvitationsWithCI(pred.predicted_invitations, pred.uncertainty_range) : 'N/A'}</strong>
-                                                </div>
-                                                <div class="uncertainty-range">
-                                                    <i class="fas fa-users me-1 text-success"></i>
-                                                    <strong>Invitations Expected</strong>
-                                                </div>
-                                            </div>
-                                        </div>
+                        <!-- Prediction details -->
+                        <div class="row">
+                            <div class="col-6">
+                                <div class="crs-highlight">
+                                    <div class="mb-2">
+                                        <i class="fas fa-calendar text-primary me-2"></i>
+                                        <strong class="text-primary">
+                                            ${pred.predicted_date ? formatDateWithCI(pred.predicted_date, pred.uncertainty_range) : 'N/A'}
+                                        </strong>
                                     </div>
-                                    <div class="small text-muted mt-2 pt-2 border-top">
-                                        <i class="fas fa-chart-line me-1"></i>
-                                        Overall Confidence: <strong>${pred.confidence_score || 0}%</strong>
-                                        ${pred.uncertainty_range && pred.uncertainty_range.invitations_confidence ? 
-                                            ` | Invitations Confidence: <strong>${pred.uncertainty_range.invitations_confidence}%</strong>` : ''}
+                                    <div class="uncertainty-range">
+                                        <i class="fas fa-trophy me-1 text-warning"></i>
+                                        <strong>CRS: ${pred.predicted_crs_score !== null && pred.predicted_crs_score !== undefined ? formatCRSWithCI(pred.predicted_crs_score, pred.uncertainty_range) : 'N/A'}</strong>
                                     </div>
                                 </div>
-                            `).join('')}
-                            
-                            ${modelPredictions.length > 6 ? `
-                                <div class="text-center mt-2">
-                                    <small class="text-muted">
-                                        <i class="fas fa-plus me-1"></i>
-                                        ${modelPredictions.length - 6} more predictions available
-                                    </small>
+                            </div>
+                            <div class="col-6">
+                                <div class="invitation-highlight">
+                                    <div class="mb-2">
+                                        <i class="fas fa-users text-success me-2"></i>
+                                        <strong class="text-success">
+                                            ${pred.predicted_invitations !== null && pred.predicted_invitations !== undefined ? formatInvitationsWithCI(pred.predicted_invitations, pred.uncertainty_range) : 'N/A'}
+                                        </strong>
+                                    </div>
+                                    <div class="uncertainty-range">
+                                        <i class="fas fa-envelope me-1 text-success"></i>
+                                        <strong>Invitations</strong>
+                                    </div>
                                 </div>
-                            ` : ''}
+                            </div>
                         </div>
+                        
+                        <!-- Additional confidence details -->
+                        ${pred.uncertainty_range && pred.uncertainty_range.invitations_confidence ? `
+                            <div class="mt-3 pt-3 border-top">
+                                <div class="row text-center">
+                                    <div class="col-6">
+                                        <small class="text-muted">Overall Confidence</small><br>
+                                        <strong class="text-info">${confidence}%</strong>
+                                    </div>
+                                    <div class="col-6">
+                                        <small class="text-muted">Invitations Confidence</small><br>
+                                        <strong class="text-success">${pred.uncertainty_range.invitations_confidence}%</strong>
+                                    </div>
+                                </div>
+                            </div>
+                        ` : `
+                            <div class="mt-3 pt-3 border-top text-center">
+                                <small class="text-muted">Overall Confidence: </small>
+                                <strong class="text-info">${confidence}%</strong>
+                            </div>
+                        `}
                     </div>
                 </div>
             </div>
@@ -627,9 +645,9 @@ function createTimelineChart(categoryPredictions) {
         }
         modelGroups[modelName].push({
                                         x: pred.predicted_date || new Date(),
-                            y: pred.predicted_crs_score || 0,
+                            y: pred.predicted_crs_score !== null && pred.predicted_crs_score !== undefined ? pred.predicted_crs_score : 0,
                             confidence: pred.confidence_score || 75,
-                            invitations: pred.predicted_invitations || 0
+                            invitations: pred.predicted_invitations !== null && pred.predicted_invitations !== undefined ? pred.predicted_invitations : 0
         });
     });
     
@@ -743,7 +761,7 @@ function formatCRSWithCI(score, uncertaintyRange) {
 }
 
 function formatInvitationsWithCI(invitations, uncertaintyRange) {
-    if (!invitations && invitations !== 0) return 'N/A';
+    if (invitations === null || invitations === undefined) return 'N/A';
     
     // Ensure invitations is a valid number before formatting
     const invitationsNum = parseInt(invitations);
