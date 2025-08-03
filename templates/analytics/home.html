@@ -296,6 +296,18 @@ function createMovingAveragesChart(movingAverages) {
     };
     
     Plotly.newPlot('movingAveragesChart', [trace1, trace2], layout, {responsive: true});
+    
+    // Add event tracking for chart interactions
+    const chartElement = document.getElementById('movingAveragesChart');
+    if (chartElement && window.trackChartInteraction) {
+        chartElement.on('plotly_hover', function() {
+            window.trackChartInteraction('moving_averages', 'hover');
+        });
+        
+        chartElement.on('plotly_click', function() {
+            window.trackChartInteraction('moving_averages', 'click');
+        });
+    }
 }
 
 function createSeasonalChart(seasonalPatterns) {
@@ -362,6 +374,18 @@ function createSeasonalChart(seasonalPatterns) {
     };
     
     Plotly.newPlot('seasonalChart', [trace1, trace2], layout, {responsive: true});
+    
+    // Add event tracking for chart interactions
+    const chartElement = document.getElementById('seasonalChart');
+    if (chartElement && window.trackChartInteraction) {
+        chartElement.on('plotly_hover', function() {
+            window.trackChartInteraction('seasonal_patterns', 'hover');
+        });
+        
+        chartElement.on('plotly_click', function() {
+            window.trackChartInteraction('seasonal_patterns', 'click');
+        });
+    }
 }
 
 function displayCategoryTrends(categoryTrends) {

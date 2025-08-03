@@ -20,6 +20,56 @@
     <!-- Plotly.js -->
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
     
+    <!-- Google Analytics (GA4) -->
+    {% if settings.GOOGLE_ANALYTICS_ENABLED %}
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id={{ settings.GOOGLE_ANALYTICS_ID }}"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', '{{ settings.GOOGLE_ANALYTICS_ID }}', {
+            'anonymize_ip': true,
+            'respect_dnt': true,
+            'page_title': document.title,
+            'custom_map': {
+                'custom_parameter_1': 'theme_mode'
+            }
+        });
+        
+        // Custom events for Google Analytics
+        window.trackEvent = function(eventName, eventCategory, eventLabel, value) {
+            if (typeof gtag !== 'undefined') {
+                gtag('event', eventName, {
+                    'event_category': eventCategory,
+                    'event_label': eventLabel,
+                    'value': value
+                });
+            }
+        };
+        
+        // Track theme changes
+        window.trackThemeChange = function(theme) {
+            window.trackEvent('theme_change', 'user_preference', theme);
+        };
+        
+        // Track prediction views
+        window.trackPredictionView = function(category) {
+            window.trackEvent('prediction_view', 'predictions', category);
+        };
+        
+        // Track calculator usage
+        window.trackCalculatorUse = function(category, crs_score) {
+            window.trackEvent('calculator_use', 'tools', category, crs_score);
+        };
+        
+        // Track chart interactions
+        window.trackChartInteraction = function(chartType, action) {
+            window.trackEvent('chart_interaction', 'analytics', chartType + '_' + action);
+        };
+    </script>
+    {% endif %}
+    
     <style>
         :root {
             /* Light Theme Colors */
@@ -565,11 +615,19 @@
                 htmlElement.removeAttribute('data-theme');
                 localStorage.setItem('theme', 'light');
                 updateChartsTheme('light');
+                // Track theme change
+                if (window.trackThemeChange) {
+                    window.trackThemeChange('light');
+                }
             } else {
                 // Switch to dark theme
                 htmlElement.setAttribute('data-theme', 'dark');
                 localStorage.setItem('theme', 'dark');
                 updateChartsTheme('dark');
+                // Track theme change
+                if (window.trackThemeChange) {
+                    window.trackThemeChange('dark');
+                }
             }
         });
         

@@ -640,6 +640,11 @@ function updateCategoryContent(categoryData) {
     // Update performance and chart for this category only
     displayModelPerformance([categoryData]);
     createTimelineChart([categoryData]);
+    
+    // Track prediction view
+    if (window.trackPredictionView) {
+        window.trackPredictionView(categoryName);
+    }
 }
 
 function displayModelPerformance(categoryPredictions) {
@@ -872,6 +877,22 @@ function createTimelineChart(categoryPredictions) {
     };
     
     Plotly.newPlot('timelineChart', traces, layout, {responsive: true});
+    
+    // Add event tracking for chart interactions
+    const chartElement = document.getElementById('timelineChart');
+    if (chartElement && window.trackChartInteraction) {
+        chartElement.on('plotly_hover', function() {
+            window.trackChartInteraction('timeline_chart', 'hover');
+        });
+        
+        chartElement.on('plotly_click', function() {
+            window.trackChartInteraction('timeline_chart', 'click');
+        });
+        
+        chartElement.on('plotly_legendclick', function() {
+            window.trackChartInteraction('timeline_chart', 'legend_toggle');
+        });
+    }
     
     // Apply theme to the newly created chart
     if (window.applyThemeToChart) {

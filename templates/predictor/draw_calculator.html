@@ -314,6 +314,15 @@ async function calculateDrawTime() {
     try {
         const estimates = calculateEstimates(crsScore, selectedCategories);
         displayResults(crsScore, estimates);
+        
+        // Track calculator usage
+        if (window.trackCalculatorUse) {
+            const categoryNames = selectedCategories.map(id => {
+                const checkbox = document.querySelector(`input[type="checkbox"][value="${id}"]`);
+                return checkbox ? checkbox.closest('label').textContent.trim() : 'Unknown';
+            }).join(', ');
+            window.trackCalculatorUse(categoryNames, crsScore);
+        }
     } catch (error) {
         console.error('Error calculating estimates:', error);
         document.getElementById('resultsContent').innerHTML = `

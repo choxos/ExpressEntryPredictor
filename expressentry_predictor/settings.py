@@ -91,6 +91,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "expressentry_predictor.context_processors.google_analytics",
             ],
         },
     },
@@ -180,6 +181,10 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]
+
+# Google Analytics Configuration
+GOOGLE_ANALYTICS_ID = os.environ.get('GOOGLE_ANALYTICS_ID', '')
+GOOGLE_ANALYTICS_ENABLED = bool(GOOGLE_ANALYTICS_ID and not DEBUG)  # Only enable in production with valid ID
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field

@@ -448,6 +448,18 @@ async function loadMonthlyDrawTrends() {
         
         Plotly.newPlot('monthlyChart', monthlyData.data, monthlyData.layout);
         
+        // Add event tracking for chart interactions
+        const chartElement = document.getElementById('monthlyChart');
+        if (chartElement && window.trackChartInteraction) {
+            chartElement.on('plotly_hover', function() {
+                window.trackChartInteraction('monthly_draws', 'hover');
+            });
+            
+            chartElement.on('plotly_click', function() {
+                window.trackChartInteraction('monthly_draws', 'click');
+            });
+        }
+        
     } catch (error) {
         console.error('Error loading monthly draw trends:', error);
     }
@@ -593,6 +605,22 @@ async function loadCRSTrendsByCategory() {
         };
         
         Plotly.newPlot('crsChart', traces, layout, {responsive: true, displayModeBar: false});
+        
+        // Add event tracking for chart interactions
+        const chartElement = document.getElementById('crsChart');
+        if (chartElement && window.trackChartInteraction) {
+            chartElement.on('plotly_hover', function() {
+                window.trackChartInteraction('crs_trends', 'hover');
+            });
+            
+            chartElement.on('plotly_click', function() {
+                window.trackChartInteraction('crs_trends', 'click');
+            });
+            
+            chartElement.on('plotly_legendclick', function() {
+                window.trackChartInteraction('crs_trends', 'legend_toggle');
+            });
+        }
         
     } catch (error) {
         console.error('Error loading CRS trends by category:', error);
