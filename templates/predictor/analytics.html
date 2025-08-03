@@ -301,6 +301,81 @@ function displayCategoryBreakdown(breakdown) {
     });
 }
 
+async function loadMonthlyDrawTrends() {
+    try {
+        // Get ALL historical draws data for complete timeline (2015-2025)
+        const response = await axios.get('/api/draws/'); // No limit - get all historical data
+        const drawsData = response.data.results || response.data;
+        
+        if (!drawsData || drawsData.length === 0) {
+            console.warn('No draws data available for monthly trends');
+            return;
+        }
+        
+        // Group draws by month
+        const monthlyCount = {};
+        drawsData.forEach(draw => {
+            const date = new Date(draw.date);
+            const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            monthlyCount[monthKey] = (monthlyCount[monthKey] || 0) + 1;
+        });
+        
+        // Sort months chronologically
+        const sortedMonths = Object.keys(monthlyCount).sort();
+        
+        // Format month labels for better readability
+        const formattedMonths = sortedMonths.map(month => {
+            const [year, monthNum] = month.split('-');
+            const date = new Date(year, monthNum - 1);
+            return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
+        });
+        
+        const monthlyData = {
+            data: [{
+                x: formattedMonths,
+                y: sortedMonths.map(month => monthlyCount[month]),
+                type: 'scatter',
+                mode: 'lines+markers',
+                name: 'Monthly Draw Count',
+                line: { 
+                    color: '#28a745',
+                    width: 3
+                },
+                marker: { 
+                    size: 6,
+                    color: '#28a745',
+                    opacity: 0.8
+                },
+                hovertemplate: '<b>Monthly Draw Count</b><br>' +
+                             'Month: %{x}<br>' +
+                             'Draws: %{y}<br>' +
+                             '<extra></extra>'
+            }],
+            layout: {
+                title: {
+                    text: 'Monthly Draw Count Trends (2015-2025)',
+                    font: { size: 18 }
+                },
+                xaxis: { 
+                    title: 'Month',
+                    tickangle: -45
+                },
+                yaxis: { 
+                    title: 'Number of Draws',
+                    rangemode: 'tozero'
+                },
+                showlegend: false,
+                hovermode: 'closest'
+            }
+        };
+        
+        Plotly.newPlot('monthlyChart', monthlyData.data, monthlyData.layout);
+        
+    } catch (error) {
+        console.error('Error loading monthly draw trends:', error);
+    }
+}
+
 async function loadCRSTrendsByCategory() {
     try {
         // Get ALL historical draws data for complete timeline
@@ -487,33 +562,8 @@ async function loadCharts(data) {
             Plotly.newPlot('categoryChart', categoryData.data, categoryData.layout);
         }
         
-        // Monthly draw count chart
-        if (data.recent_draws && data.recent_draws.length > 0) {
-            const monthlyCount = {};
-            data.recent_draws.forEach(draw => {
-                const date = new Date(draw.date);
-                const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-                monthlyCount[monthKey] = (monthlyCount[monthKey] || 0) + 1;
-            });
-            
-            const sortedMonths = Object.keys(monthlyCount).sort();
-            const monthlyData = {
-                data: [{
-                    x: sortedMonths,
-                    y: sortedMonths.map(month => monthlyCount[month]),
-                    type: 'bar',
-                    name: 'Draw Count',
-                    marker: { color: '#28a745' }
-                }],
-                layout: {
-                    title: 'Monthly Draw Count',
-                    xaxis: { title: 'Month' },
-                    yaxis: { title: 'Number of Draws' },
-                    showlegend: false
-                }
-            };
-            Plotly.newPlot('monthlyChart', monthlyData.data, monthlyData.layout);
-        }
+        // Monthly draw count chart using full historical data (2015-2025)
+        await loadMonthlyDrawTrends();
         
         // CRS Score vs Invitations scatter plot
         if (data.recent_draws && data.recent_draws.length > 0) {
