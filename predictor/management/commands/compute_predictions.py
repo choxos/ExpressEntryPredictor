@@ -346,7 +346,16 @@ class Command(BaseCommand):
         
         # Clear old predictions if force recompute (for all models)
         if force_recompute:
+            from django.db import transaction
+            
+            # Force immediate deletion in separate transaction to prevent rollback
+            deletion_count = PreComputedPrediction.objects.filter(category=category).count()
             PreComputedPrediction.objects.filter(category=category).delete()
+            print(f"🗑️  Force delete: Cleared {deletion_count} existing predictions for {category.name}")
+            
+            # Verify deletion completed
+            remaining_count = PreComputedPrediction.objects.filter(category=category).count()
+            print(f"✅ Verification: {remaining_count} predictions remaining after delete")
         
         # Generate predictions
         import pytz
@@ -704,21 +713,22 @@ class Command(BaseCommand):
                     predicted_invitations = max(100, min(10000, predicted_invitations))
                     model_confidence = max(0.1, min(1.0, model_confidence))
                     
-                    # Create prediction
-                    PreComputedPrediction.objects.update_or_create(
-                         category=category,
-                         prediction_rank=rank,
-                         model_used=str(model_name),
-                         defaults={
-                            'predicted_date': next_date,
-                            'predicted_crs_score': predicted_score,
-                            'predicted_invitations': predicted_invitations,
-                            'confidence_score': model_confidence,
-                            'model_version': '1.0',
-                            'uncertainty_range': uncertainty_range,
-                            'is_active': True
-                        }
-                    )
+                    # Create prediction with transaction protection
+                    with transaction.atomic():
+                        PreComputedPrediction.objects.update_or_create(
+                             category=category,
+                             prediction_rank=rank,
+                             model_used=str(model_name),
+                             defaults={
+                                'predicted_date': next_date,
+                                'predicted_crs_score': predicted_score,
+                                'predicted_invitations': predicted_invitations,
+                                'confidence_score': model_confidence,
+                                'model_version': '1.0',
+                                'uncertainty_range': uncertainty_range,
+                                'is_active': True
+                            }
+                        )
                     
                     model_predictions_created += 1
                     total_predictions_created += 1
