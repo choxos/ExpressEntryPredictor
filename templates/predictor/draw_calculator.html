@@ -138,8 +138,8 @@
                             <h5><i class="fas fa-database me-2 text-primary"></i>Historical Analysis</h5>
                             <p>We analyze historical draw data including CRS score trends, draw frequencies, and invitation patterns for each category.</p>
                             
-                            <h5><i class="fas fa-brain me-2 text-warning"></i>AI Predictions</h5>
-                            <p>Our machine learning models predict future CRS score trends and draw patterns based on recent government policies and trends.</p>
+                            <h5><i class="fas fa-brain me-2 text-warning"></i>Multi-Model AI Predictions</h5>
+                            <p>Our advanced ensemble of 11+ machine learning models (including LSTM, SARIMA, Prophet, Gaussian Process, and more) predict future CRS scores and draw dates with confidence intervals.</p>
                         </div>
                         <div class="col-md-6">
                             <h5><i class="fas fa-chart-trending-up me-2 text-success"></i>Current Trends</h5>
@@ -220,9 +220,34 @@ function displayCategories() {
         const col = document.createElement('div');
         col.className = 'col-md-6 mb-3';
         
-        const recentDraw = categoryData.recent_draws[0];
-        const lastScore = recentDraw ? recentDraw.crs_score : 'N/A';
-        const daysSinceLastDraw = recentDraw ? Math.floor((new Date() - new Date(recentDraw.date)) / (1000 * 60 * 60 * 24)) : 'N/A';
+        // Get predicted CRS score from new multi-model API structure
+        let predictedScore = 'N/A';
+        let nextDrawDate = 'N/A';
+        
+        if (categoryData.predictions && categoryData.predictions.length > 0) {
+            const firstPrediction = categoryData.predictions[0];
+            
+            if (firstPrediction.models && firstPrediction.models.length > 0) {
+                // New format: get best model prediction
+                const bestModel = firstPrediction.models[0]; // Highest confidence model
+                predictedScore = bestModel.predicted_crs_score || 'N/A';
+                nextDrawDate = firstPrediction.predicted_date;
+            } else {
+                // Old format fallback
+                predictedScore = firstPrediction.predicted_crs_score || 'N/A';
+                nextDrawDate = firstPrediction.predicted_date;
+            }
+        }
+        
+        // Calculate days to next predicted draw
+        let daysToNextDraw = 'N/A';
+        if (nextDrawDate !== 'N/A') {
+            const drawDate = new Date(nextDrawDate);
+            const today = new Date();
+            const diffTime = drawDate - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            daysToNextDraw = diffDays > 0 ? diffDays : 'Soon';
+        }
         
         col.innerHTML = `
             <div class="form-check">
@@ -236,12 +261,12 @@ function displayCategories() {
                             <h6 class="card-title mb-2">${categoryData.category_name}</h6>
                             <div class="row text-center">
                                 <div class="col-6">
-                                    <small class="text-muted d-block">Last CRS</small>
-                                    <strong class="text-primary">${lastScore}</strong>
+                                    <small class="text-muted d-block">Predicted CRS</small>
+                                    <strong class="text-success">${predictedScore}</strong>
                                 </div>
                                 <div class="col-6">
-                                    <small class="text-muted d-block">Days Ago</small>
-                                    <strong class="text-secondary">${daysSinceLastDraw}</strong>
+                                    <small class="text-muted d-block">Next Draw</small>
+                                    <strong class="text-primary">${daysToNextDraw === 'N/A' ? 'N/A' : daysToNextDraw + ' days'}</strong>
                                 </div>
                             </div>
                         </div>
@@ -310,44 +335,64 @@ function calculateEstimates(userScore, selectedCategories) {
         const recentDraws = categoryData.recent_draws;
         const predictions = categoryData.predictions;
         
-        // Calculate average CRS score from recent draws
-        const avgRecentScore = recentDraws.length > 0 
-            ? recentDraws.reduce((sum, draw) => sum + draw.crs_score, 0) / recentDraws.length 
-            : 500;
+        // Get current predicted score from new multi-model API structure
+        let currentPredictedScore = 500; // Default fallback
+        let nextDrawDate = null;
+        let modelConfidence = 0;
         
-        // Get current predicted score
-        const currentPredictedScore = predictions[0] ? predictions[0].predicted_crs_score : avgRecentScore;
+        if (predictions && predictions.length > 0) {
+            const firstPrediction = predictions[0];
+            
+            if (firstPrediction.models && firstPrediction.models.length > 0) {
+                // New format: get best model prediction
+                const bestModel = firstPrediction.models[0]; // Highest confidence model
+                currentPredictedScore = bestModel.predicted_crs_score || currentPredictedScore;
+                nextDrawDate = firstPrediction.predicted_date;
+                modelConfidence = bestModel.confidence_score || 0;
+            } else {
+                // Old format fallback
+                currentPredictedScore = firstPrediction.predicted_crs_score || currentPredictedScore;
+                nextDrawDate = firstPrediction.predicted_date;
+                modelConfidence = firstPrediction.confidence_score || 0;
+            }
+        } else if (recentDraws && recentDraws.length > 0) {
+            // Fallback to historical average if no predictions
+            currentPredictedScore = recentDraws.reduce((sum, draw) => sum + draw.crs_score, 0) / recentDraws.length;
+        }
         
         // Calculate score difference
         const scoreDifference = userScore - currentPredictedScore;
         
-        // Estimate likelihood and timing
+        // Estimate likelihood and timing based on AI predictions
         let likelihood, estimatedTime, recommendation;
         
-        if (scoreDifference >= 50) {
+        // Adjust thresholds based on model confidence
+        const confidenceAdjustment = modelConfidence >= 70 ? 0 : 10; // More conservative if low confidence
+        
+        if (scoreDifference >= (50 - confidenceAdjustment)) {
             likelihood = 'Very High';
             estimatedTime = 'Next 1-2 draws';
-            recommendation = 'Excellent! You should receive an invitation very soon.';
-        } else if (scoreDifference >= 20) {
+            recommendation = 'Excellent! AI models predict you should receive an invitation very soon.';
+        } else if (scoreDifference >= (20 - confidenceAdjustment)) {
             likelihood = 'High';
             estimatedTime = 'Next 2-4 draws';
-            recommendation = 'Very good chances. Monitor upcoming draws closely.';
-        } else if (scoreDifference >= 0) {
+            recommendation = 'Very good chances based on current AI predictions. Monitor upcoming draws closely.';
+        } else if (scoreDifference >= (0 - confidenceAdjustment)) {
             likelihood = 'Moderate';
             estimatedTime = 'Next 3-6 draws';
-            recommendation = 'Good chances. CRS scores may fluctuate in your favor.';
-        } else if (scoreDifference >= -20) {
+            recommendation = 'Good chances. Predicted CRS scores may fluctuate in your favor.';
+        } else if (scoreDifference >= (-20 - confidenceAdjustment)) {
             likelihood = 'Low';
             estimatedTime = '6-12 months';
             recommendation = 'Consider improving your CRS score through additional education, work experience, or language training.';
-        } else if (scoreDifference >= -50) {
+        } else if (scoreDifference >= (-50 - confidenceAdjustment)) {
             likelihood = 'Very Low';
             estimatedTime = '12+ months';
             recommendation = 'Significant improvements needed. Focus on increasing your CRS score substantially.';
         } else {
             likelihood = 'Unlikely';
-            estimatedTime = 'Not with current trends';
-            recommendation = 'Your score is significantly below recent trends. Consider alternative immigration pathways.';
+            estimatedTime = 'Not with current AI predictions';
+            recommendation = 'Your score is significantly below AI-predicted trends. Consider alternative immigration pathways.';
         }
         
         // Calculate rough draw frequency (days between draws)
@@ -355,14 +400,16 @@ function calculateEstimates(userScore, selectedCategories) {
         
         estimates.push({
             categoryName: categoryData.category_name,
-            currentPredictedScore: currentPredictedScore,
+            currentPredictedScore: Math.round(currentPredictedScore),
             userScore: userScore,
             scoreDifference: scoreDifference,
             likelihood: likelihood,
             estimatedTime: estimatedTime,
             recommendation: recommendation,
             drawFrequency: drawFrequency,
-            recentDraws: recentDraws.length
+            recentDraws: recentDraws ? recentDraws.length : 0,
+            nextDrawDate: nextDrawDate,
+            modelConfidence: Math.round(modelConfidence)
         });
     });
     
@@ -476,8 +523,13 @@ function displayResults(userScore, estimates) {
                         </div>
                         
                         <div class="mb-3">
-                            <small class="text-muted d-block">Draw Frequency</small>
-                            <span>~${estimate.drawFrequency} days (${estimate.recentDraws} recent draws)</span>
+                            <small class="text-muted d-block">Next Predicted Draw</small>
+                            <span>${estimate.nextDrawDate ? formatDate(estimate.nextDrawDate) : 'Not available'}</span>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <small class="text-muted d-block">AI Model Confidence</small>
+                            <span>${estimate.modelConfidence}% <small class="text-muted">(~${estimate.drawFrequency} days frequency)</small></span>
                         </div>
                         
                         <div class="alert alert-light border-0 small">
@@ -554,6 +606,16 @@ function getLikelihoodPercentage(likelihood) {
         'Unlikely': 5
     };
     return percentages[likelihood] || 0;
+}
+
+function formatDate(dateString) {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+    });
 }
 </script>
 
