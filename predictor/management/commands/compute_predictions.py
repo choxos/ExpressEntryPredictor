@@ -2025,7 +2025,7 @@ class Command(BaseCommand):
         
         # Calculate confidence intervals based on historical variance
         days_std = date_features['days_since_last_draw'].std()
-        confidence_multiplier = 1.96  # 95% confidence interval
+        confidence_multiplier = 1.959964  # qnorm(0.975) for 95% confidence interval
         
         # Adjust confidence based on data quality and rank
         data_quality_factor = min(1.0, len(date_features) / 10)  # More data = tighter CI
@@ -2042,6 +2042,21 @@ class Command(BaseCommand):
         print(f"      ✅ Final prediction: {predicted_date.strftime('%b %d')} ({ci_lower.strftime('%b %d')}-{ci_upper.strftime('%b %d')}, 95% CI)")
         
         return predicted_date, ci_lower, ci_upper
+    
+    def get_interval_type(self, model_name):
+        """Determine if model uses Bayesian (CrI) or Frequentist (CI) intervals"""
+        bayesian_models = [
+            'BayesianHierarchical', 
+            'GaussianProcess', 
+            'Prophet',  # Prophet uses Bayesian inference
+            'DynamicLinearModel'  # Often Bayesian
+        ]
+        
+        for bayesian_model in bayesian_models:
+            if bayesian_model.lower() in model_name.lower():
+                return 'CrI'  # Credibility Interval for Bayesian models
+        
+        return 'CI'  # Confidence Interval for Frequentist models
     
     def setup_prediction_logging(self, category_name):
         """Setup detailed logging for debugging prediction issues"""
@@ -2277,6 +2292,9 @@ class Command(BaseCommand):
                     # Apply uncertainty modeling for each model
                     uncertainty = self.apply_uncertainty_modeling([pred], rank)
                     
+                    # 🎯 Determine interval type based on model
+                    interval_type = self.get_interval_type(pred['model'])
+                    
                     with transaction.atomic():
                         prediction = PreComputedPrediction.objects.create(
                             category=category,
@@ -2296,6 +2314,7 @@ class Command(BaseCommand):
                             # 📅 NEW: Dynamic date prediction with confidence intervals
                             predicted_date_lower=date_ci_lower.date() if hasattr(date_ci_lower, 'date') else date_ci_lower,
                             predicted_date_upper=date_ci_upper.date() if hasattr(date_ci_upper, 'date') else date_ci_upper,
+                            interval_type=interval_type,  # 🆕 CI for frequentist, CrI for Bayesian
                             is_active=True
                         )
                         models_saved += 1

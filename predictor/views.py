@@ -204,7 +204,8 @@ class PredictionAPIView(APIView):
                 'date_confidence_interval': {
                     'lower': best_pred.predicted_date_lower.isoformat() if best_pred.predicted_date_lower else None,
                     'upper': best_pred.predicted_date_upper.isoformat() if best_pred.predicted_date_upper else None,
-                    'enabled': bool(best_pred.predicted_date_lower and best_pred.predicted_date_upper)
+                    'enabled': bool(best_pred.predicted_date_lower and best_pred.predicted_date_upper),
+                    'interval_type': getattr(best_pred, 'interval_type', 'CI')  # CI or CrI based on model type
                 }
             }
             

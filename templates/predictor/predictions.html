@@ -1177,6 +1177,7 @@ function calculateAverageInvitations(predictions) {
         
         const lowerDate = new Date(dateCI.lower);
         const upperDate = new Date(dateCI.upper);
+        const mainDateObj = new Date(dateString);
         
         // Format CI dates (shorter format for range)
         const formatShort = (date) => date.toLocaleDateString('en-US', { 
@@ -1186,10 +1187,13 @@ function calculateAverageInvitations(predictions) {
         
         const lowerFormatted = formatShort(lowerDate);
         const upperFormatted = formatShort(upperDate);
-        const year = new Date(dateString).getFullYear();
+        const year = mainDateObj.getFullYear();
         
-        // Return formatted date with confidence interval
-        return `${mainDate} <br><small class="text-muted">(${lowerFormatted}–${upperFormatted} ${year}, 95% CI)</small>`;
+        // 🎯 NEW FORMAT: "Sep 15 (95% CI: Sep 12–Sep 18 2025)"
+        // Check if it's Bayesian model (CrI) or Frequentist (CI)
+        const intervalType = dateCI.interval_type || 'CI';  // Default to CI for backward compatibility
+        
+        return `${mainDate} (95% ${intervalType}: ${lowerFormatted}–${upperFormatted} ${year})`;
     }
 
     function getCategoryMapping() {

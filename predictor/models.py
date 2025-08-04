@@ -453,6 +453,7 @@ class PreComputedPrediction(models.Model):
     # Date confidence intervals (95% CI)
     predicted_date_lower = models.DateField(null=True, blank=True)  # Lower bound of date CI
     predicted_date_upper = models.DateField(null=True, blank=True)  # Upper bound of date CI
+    interval_type = models.CharField(max_length=10, default='CI', help_text='CI for frequentist, CrI for Bayesian')
     
     class Meta:
         db_table = 'predictor_precomputed_prediction'
