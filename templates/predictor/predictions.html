@@ -646,15 +646,17 @@ async function createCategoryContent(categoryData) {
                                         ${Math.round(confidence)}% Confidence
                                     </span>
                                     ${primaryHasMultipleModels ? `
-                                        <button class="btn btn-sm btn-outline-light" 
+                                        <button class="btn btn-sm btn-outline-light models-toggle-btn" 
                                                 type="button" 
                                                 data-bs-toggle="collapse" 
                                                 data-bs-target="#${primaryPredictionId}-models" 
                                                 aria-expanded="false" 
                                                 aria-controls="${primaryPredictionId}-models"
-                                                title="Show all ${primaryPrediction.model_count} model predictions">
-                                            <i class="fas fa-chevron-down"></i>
+                                                title="Show all ${primaryPrediction.model_count} model predictions"
+                                                onclick="toggleChevron(this)">
+                                            <i class="fas fa-chevron-down transition-all"></i>
                                             <span class="badge bg-light text-primary ms-1">${primaryPrediction.model_count}</span>
+                                            <span class="ms-1 d-none d-md-inline">Models</span>
                                         </button>
                                     ` : ''}
                                 </div>
@@ -776,15 +778,17 @@ async function createCategoryContent(categoryData) {
                                         ${Math.round(confidence)}%
                                     </span>
                                     ${hasMultipleModels ? `
-                                        <button class="btn btn-sm btn-outline-primary" 
+                                        <button class="btn btn-sm btn-outline-primary models-toggle-btn" 
                                                 type="button" 
                                                 data-bs-toggle="collapse" 
                                                 data-bs-target="#${predictionId}-models" 
                                                 aria-expanded="false" 
                                                 aria-controls="${predictionId}-models"
-                                                title="Show all ${prediction.model_count} model predictions">
-                                            <i class="fas fa-chevron-down"></i>
+                                                title="Show all ${prediction.model_count} model predictions"
+                                                onclick="toggleChevron(this)">
+                                            <i class="fas fa-chevron-down transition-all"></i>
                                             <span class="badge bg-primary ms-1">${prediction.model_count}</span>
+                                            <span class="ms-1 d-none d-sm-inline">Models</span>
                                         </button>
                                     ` : ''}
                                 </div>
@@ -1380,5 +1384,48 @@ function abbreviateCategoryName(categoryName) {
     
     return firstWord.length > 12 ? firstWord.substring(0, 12) + '...' : firstWord;
 }
+
+// 🎨 Enhanced Models Toggle with Smooth Animation
+function toggleChevron(button) {
+    const chevron = button.querySelector('i');
+    const isExpanded = button.getAttribute('aria-expanded') === 'true';
+    
+    // Rotate chevron with smooth animation
+    if (isExpanded) {
+        chevron.style.transform = 'rotate(0deg)';
+        button.setAttribute('aria-expanded', 'false');
+    } else {
+        chevron.style.transform = 'rotate(180deg)';
+        button.setAttribute('aria-expanded', 'true');
+    }
+}
+
+// 🎯 Auto-setup Bootstrap collapse event listeners for chevron animation
+document.addEventListener('DOMContentLoaded', function() {
+    // Listen for all Bootstrap collapse events
+    document.addEventListener('shown.bs.collapse', function(event) {
+        const collapseTarget = event.target;
+        const toggleButton = document.querySelector(`[data-bs-target="#${collapseTarget.id}"]`);
+        if (toggleButton && toggleButton.classList.contains('models-toggle-btn')) {
+            const chevron = toggleButton.querySelector('i');
+            if (chevron) {
+                chevron.style.transform = 'rotate(180deg)';
+                toggleButton.setAttribute('aria-expanded', 'true');
+            }
+        }
+    });
+
+    document.addEventListener('hidden.bs.collapse', function(event) {
+        const collapseTarget = event.target;
+        const toggleButton = document.querySelector(`[data-bs-target="#${collapseTarget.id}"]`);
+        if (toggleButton && toggleButton.classList.contains('models-toggle-btn')) {
+            const chevron = toggleButton.querySelector('i');
+            if (chevron) {
+                chevron.style.transform = 'rotate(0deg)';
+                toggleButton.setAttribute('aria-expanded', 'false');
+            }
+        }
+    });
+});
 </script>
 {% endblock %} 

@@ -249,18 +249,18 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS('\n🎉 Prediction computation completed!'))
 
     def is_category_eliminated_2025(self, ircc_category):
-        """Check if category is eliminated by 2025 policy changes"""
-        eliminated_categories = [
-            'Transport occupations',
-            'General',  # Eliminated after April 2024
-            'No Program Specified'
-        ]
+        """
+        Check if category is eliminated by 2025 policy changes.
         
-        # Transport occupations completely eliminated
+        Based on OFFICIAL Government consultation results (Feb 27, 2025):
+        - Transport: Only 18.8% "great need", 35.4% "no need" (lowest support)
+        - General: Focus shifted to Canadian Experience Class
+        """
+        # Transport: ELIMINATED due to poor consultation results (18.8% great need, 35.4% no need)
         if 'Transport' in ircc_category:
             return True
         
-        # General draws eliminated after April 2024
+        # General/No Program: ELIMINATED - "Focus will be to invite candidates with experience working in Canada"
         if any(term in ircc_category for term in ['General', 'No Program']):
             return True
         
@@ -298,30 +298,31 @@ class Command(BaseCommand):
             return 'MEDIUM'  # Quarterly draws per consultation results
         
         # 4. Education: 28.4% rated "great need", NEW 2025 category
+        # Includes: teachers, child care educators, instructors of persons with disabilities
         if any(term in ircc_category for term in ['Education']):
-            return 'MEDIUM'  # New category, quarterly draws
+            return 'MEDIUM'  # NEW category for 2025, bi-monthly draws
         
         # Provincial Nominee: Continues but with reduced emphasis
         if any(term in ircc_category for term in ['Provincial Nominee']):
             return 'MEDIUM'  # Bi-weekly operational frequency
         
         # 🥉 LOW PRIORITY: Reduced Focus Categories  
-        # STEM: Not prioritized in 2025 announcement
+        # STEM: 32.4% "great need" but not prioritized in 2025 announcement
         if any(term in ircc_category for term in ['STEM']):
-            return 'LOW'  # Minimal draws
+            return 'LOW'  # Quarterly draws, reduced from previous years
         
-        # Agriculture: Limited priority per consultation results
+        # Agriculture: 25.0% "great need", minimal presence in 2025 priorities
         if any(term in ircc_category for term in ['Agriculture']):
-            return 'LOW'  # Quarterly draws
+            return 'LOW'  # Quarterly draws, reduced priority
         
-        # ❌ ELIMINATED: Categories Not Mentioned in 2025 Policy
-        # Transport: Only 18.8% "great need" (lowest), not in 2025 priorities
+        # ❌ ELIMINATED: Categories with Poor Consultation Results or Policy Changes
+        # Transport: ELIMINATED - Only 18.8% "great need", 35.4% "no need" (worst results)
         if any(term in ircc_category for term in ['Transport']):
-            return 'ELIMINATED'  # Not part of 2025 focus
+            return 'ELIMINATED'  # No draws scheduled due to poor consultation results
         
-        # General: Shift to category-based selection eliminates general draws
-        if any(term in ircc_category for term in ['General']):
-            return 'ELIMINATED'  # Policy eliminated general draws
+        # General/No Program: ELIMINATED - "Focus will be to invite candidates with experience working in Canada"
+        if any(term in ircc_category for term in ['General', 'No Program']):
+            return 'ELIMINATED'  # Focus shifted to CEC entirely per Feb 27, 2025 announcement
         
         return 'LOW'  # Default for unspecified categories
     
@@ -1802,9 +1803,9 @@ class Command(BaseCommand):
         priority_categories = {
             'HIGHEST': ['Canadian Experience Class'],  # Primary 2025 focus (bi-weekly)
             'HIGH': ['Healthcare and social services occupations', 'French-language proficiency'],  # Official priorities (monthly)
-            'MEDIUM': ['Trade occupations', 'Education occupations', 'Provincial Nominee Program'],  # Important but less frequent
-            'LOW': ['STEM occupations', 'Agriculture and agri-food occupations']  # Minimal priority
-            # Note: 'ELIMINATED' categories are skipped entirely
+            'MEDIUM': ['Trade occupations', 'Education occupations', 'Provincial Nominee Program'],  # Regular draws
+            'LOW': ['STEM occupations', 'Agriculture and agri-food occupations'],  # Minimal priority
+            'ELIMINATED': ['Transport occupations', 'General', 'No Program Specified']  # No longer conducted
         }
         
         # Flatten priorities with order
