@@ -57,12 +57,121 @@
 .nav-tabs .nav-link {
     border-radius: 8px 8px 0 0;
     margin-right: 2px;
+    font-size: 0.9rem;
+    padding: 0.5rem 0.75rem;
 }
 
 .nav-tabs .nav-link.active {
     background: linear-gradient(135deg, #007bff, #0056b3);
     color: white;
     border-color: #007bff;
+}
+
+/* Model alternatives styling */
+.model-alternatives {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.model-alternatives::-webkit-scrollbar {
+    width: 4px;
+}
+
+.model-alternatives::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 2px;
+}
+
+.model-alternatives::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 2px;
+}
+
+.model-alternatives::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* Collapse button animation */
+.btn[data-bs-toggle="collapse"] i {
+    transition: transform 0.3s ease;
+}
+
+.btn[data-bs-toggle="collapse"][aria-expanded="true"] i {
+    transform: rotate(180deg);
+}
+
+/* Mobile Responsive Improvements */
+@media (max-width: 768px) {
+    .nav-tabs {
+        flex-wrap: wrap;
+        font-size: 0.8rem;
+    }
+    
+    .nav-tabs .nav-link {
+        padding: 0.4rem 0.6rem;
+        font-size: 0.8rem;
+        margin-bottom: 2px;
+        white-space: nowrap;
+    }
+    
+    .nav-tabs .nav-link .badge {
+        font-size: 0.7rem;
+        padding: 0.1rem 0.3rem;
+    }
+    
+    .tab-pane {
+        padding: 1rem;
+    }
+    
+    .category-tab-content {
+        min-height: 300px;
+    }
+    
+    .prediction-card {
+        margin-bottom: 1rem;
+    }
+    
+    .prediction-timeline-item {
+        padding-left: 0.75rem;
+        margin-bottom: 0.75rem;
+    }
+    
+    /* Make tables horizontally scrollable on mobile */
+    .table-responsive {
+        font-size: 0.85rem;
+    }
+    
+    /* Adjust card spacing on mobile */
+    .card-body {
+        padding: 1rem 0.75rem;
+    }
+    
+    /* Stack columns on mobile for better readability */
+    .col-md-4, .col-md-8 {
+        margin-bottom: 1rem;
+    }
+    
+    /* Model alternatives mobile improvements */
+    .model-alternatives {
+        max-height: 200px;
+    }
+    
+    .model-alternatives .d-flex {
+        flex-direction: column;
+        align-items: flex-start !important;
+        gap: 0.5rem;
+    }
+    
+    .model-alternatives .text-end {
+        text-align: left !important;
+        width: 100%;
+    }
+    
+    .model-alternatives .d-flex.gap-3 {
+        flex-direction: row;
+        justify-content: space-between;
+        width: 100%;
+    }
 }
 
 .tab-pane {
@@ -335,9 +444,9 @@ function createCategoryTabs() {
                     role="tab" 
                     aria-controls="${categoryId}" 
                     aria-selected="${isActive}">
-                <i class="fas fa-folder me-2"></i>
+                <i class="fas fa-folder me-1 d-none d-sm-inline"></i>
                 ${abbreviateCategoryName(categoryName)}
-                <span class="badge bg-light text-dark ms-2">${categoryData.predictions.length}</span>
+                <span class="badge bg-light text-dark ms-1">${categoryData.predictions.length}</span>
             </button>
         `;
         
@@ -432,15 +541,18 @@ async function createCategoryContent(categoryData) {
                             <div class="row">
                                 <div class="col-4">
                                     <strong>${predictions.length}</strong><br>
-                                    <small class="text-muted">Total Predictions</small>
+                                    <small class="text-muted d-none d-sm-inline">Total Predictions</small>
+                                    <small class="text-muted d-inline d-sm-none">Predictions</small>
                                 </div>
                                 <div class="col-4">
                                     <strong>${Object.keys(predictionsByModel).length}</strong><br>
-                                    <small class="text-muted">Models Used</small>
+                                    <small class="text-muted d-none d-sm-inline">Models Used</small>
+                                    <small class="text-muted d-inline d-sm-none">Models</small>
                                 </div>
                                 <div class="col-4">
                                     <strong>${calculateAverageInvitations(predictions)}</strong><br>
-                                    <small class="text-muted">Avg. Invitations</small>
+                                    <small class="text-muted d-none d-sm-inline">Avg. Invitations</small>
+                                    <small class="text-muted d-inline d-sm-none">Avg. Inv.</small>
                                 </div>
                             </div>
                         </div>
@@ -505,6 +617,8 @@ async function createCategoryContent(categoryData) {
     if (primaryPrediction) {
         const displayDate = formatDate(primaryPrediction.predicted_date);
         const confidence = primaryPrediction.confidence_score || 0;
+        const primaryHasMultipleModels = primaryPrediction.all_models && primaryPrediction.all_models.length > 1;
+        const primaryPredictionId = 'primary-prediction';
         
         content += `
             <div class="row mb-4">
@@ -519,9 +633,23 @@ async function createCategoryContent(categoryData) {
                                     </h5>
                                     <small class="opacity-75">${primaryPrediction.methodology || 'Next Draw Prediction'}</small>
                                 </div>
-                                <span class="badge bg-light text-primary fs-6 fw-bold">
-                                    ${Math.round(confidence)}% Confidence
-                                </span>
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="badge bg-light text-primary fs-6 fw-bold">
+                                        ${Math.round(confidence)}% Confidence
+                                    </span>
+                                    ${primaryHasMultipleModels ? `
+                                        <button class="btn btn-sm btn-outline-light" 
+                                                type="button" 
+                                                data-bs-toggle="collapse" 
+                                                data-bs-target="#${primaryPredictionId}-models" 
+                                                aria-expanded="false" 
+                                                aria-controls="${primaryPredictionId}-models"
+                                                title="Show all ${primaryPrediction.model_count} model predictions">
+                                            <i class="fas fa-chevron-down"></i>
+                                            <span class="badge bg-light text-primary ms-1">${primaryPrediction.model_count}</span>
+                                        </button>
+                                    ` : ''}
+                                </div>
                             </div>
                         </div>
                         <div class="card-body">
@@ -555,6 +683,47 @@ async function createCategoryContent(categoryData) {
                                     </div>
                                 </div>
                             </div>
+                            
+                            ${primaryHasMultipleModels ? `
+                                <div class="collapse" id="${primaryPredictionId}-models">
+                                    <div class="border-top pt-3">
+                                        <h6 class="mb-3 text-muted">
+                                            <i class="fas fa-cogs me-1"></i>
+                                            All Model Predictions for Next Draw (${primaryPrediction.model_count})
+                                        </h6>
+                                        <div class="model-alternatives">
+                                            ${primaryPrediction.all_models.map((model, idx) => `
+                                                <div class="d-flex justify-content-between align-items-center py-3 px-3 mb-2 
+                                                           ${model.is_best ? 'bg-primary bg-opacity-10 border border-primary border-opacity-25 rounded' : 'bg-light rounded'}">
+                                                    <div class="d-flex align-items-center">
+                                                        ${model.is_best ? '<i class="fas fa-crown text-warning me-2" title="Best Model"></i>' : ''}
+                                                        <span class="fw-bold ${model.is_best ? 'text-primary' : ''}">${model.model_name}</span>
+                                                        ${model.is_best ? '<span class="badge bg-primary ms-2">Best</span>' : ''}
+                                                    </div>
+                                                    <div class="text-end">
+                                                        <div class="d-flex gap-4 align-items-center">
+                                                            <div class="text-center">
+                                                                <strong class="text-warning">${model.predicted_crs_score}</strong><br>
+                                                                <small class="text-muted">CRS Score</small>
+                                                            </div>
+                                                            <div class="text-center">
+                                                                <strong class="text-success">${(model.predicted_invitations || 0).toLocaleString()}</strong><br>
+                                                                <small class="text-muted">Invitations</small>
+                                                            </div>
+                                                            <div class="text-center">
+                                                                <span class="badge ${model.is_best ? 'bg-primary' : 'bg-secondary'} fs-6">
+                                                                    ${Math.round(model.confidence_score)}%
+                                                                </span><br>
+                                                                <small class="text-muted">Confidence</small>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                </div>
+                            ` : ''}
                         </div>
                     </div>
                 </div>
@@ -579,6 +748,9 @@ async function createCategoryContent(categoryData) {
             const confidence = prediction.confidence_score || 0;
             const rankColor = ['', 'primary', 'info', 'success', 'warning', 'secondary'][prediction.rank] || 'secondary';
             
+            const predictionId = `prediction-${prediction.rank}`;
+            const hasMultipleModels = prediction.all_models && prediction.all_models.length > 1;
+            
             content += `
                 <div class="col-lg-6 mb-4">
                     <div class="card prediction-card h-100 shadow-sm border-${rankColor}">
@@ -591,9 +763,23 @@ async function createCategoryContent(categoryData) {
                                     </h6>
                                     <small class="text-muted">${prediction.methodology || 'Recursive Forecast'}</small>
                                 </div>
-                                <span class="badge bg-${rankColor} text-white">
-                                    ${Math.round(confidence)}%
-                                </span>
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="badge bg-${rankColor} text-white">
+                                        ${Math.round(confidence)}%
+                                    </span>
+                                    ${hasMultipleModels ? `
+                                        <button class="btn btn-sm btn-outline-primary" 
+                                                type="button" 
+                                                data-bs-toggle="collapse" 
+                                                data-bs-target="#${predictionId}-models" 
+                                                aria-expanded="false" 
+                                                aria-controls="${predictionId}-models"
+                                                title="Show all ${prediction.model_count} model predictions">
+                                            <i class="fas fa-chevron-down"></i>
+                                            <span class="badge bg-primary ms-1">${prediction.model_count}</span>
+                                        </button>
+                                    ` : ''}
+                                </div>
                             </div>
                         </div>
                         <div class="card-body">
@@ -613,10 +799,46 @@ async function createCategoryContent(categoryData) {
                                 <div class="col-4">
                                     <div class="p-2">
                                         <h5 class="mb-1 text-${rankColor} fw-bold">${prediction.model_name || 'AI'}</h5>
-                                        <small class="text-muted">Model</small>
+                                        <small class="text-muted">Best Model</small>
                                     </div>
                                 </div>
                             </div>
+                            
+                            ${hasMultipleModels ? `
+                                <div class="collapse mt-3" id="${predictionId}-models">
+                                    <div class="border-top pt-3">
+                                        <h6 class="mb-3 text-muted">
+                                            <i class="fas fa-cogs me-1"></i>
+                                            All Model Predictions (${prediction.model_count})
+                                        </h6>
+                                        <div class="model-alternatives">
+                                            ${prediction.all_models.map((model, idx) => `
+                                                <div class="d-flex justify-content-between align-items-center py-2 px-2 mb-1 
+                                                           ${model.is_best ? 'bg-success bg-opacity-10 border border-success border-opacity-25 rounded' : 'bg-light rounded'}">
+                                                    <div class="d-flex align-items-center">
+                                                        ${model.is_best ? '<i class="fas fa-crown text-warning me-2" title="Best Model"></i>' : ''}
+                                                        <span class="fw-bold ${model.is_best ? 'text-success' : ''}">${model.model_name}</span>
+                                                        ${model.is_best ? '<span class="badge bg-success ms-2">Best</span>' : ''}
+                                                    </div>
+                                                    <div class="text-end">
+                                                        <div class="d-flex gap-3 align-items-center">
+                                                            <small class="text-muted">
+                                                                <strong>${model.predicted_crs_score}</strong> CRS
+                                                            </small>
+                                                            <small class="text-muted">
+                                                                <strong>${(model.predicted_invitations || 0).toLocaleString()}</strong> inv.
+                                                            </small>
+                                                            <span class="badge ${model.is_best ? 'bg-success' : 'bg-secondary'}">
+                                                                ${Math.round(model.confidence_score)}%
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                </div>
+                            ` : ''}
                         </div>
                     </div>
                 </div>
@@ -1053,6 +1275,7 @@ function abbreviateCategoryName(categoryName) {
         'Healthcare and social services occupations': 'Healthcare',
         'Education occupations': 'Education',
         'French language proficiency': 'French',
+        'French-language proficiency': 'French',
         'STEM occupations': 'STEM',
         'Trade occupations': 'Trades',
         'Transport occupations': 'Transport',
@@ -1066,8 +1289,14 @@ function abbreviateCategoryName(categoryName) {
         }
     }
     
-    // Default: use first word if no match found
+    // Default: use first word if no match found, but with smart truncation
     const firstWord = categoryName.split(' ')[0];
+    
+    // Special handling for hyphenated names
+    if (categoryName.includes('French-language')) {
+        return 'French';
+    }
+    
     return firstWord.length > 12 ? firstWord.substring(0, 12) + '...' : firstWord;
 }
 </script>

@@ -150,29 +150,56 @@ class PredictionAPIView(APIView):
     
     def _format_recursive_predictions(self, predictions):
         """
-        🎯 Format predictions for RECURSIVE FORECASTING approach
+        🎯 Format predictions for RECURSIVE FORECASTING approach with ALL MODEL ALTERNATIVES
         
         New structure:
-        - Rank 1: PRIMARY prediction (next draw)
-        - Ranks 2-5: SECONDARY predictions (recursive forecasting)
-        - One prediction per rank (best model selected)
+        - Group by rank and date
+        - Show all models for each prediction date
+        - Mark the best model for each rank
         """
+        from collections import defaultdict
+        
+        # Group predictions by rank
+        predictions_by_rank = defaultdict(list)
+        for pred in predictions:
+            predictions_by_rank[pred.prediction_rank].append(pred)
+        
         result = []
         
-        for pred in predictions:
-            is_primary = pred.prediction_rank == 1
+        for rank in sorted(predictions_by_rank.keys()):
+            rank_predictions = predictions_by_rank[rank]
+            
+            # Find the best model (highest confidence) for this rank
+            best_pred = max(rank_predictions, key=lambda p: p.confidence_score)
+            
+            is_primary = rank == 1
+            
+            # Create list of all models for this rank/date
+            all_models = []
+            for pred in sorted(rank_predictions, key=lambda p: p.confidence_score, reverse=True):
+                model_data = {
+                    'model_name': pred.model_used,
+                    'predicted_crs_score': pred.predicted_crs_score,
+                    'predicted_invitations': pred.predicted_invitations,
+                    'confidence_score': round(pred.confidence_score * 100, 1),
+                    'uncertainty_range': pred.uncertainty_range,
+                    'is_best': pred.id == best_pred.id  # Mark the best model
+                }
+                all_models.append(model_data)
             
             prediction_data = {
-                'predicted_date': pred.predicted_date.isoformat(),
-                'rank': pred.prediction_rank,
+                'predicted_date': best_pred.predicted_date.isoformat(),
+                'rank': rank,
                 'is_primary': is_primary,
                 'prediction_type': 'PRIMARY' if is_primary else 'SECONDARY',
-                'model_name': pred.model_used,
-                'predicted_crs_score': pred.predicted_crs_score,
-                'predicted_invitations': pred.predicted_invitations,
-                'confidence_score': round(pred.confidence_score * 100, 1),
-                'uncertainty_range': pred.uncertainty_range,
-                'methodology': 'Next Draw Prediction' if is_primary else f'Recursive Forecast (builds on rank {pred.prediction_rank - 1})'
+                'model_name': best_pred.model_used,  # Best model name
+                'predicted_crs_score': best_pred.predicted_crs_score,  # Best model prediction
+                'predicted_invitations': best_pred.predicted_invitations,
+                'confidence_score': round(best_pred.confidence_score * 100, 1),
+                'uncertainty_range': best_pred.uncertainty_range,
+                'methodology': 'Next Draw Prediction' if is_primary else f'Recursive Forecast (builds on rank {rank - 1})',
+                'all_models': all_models,  # 🆕 ALL MODEL ALTERNATIVES
+                'model_count': len(all_models)
             }
             
             result.append(prediction_data)

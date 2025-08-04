@@ -4,6 +4,8 @@ from datetime import date, timedelta
 import pandas as pd
 import numpy as np
 import math
+import logging
+import os
 
 from predictor.models import (
     DrawCategory, ExpressEntryDraw, PreComputedPrediction, 
@@ -102,12 +104,7 @@ class Command(BaseCommand):
         for category in categories:
             ircc_category, related_categories = DrawCategory.get_pooled_categories(category.name)
             
-            # 🚨 2025 POLICY FILTER: Skip eliminated categories entirely
-            if self.is_category_eliminated_2025(ircc_category):
-                self.stdout.write(self.style.WARNING(
-                    f'🚫 Skipping {ircc_category}: ELIMINATED by 2025 policy changes'
-                ))
-                continue
+            # Note: Don't skip eliminated categories here - they still get recursive predictions
             
             # Use the IRCC category as the key
             if ircc_category not in ircc_groups:
@@ -1927,6 +1924,30 @@ class Command(BaseCommand):
         
         return category_schedules
     
+    def setup_prediction_logging(self, category_name):
+        """Setup detailed logging for debugging prediction issues"""
+        log_dir = 'prediction_logs'
+        os.makedirs(log_dir, exist_ok=True)
+        
+        # Create a unique log file for this category
+        log_file = os.path.join(log_dir, f'predictions_{category_name.replace(" ", "_").replace("/", "_")}.log')
+        
+        # Setup logger
+        logger = logging.getLogger(f'prediction_{category_name}')
+        logger.setLevel(logging.DEBUG)
+        
+        # Remove existing handlers
+        for handler in logger.handlers[:]:
+            logger.removeHandler(handler)
+        
+        # Add file handler
+        handler = logging.FileHandler(log_file, mode='w')  # Overwrite each time
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        
+        return logger
+
     def compute_recursive_predictions(self, category, force_recompute, assigned_dates=None):
         """
         🎯 RECURSIVE FORECASTING: Scientifically sound approach
@@ -1939,6 +1960,9 @@ class Command(BaseCommand):
         This mirrors real-world draw scheduling where each draw affects the next.
         Focus: PRIMARY prediction for next draw + 4 secondary predictions.
         """
+        
+        # Setup detailed logging for debugging
+        logger = self.setup_prediction_logging(category.name)
         
         # Check if we need to recompute
         if not force_recompute:
@@ -1994,6 +2018,12 @@ class Command(BaseCommand):
         print(f"🔄 RECURSIVE FORECASTING for {category.name}")
         print(f"   📅 Starting from: {current_date}")
         print(f"   🎯 Strategy: Next draw + 4 recursive predictions")
+        
+        # Log initial state
+        logger.info(f"Starting recursive forecasting for {category.name}")
+        logger.info(f"Data available: {len(df)} historical draws")
+        logger.info(f"Historical CRS range: {df['lowest_crs_score'].min():.0f} - {df['lowest_crs_score'].max():.0f}")
+        logger.info(f"Historical CRS mean: {df['lowest_crs_score'].mean():.1f} ± {df['lowest_crs_score'].std():.1f}")
         
         # Train invitation model
         from predictor.ml_models import InvitationPredictor
@@ -2060,8 +2090,14 @@ class Command(BaseCommand):
                     else:
                         predicted_score = working_df['lowest_crs_score'].mean()
                     
-                    # Ensure we have a valid number
+                    # Ensure we have a valid number and enforce realistic bounds
                     predicted_score = float(predicted_score)
+                    
+                    # 🛡️ ENFORCE REALISTIC BOUNDS: Critical for healthcare stability
+                    if predicted_score < 250 or predicted_score > 950 or not np.isfinite(predicted_score):
+                        historical_mean = working_df['lowest_crs_score'].mean()
+                        predicted_score = historical_mean
+                        print(f"   🛡️ BOUND ENFORCEMENT: {model_name} prediction was unrealistic, reset to historical mean {historical_mean:.0f}")
                     
                     # Calculate confidence with domain intelligence
                     confidence = self._calculate_model_confidence(
@@ -2090,53 +2126,63 @@ class Command(BaseCommand):
                     
                     print(f"   🔧 {model_name}: CRS {predicted_score:.0f}, Confidence {confidence:.3f}")
                     
+                    # Log detailed prediction info
+                    logger.info(f"Rank {rank} - {model_name}: CRS {predicted_score:.0f}, Confidence {confidence:.3f}, Invitations {predicted_invitations}")
+                    
                 except Exception as e:
                     print(f"   ❌ {model_name} failed: {e}")
+                    logger.error(f"Rank {rank} - {model_name} failed: {str(e)}")
                     continue
             
             if not rank_predictions:
                 print(f"   ❌ No successful predictions for rank {rank}")
                 break
             
-            # Select BEST prediction (highest confidence)
+            # Select BEST prediction (highest confidence) for recursive chain
             best_prediction = max(rank_predictions, key=lambda x: x['confidence'])
             print(f"   🏆 BEST: {best_prediction['model']} - CRS {best_prediction['crs']:.0f} (confidence: {best_prediction['confidence']:.3f})")
             
             # Calculate prediction date
             prediction_date = current_date + timedelta(days=14*rank)
             
-            # Apply uncertainty modeling
-            uncertainty = self.apply_uncertainty_modeling([best_prediction], rank)
-            final_crs = best_prediction['crs']
+            # 💾 SAVE ALL MODEL PREDICTIONS (not just the best one)
+            models_saved = 0
+            final_crs = best_prediction['crs']  # Use best for recursive chain
             final_invitations = best_prediction['invitations']
-            final_confidence = best_prediction['confidence']
             
-            # Save prediction to database
             from django.db import transaction
-            try:
-                with transaction.atomic():
-                    prediction = PreComputedPrediction.objects.create(
-                        category=category,
-                        predicted_date=prediction_date,
-                        predicted_crs_score=round(final_crs),
-                        predicted_invitations=round(final_invitations),
-                        confidence_score=final_confidence,
-                        model_used=best_prediction['model'],
-                        model_version="1.0",
-                        prediction_rank=rank,
-                        uncertainty_range={
-                            'crs_min': max(300, round(final_crs - uncertainty.get('crs_std', 50))),
-                            'crs_max': min(1000, round(final_crs + uncertainty.get('crs_std', 50))),
-                            'invitations_min': max(0, round(final_invitations - uncertainty.get('inv_std', 500))),
-                            'invitations_max': round(final_invitations + uncertainty.get('inv_std', 500))
-                        },
-                        is_active=True
-                    )
-                    total_created += 1
-                    print(f"   ✅ Saved: Rank {rank}, CRS {final_crs:.0f}, Date {prediction_date}")
-            except Exception as e:
-                print(f"   ❌ Failed to save rank {rank}: {e}")
-                continue
+            for pred in rank_predictions:
+                try:
+                    # Apply uncertainty modeling for each model
+                    uncertainty = self.apply_uncertainty_modeling([pred], rank)
+                    
+                    with transaction.atomic():
+                        prediction = PreComputedPrediction.objects.create(
+                            category=category,
+                            predicted_date=prediction_date,
+                            predicted_crs_score=round(pred['crs']),
+                            predicted_invitations=round(pred['invitations']),
+                            confidence_score=pred['confidence'],
+                            model_used=pred['model'],
+                            model_version="1.0",
+                            prediction_rank=rank,
+                            uncertainty_range={
+                                'crs_min': max(300, round(pred['crs'] - uncertainty.get('crs_std', 50))),
+                                'crs_max': min(1000, round(pred['crs'] + uncertainty.get('crs_std', 50))),
+                                'invitations_min': max(0, round(pred['invitations'] - uncertainty.get('inv_std', 500))),
+                                'invitations_max': round(pred['invitations'] + uncertainty.get('inv_std', 500))
+                            },
+                            is_active=True
+                        )
+                        models_saved += 1
+                        logger.info(f"Rank {rank} - Saved {pred['model']}: CRS {pred['crs']:.0f}, Confidence {pred['confidence']:.3f}")
+                        
+                except Exception as e:
+                    print(f"   ❌ Failed to save {pred['model']} for rank {rank}: {e}")
+                    continue
+            
+            total_created += models_saved
+            print(f"   ✅ Saved: Rank {rank}, {models_saved}/{len(rank_predictions)} models, Date {prediction_date}")
             
             # 🔄 RECURSIVE STEP: Add best prediction as "historical data" for next iteration
             if rank < 5:  # Don't add after the last prediction
