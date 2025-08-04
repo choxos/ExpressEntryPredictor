@@ -2327,7 +2327,7 @@ class Command(BaseCommand):
                             predicted_score = predicted_score[0] if hasattr(predicted_score, '__len__') else predicted_score
                         else:
                             # Standard single-step prediction - ML models need feature data
-                            if model_name in ['Clean Linear Regression', 'Bayesian Hierarchical', 'Gaussian Process']:
+                            if model_name in ['Clean Linear Regression', 'Bayesian Hierarchical', 'Gaussian Process', 'Small Dataset Predictor', 'Linear Regression (Fallback)', 'Bayesian Hierarchical (Fallback)', 'Gaussian Process (Fallback)']:
                                 # These models need feature data (X) to make predictions
                                 if hasattr(model, 'prepare_clean_features'):
                                     features_df = model.prepare_clean_features(working_df)
