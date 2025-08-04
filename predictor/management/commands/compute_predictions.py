@@ -1954,12 +1954,12 @@ class Command(BaseCommand):
                             # 🎯 CEC LOVES THURSDAYS: 57.8% historical preference
                             if week_info['assigned_secondary'] is None:  # Thursday preferred for CEC
                                 dates.append(week_info['secondary'])  # Thursday
-                            draw_calendar[current_week]['assigned_secondary'] = ircc_category
-                            weeks_assigned.append(current_week)
+                                draw_calendar[current_week]['assigned_secondary'] = ircc_category
+                                weeks_assigned.append(current_week)
                             elif week_info['assigned_primary'] is None:  # Fallback to Wednesday
                                 dates.append(week_info['primary'])  # Wednesday
-                            draw_calendar[current_week]['assigned_primary'] = ircc_category
-                            weeks_assigned.append(current_week)
+                                draw_calendar[current_week]['assigned_primary'] = ircc_category
+                                weeks_assigned.append(current_week)
                         else:
                             # 🎯 French: Wednesday preference (general pattern)
                             if week_info['assigned_primary'] is None:  # Wednesday preferred
@@ -2420,17 +2420,17 @@ class Command(BaseCommand):
                     # 🎯 Determine interval type based on model
                     interval_type = self.get_interval_type(pred['model'])
                     
-                with transaction.atomic():
-                    prediction = PreComputedPrediction.objects.create(
-                        category=category,
-                        predicted_date=prediction_date,
+                    with transaction.atomic():
+                        prediction = PreComputedPrediction.objects.create(
+                            category=category,
+                            predicted_date=prediction_date,
                             predicted_crs_score=round(pred['crs']),
                             predicted_invitations=round(pred['invitations']),
                             confidence_score=pred['confidence'],
                             model_used=pred['model'],
-                        model_version="1.0",
-                        prediction_rank=rank,
-                        uncertainty_range={
+                            model_version="1.0",
+                            prediction_rank=rank,
+                            uncertainty_range={
                                 'crs_min': max(300, round(pred['crs'] - uncertainty.get('crs_std', 50))),
                                 'crs_max': min(1000, round(pred['crs'] + uncertainty.get('crs_std', 50))),
                                 'invitations_min': max(0, round(pred['invitations'] - uncertainty.get('inv_std', 500))),
@@ -2440,14 +2440,14 @@ class Command(BaseCommand):
                             predicted_date_lower=date_ci_lower.date() if hasattr(date_ci_lower, 'date') else date_ci_lower,
                             predicted_date_upper=date_ci_upper.date() if hasattr(date_ci_upper, 'date') else date_ci_upper,
                             interval_type=interval_type,  # 🆕 CI for frequentist, CrI for Bayesian
-                        is_active=True
-                    )
-                        models_saved += 1
-                        logger.info(f"Rank {rank} - Saved {pred['model']}: CRS {pred['crs']:.0f}, Confidence {pred['confidence']:.3f}")
+                            is_active=True
+                        )
+                    models_saved += 1
+                    logger.info(f"Rank {rank} - Saved {pred['model']}: CRS {pred['crs']:.0f}, Confidence {pred['confidence']:.3f}")
                         
-            except Exception as e:
+                except Exception as e:
                     print(f"   ❌ Failed to save {pred['model']} for rank {rank}: {e}")
-                continue
+                    continue
             
             total_created += models_saved
             print(f"   ✅ Saved: Rank {rank}, {models_saved}/{len(rank_predictions)} models, Date {prediction_date}")
