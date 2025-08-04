@@ -1819,14 +1819,13 @@ class Command(BaseCommand):
         draw_calendar = {}
         current_date = start_date
         
-        # Category priorities: Historical frequency + 2025 Government policy
-        # 📊 HISTORICAL DATA (2022+): PNP #1 (45 draws), French #3 (20 draws), CEC #4 (17 draws)
-        # 🏛️ GOVERNMENT POLICY: CEC primary focus, Healthcare/French priorities
+        # 🏛️ 2025 GOVERNMENT POLICY PRIORITIES (matches get_category_priority_2025)
+        # Based on official Canada.ca announcement: "focus will be to invite candidates with experience working in Canada"
         priority_categories = {
-            'HIGHEST': ['Provincial Nominee Program'],  # #1 historical frequency (29.4 days, 45 draws)
-            'HIGH': ['Canadian Experience Class', 'French-language proficiency'],  # Gov priority + historical data
-            'MEDIUM': ['Healthcare and social services occupations', 'Education occupations'],  # Gov priority but quarterly frequency
-            'LOW': ['Agriculture and agri-food occupations', 'STEM occupations', 'Trade occupations'],  # Infrequent (70-149 days)
+            'HIGHEST': ['Canadian Experience Class'],  # PRIMARY 2025 FOCUS per government announcement
+            'HIGH': ['Healthcare and social services occupations', 'French-language proficiency'],  # Healthcare 55.8% great need + French mandate
+            'MEDIUM': ['Trade occupations', 'Education occupations', 'Provincial Nominee Program'],  # Gov priority categories + PNP operational
+            'LOW': ['Agriculture and agri-food occupations', 'STEM occupations'],  # Reduced 2025 focus
             'ELIMINATED': ['Transport occupations', 'General', 'No Program Specified']  # No longer conducted
         }
         
@@ -1936,31 +1935,21 @@ class Command(BaseCommand):
                 # Determine if this category should draw this week based on frequency
                 if current_week % frequency == 0:  # Respects frequency pattern
                     
-                    # Assign dates based on HISTORICAL FREQUENCY + GOVERNMENT PRIORITY  
-                    if priority == 'HIGHEST':  # Provincial Nominee Program - #1 HISTORICAL FREQUENCY
-                        # 🎯 PNP PREFERS WEDNESDAY: 63.1% historical preference (top priority gets first choice)
-                        if week_info['assigned_primary'] is None:  # Wednesday preferred for PNP
-                            dates.append(week_info['primary'])  # Wednesday
-                            draw_calendar[current_week]['assigned_primary'] = ircc_category
-                            weeks_assigned.append(current_week)
-                        elif week_info['assigned_secondary'] is None:  # Fallback to Thursday
+                    # Assign dates based on 2025 GOVERNMENT POLICY PRIORITIES  
+                    if priority == 'HIGHEST':  # Canadian Experience Class - PRIMARY 2025 FOCUS
+                        # 🎯 CEC LOVES THURSDAYS: 57.8% historical preference (top priority gets first choice)
+                        if week_info['assigned_secondary'] is None:  # Thursday preferred for CEC
                             dates.append(week_info['secondary'])  # Thursday
                             draw_calendar[current_week]['assigned_secondary'] = ircc_category
                             weeks_assigned.append(current_week)
+                        elif week_info['assigned_primary'] is None:  # Fallback to Wednesday
+                            dates.append(week_info['primary'])  # Wednesday
+                            draw_calendar[current_week]['assigned_primary'] = ircc_category
+                            weeks_assigned.append(current_week)
                     
-                    elif priority == 'HIGH':  # CEC + French - GOVERNMENT PRIORITY
-                        if 'Canadian Experience Class' in ircc_category:
-                            # 🎯 CEC LOVES THURSDAYS: 57.8% historical preference
-                            if week_info['assigned_secondary'] is None:  # Thursday preferred for CEC
-                                dates.append(week_info['secondary'])  # Thursday
-                                draw_calendar[current_week]['assigned_secondary'] = ircc_category
-                                weeks_assigned.append(current_week)
-                            elif week_info['assigned_primary'] is None:  # Fallback to Wednesday
-                                dates.append(week_info['primary'])  # Wednesday
-                                draw_calendar[current_week]['assigned_primary'] = ircc_category
-                                weeks_assigned.append(current_week)
-                        else:
-                            # 🎯 French: Wednesday preference (general pattern)
+                    elif priority == 'HIGH':  # Healthcare + French - GOVERNMENT PRIORITY
+                        if 'Healthcare' in ircc_category:
+                            # 🎯 Healthcare: Wednesday preference (general high-priority pattern)
                             if week_info['assigned_primary'] is None:  # Wednesday preferred
                                 dates.append(week_info['primary'])  # Wednesday
                                 draw_calendar[current_week]['assigned_primary'] = ircc_category
@@ -1968,6 +1957,16 @@ class Command(BaseCommand):
                             elif week_info['assigned_secondary'] is None:  # Fallback to Thursday
                                 dates.append(week_info['secondary'])  # Thursday
                                 draw_calendar[current_week]['assigned_secondary'] = ircc_category
+                                weeks_assigned.append(current_week)
+                        else:
+                            # 🎯 French: Thursday preference (after CEC gets primary Thursday choice)
+                            if week_info['assigned_secondary'] is None:  # Thursday preferred
+                                dates.append(week_info['secondary'])  # Thursday
+                                draw_calendar[current_week]['assigned_secondary'] = ircc_category
+                                weeks_assigned.append(current_week)
+                            elif week_info['assigned_primary'] is None:  # Fallback to Wednesday
+                                dates.append(week_info['primary'])  # Wednesday
+                                draw_calendar[current_week]['assigned_primary'] = ircc_category
                                 weeks_assigned.append(current_week)
                     
                     else:  # MEDIUM/LOW - Gets remaining slots
