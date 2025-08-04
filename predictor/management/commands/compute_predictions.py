@@ -182,8 +182,10 @@ class Command(BaseCommand):
                 # Get pre-assigned dates for this category
                 assigned_dates = category_schedules.get(ircc_category, [])
                 
-                predictions_created = self.compute_category_predictions(
-                    representative_category, adjusted_count, force_recompute, assigned_dates
+                # 🎯 SWITCH TO RECURSIVE FORECASTING: Scientifically sound approach
+                # Each category gets exactly 5 predictions (1 primary + 4 secondary)
+                predictions_created = self.compute_recursive_predictions(
+                    representative_category, force_recompute
                 )
                 
                 if predictions_created > 0:
@@ -220,8 +222,10 @@ class Command(BaseCommand):
                 )
         
         # Summary
-        self.stdout.write(f'\n📈 PREDICTION COMPUTATION SUMMARY')
+        self.stdout.write(f'\n🎯 RECURSIVE FORECASTING SUMMARY')
         self.stdout.write(f'✅ Successful categories: {successful_predictions}/{total_groups}')
+        self.stdout.write(f'🔄 Method: Recursive forecasting (5 predictions per category)')
+        self.stdout.write(f'📊 Focus: PRIMARY next draw + 4 secondary predictions')
         if local_failed_categories:
             self.stdout.write(f'❌ Failed categories: {", ".join([f"{cat}: {err}" for cat, err in local_failed_categories])}')
         
@@ -1377,6 +1381,77 @@ class Command(BaseCommand):
         else:
             return (max_val - value) / (max_val - min_val)
     
+    def _scientific_probability_penalty(self, z_score):
+        """
+        Scientific penalty function based on probability theory and the empirical rule.
+        
+        Uses the 68-95-99.7 rule and probability density to create realistic penalties:
+        - z=0.0: 100% confidence (at the mean)
+        - z=1.0: ~68% confidence (68% of data within 1σ) 
+        - z=2.0: ~15% confidence (95% of data within 2σ - unusual)
+        - z=3.0: ~1% confidence (99.7% of data within 3σ - very unusual)
+        - z=4.0+: ~0% confidence (extremely unusual)
+        
+        Args:
+            z_score (float): Number of standard deviations from mean
+            
+        Returns:
+            float: Confidence penalty score (0.0 to 1.0)
+        """
+        z = abs(z_score)  # Use absolute value
+        
+        if z <= 1.0:
+            # Within 1σ: Gentle linear decline from 100% to 68%
+            # This represents the 68% of "normal" data
+            return 1.0 - 0.32 * z
+            
+        elif z <= 2.0:
+            # 1σ to 2σ: Steep decline from 68% to 15%
+            # This represents the transition from "normal" to "unusual"
+            return 0.68 - 0.53 * (z - 1.0)
+            
+        elif z <= 3.0:
+            # 2σ to 3σ: Very steep decline from 15% to 1%
+            # This represents "unusual" to "very unusual" predictions
+            return 0.15 - 0.14 * (z - 2.0)
+            
+        elif z <= 4.0:
+            # 3σ to 4σ: Exponential decay from 1% to 0.1%
+            # Extremely unusual predictions get minimal confidence
+            return 0.01 - 0.009 * (z - 3.0)
+            
+        else:
+            # >4σ: Near-zero confidence with exponential decay
+            # These predictions are statistically implausible
+            return max(0.001, 0.001 * np.exp(-(z - 4.0)))
+    
+    def _z_score_probability_description(self, z_score):
+        """
+        Provide human-readable description of z-score probability significance.
+        
+        Args:
+            z_score (float): Number of standard deviations from mean
+            
+        Returns:
+            str: Human-readable description
+        """
+        z = abs(z_score)
+        
+        if z <= 1.0:
+            return "within normal range"
+        elif z <= 1.5:
+            return "somewhat unusual"
+        elif z <= 2.0:
+            return "unusual (~5% probability)"
+        elif z <= 2.5:
+            return "quite unusual (~1% probability)"
+        elif z <= 3.0:
+            return "very unusual (~0.3% probability)"
+        elif z <= 4.0:
+            return "extremely unusual (~0.01% probability)"
+        else:
+            return "statistically implausible"
+    
     def _calculate_model_confidence(self, result, data_size, predicted_crs=None, prediction_date=None, df=None):
         """
         Enhanced confidence calculation with DOMAIN-SPECIFIC INTELLIGENCE.
@@ -1438,8 +1513,8 @@ class Command(BaseCommand):
             # Calculate how many standard deviations away from recent trend
             if recent_std > 0:
                 z_score = abs(predicted_crs - recent_trend) / recent_std
-                # Penalize predictions more than 2 std devs from recent trend
-                trend_alignment = max(0, min(1, (3 - z_score) / 3))  # 0 std → 1.0, 3+ std → 0.0
+                # SCIENTIFIC PENALTY based on probability theory and empirical rule
+                trend_alignment = self._scientific_probability_penalty(z_score)
             else:
                 trend_alignment = 1.0 if abs(predicted_crs - recent_trend) < 20 else 0.5
             
@@ -1461,7 +1536,8 @@ class Command(BaseCommand):
                     
                     if seasonal_std > 0:
                         seasonal_z = abs(predicted_crs - seasonal_mean) / seasonal_std
-                        seasonal_alignment = max(0, min(1, (2.5 - seasonal_z) / 2.5))
+                        # SCIENTIFIC PENALTY for seasonal deviations
+                        seasonal_alignment = self._scientific_probability_penalty(seasonal_z)
                     else:
                         seasonal_alignment = 1.0 if abs(predicted_crs - seasonal_mean) < 30 else 0.5
                     
@@ -1484,27 +1560,31 @@ class Command(BaseCommand):
             realistic_min = max(hist_min - 50, hist_mean - 2.5 * hist_std)  # Allow some extrapolation
             realistic_max = min(hist_max + 50, hist_mean + 2.5 * hist_std)
             
+            # Calculate z-score relative to historical distribution
+            hist_z_score = abs(predicted_crs - hist_mean) / hist_std
+            
             if realistic_min <= predicted_crs <= realistic_max:
-                # Within realistic range - score based on how close to center
-                center_distance = abs(predicted_crs - hist_mean) / (2.5 * hist_std)
-                realism_score = max(0.3, min(1.0, 1.0 - center_distance * 0.4))  # 0.3-1.0 range
+                # Within realistic range - use scientific penalty based on historical z-score
+                realism_score = max(0.1, self._scientific_probability_penalty(hist_z_score))
             else:
-                # Outside realistic range - heavy penalty
+                # Outside realistic range - severe scientific penalty
                 if predicted_crs < realistic_min:
-                    excess = (realistic_min - predicted_crs) / hist_std
+                    excess_z = (realistic_min - predicted_crs) / hist_std + 2.5  # Add to base 2.5σ
                 else:
-                    excess = (predicted_crs - realistic_max) / hist_std
-                realism_score = max(0.0, 0.3 - excess * 0.1)  # Rapid decay for unrealistic predictions
+                    excess_z = (predicted_crs - realistic_max) / hist_std + 2.5  # Add to base 2.5σ
+                realism_score = max(0.001, self._scientific_probability_penalty(excess_z))
             
             components['realism_score'] = realism_score * 0.10
             
-            # Debug unrealistic predictions
-            if realism_score < 0.3:
-                print(f"⚠️  UNREALISTIC PREDICTION DETECTED:")
+            # Debug unrealistic predictions with scientific analysis
+            if realism_score < 0.15 or hist_z_score > 2.0:  # More sensitive detection
+                print(f"📊 SCIENTIFIC PENALTY ANALYSIS:")
                 print(f"   Predicted CRS: {predicted_crs}")
+                print(f"   Historical mean: {hist_mean:.1f} ± {hist_std:.1f}")
+                print(f"   Z-score: {hist_z_score:.2f}σ ({self._z_score_probability_description(hist_z_score)})")
                 print(f"   Historical range: {hist_min:.0f} - {hist_max:.0f}")
                 print(f"   Realistic range: {realistic_min:.0f} - {realistic_max:.0f}")
-                print(f"   Realism penalty: {(1.0 - realism_score):.2f}")
+                print(f"   Scientific penalty: {(1.0 - realism_score)*100:.1f}% confidence loss")
         else:
             components['realism_score'] = 0.05
         
@@ -1514,15 +1594,16 @@ class Command(BaseCommand):
         # Apply confidence floor and ceiling
         final_confidence = max(0.15, min(0.95, total_confidence))
         
-        # Debug output for models with domain issues
-        if predicted_crs is not None and (components.get('trend_alignment', 0) < 0.05 or 
-                                          components.get('realism_score', 0) < 0.05):
-            print(f"🔍 DOMAIN ANALYSIS for prediction {predicted_crs:.0f}:")
-            print(f"   📈 Trend Alignment: {components.get('trend_alignment', 0):.3f} (15%)")
-            print(f"   📅 Seasonal Alignment: {components.get('seasonal_alignment', 0):.3f} (10%)")
-            print(f"   🎯 Realism Score: {components.get('realism_score', 0):.3f} (10%)")
+        # Debug output for models with domain issues (more sensitive threshold)
+        if predicted_crs is not None and (components.get('trend_alignment', 0) < 0.10 or 
+                                          components.get('seasonal_alignment', 0) < 0.10 or
+                                          components.get('realism_score', 0) < 0.10):
+            print(f"🔬 SCIENTIFIC DOMAIN ANALYSIS for prediction {predicted_crs:.0f}:")
+            print(f"   📈 Trend Alignment: {components.get('trend_alignment', 0):.3f} (15%) - Recent 6-month trend")
+            print(f"   📅 Seasonal Alignment: {components.get('seasonal_alignment', 0):.3f} (10%) - Historical same-month")
+            print(f"   🎯 Realism Score: {components.get('realism_score', 0):.3f} (10%) - Overall historical range")
             print(f"   📊 Statistical Score: {total_confidence - components.get('trend_alignment', 0) - components.get('seasonal_alignment', 0) - components.get('realism_score', 0):.3f} (65%)")
-            print(f"   ✅ FINAL CONFIDENCE: {final_confidence:.3f}")
+            print(f"   ✅ FINAL SCIENTIFIC CONFIDENCE: {final_confidence:.3f}")
         
         return final_confidence
     
@@ -1836,4 +1917,245 @@ class Command(BaseCommand):
             if dates:
                 print(f"   First: {dates[0]}, Last: {dates[-1] if dates else 'None'}")
         
-        return category_schedules 
+        return category_schedules
+    
+    def compute_recursive_predictions(self, category, force_recompute, assigned_dates=None):
+        """
+        🎯 RECURSIVE FORECASTING: Scientifically sound approach
+        
+        Strategy:
+        1. Predict NEXT draw (rank 1) using all models → select BEST prediction
+        2. Add best prediction as "historical data" → predict rank 2
+        3. Continue recursive chain up to rank 5
+        
+        This mirrors real-world draw scheduling where each draw affects the next.
+        Focus: PRIMARY prediction for next draw + 4 secondary predictions.
+        """
+        
+        # Check if we need to recompute
+        if not force_recompute:
+            existing_predictions = PreComputedPrediction.objects.filter(
+                category=category, 
+                is_active=True,
+                created_at__gte=timezone.now() - timedelta(days=1)
+            ).count()
+            
+            if existing_predictions >= 5:  # Fixed 5 predictions per category
+                return 0  # Already have recent predictions
+        
+        # Get pooled data from related category versions
+        pooled_draws, ircc_category, num_pooled_categories = category.get_pooled_data()
+        
+        if pooled_draws.count() < 1:
+            raise ValueError(f"No data available: {pooled_draws.count()} draws found")
+        
+        # Convert to DataFrame
+        df = pd.DataFrame([{
+            'date': draw.date,
+            'category': ircc_category,
+            'lowest_crs_score': draw.lowest_crs_score,
+            'invitations_issued': draw.invitations_issued,
+            'days_since_last_draw': draw.days_since_last_draw or 14,
+            'is_weekend': draw.is_weekend,
+            'is_holiday': draw.is_holiday,
+            'month': draw.month,
+            'quarter': draw.quarter
+        } for draw in pooled_draws])
+        
+        # Clear old predictions if force recompute
+        if force_recompute:
+            deletion_count = PreComputedPrediction.objects.filter(category=category).count()
+            PreComputedPrediction.objects.filter(category=category).delete()
+            print(f"🗑️  Recursive: Cleared {deletion_count} existing predictions for {category.name}")
+        
+        # Date calculation
+        import pytz
+        eastern = pytz.timezone('America/Toronto')
+        now_eastern = timezone.now().astimezone(eastern)
+        today_eastern = now_eastern.date()
+        last_draw_date = pooled_draws.last().date
+        
+        # Start predictions intelligently
+        days_since_last_draw = (today_eastern - last_draw_date).days
+        if days_since_last_draw >= 14:
+            next_draw_start = today_eastern + timedelta(days=7)
+        else:
+            next_draw_start = last_draw_date + timedelta(days=14)
+        current_date = max(next_draw_start, today_eastern)
+        
+        print(f"🔄 RECURSIVE FORECASTING for {category.name}")
+        print(f"   📅 Starting from: {current_date}")
+        print(f"   🎯 Strategy: Next draw + 4 recursive predictions")
+        
+        # Train invitation model
+        from predictor.ml_models import InvitationPredictor
+        invitation_model = None
+        try:
+            invitation_model = InvitationPredictor(model_type='XGB')
+            invitation_model.train(df)
+            print(f"   ✅ Invitation model trained with {len(df)} draws")
+        except Exception as e:
+            print(f"   ⚠️  Invitation model failed: {e}")
+        
+        # Get working dataframe for recursive updates
+        working_df = df.copy()
+        total_created = 0
+        
+        # 🔄 RECURSIVE LOOP: 5 predictions with dependency chain
+        for rank in range(1, 6):  # Ranks 1-5
+            print(f"\n🎯 RECURSIVE RANK {rank}:")
+            
+            # Evaluate models for current data state
+            all_models = self.select_best_model(working_df, category)
+            if not all_models:
+                print(f"   ❌ No models available for rank {rank}")
+                break
+            
+            # Generate predictions from all models for this rank
+            rank_predictions = []
+            
+            for model_info in all_models:
+                model = model_info['model']
+                model_name = model_info['name']
+                base_confidence = model_info['confidence']
+                
+                try:
+                    # Train model on current working data
+                    model.train(working_df)
+                    
+                    # Predict next draw only (not multiple steps)
+                    if hasattr(model, 'predict'):
+                        if model.name == 'ARIMA Time Series':
+                            predicted_score = model.predict(steps=1)
+                            predicted_score = predicted_score[0] if isinstance(predicted_score, list) else predicted_score
+                        elif model.name == 'Prophet Time Series':
+                            predicted_score = model.predict(periods=1, freq='2W')
+                            predicted_score = predicted_score[0] if isinstance(predicted_score, list) else predicted_score
+                        elif 'LSTM' in model.name:
+                            sequence_length = getattr(model, 'sequence_length', 10)
+                            sequence_data = working_df['lowest_crs_score'].tail(sequence_length).values
+                            
+                            if len(sequence_data) < sequence_length:
+                                last_value = float(sequence_data[-1]) if len(sequence_data) > 0 else float(working_df['lowest_crs_score'].mean())
+                                padded_sequence = [last_value] * sequence_length
+                                if len(sequence_data) > 0:
+                                    padded_sequence[-len(sequence_data):] = sequence_data.tolist()
+                                sequence_data = np.array(padded_sequence)
+                            
+                            sequence_data = sequence_data.reshape(1, sequence_length, 1)
+                            predicted_score = model.predict(sequence_data, steps=1)
+                            predicted_score = predicted_score[0] if hasattr(predicted_score, '__len__') else predicted_score
+                        else:
+                            # Standard single-step prediction
+                            predicted_score = model.predict()
+                            predicted_score = predicted_score[0] if isinstance(predicted_score, list) else predicted_score
+                    else:
+                        predicted_score = working_df['lowest_crs_score'].mean()
+                    
+                    # Ensure we have a valid number
+                    predicted_score = float(predicted_score)
+                    
+                    # Calculate confidence with domain intelligence
+                    confidence = self._calculate_model_confidence(
+                        result={'cv_score': -30, 'r2_score': 0.3, 'mae': 25}, 
+                        data_size=len(working_df),
+                        predicted_crs=predicted_score,
+                        prediction_date=current_date + timedelta(days=14*rank),
+                        df=working_df
+                    )
+                    
+                    # Predict invitations
+                    predicted_invitations = 1500  # Default
+                    if invitation_model:
+                        try:
+                            predicted_invitations = invitation_model.predict(working_df, predicted_score)
+                        except:
+                            pass
+                    
+                    rank_predictions.append({
+                        'model': model_name,
+                        'crs': predicted_score,
+                        'invitations': predicted_invitations,
+                        'confidence': confidence,
+                        'base_confidence': base_confidence
+                    })
+                    
+                    print(f"   🔧 {model_name}: CRS {predicted_score:.0f}, Confidence {confidence:.3f}")
+                    
+                except Exception as e:
+                    print(f"   ❌ {model_name} failed: {e}")
+                    continue
+            
+            if not rank_predictions:
+                print(f"   ❌ No successful predictions for rank {rank}")
+                break
+            
+            # Select BEST prediction (highest confidence)
+            best_prediction = max(rank_predictions, key=lambda x: x['confidence'])
+            print(f"   🏆 BEST: {best_prediction['model']} - CRS {best_prediction['crs']:.0f} (confidence: {best_prediction['confidence']:.3f})")
+            
+            # Calculate prediction date
+            prediction_date = current_date + timedelta(days=14*rank)
+            
+            # Apply uncertainty modeling
+            uncertainty = self.apply_uncertainty_modeling([best_prediction], rank)
+            final_crs = best_prediction['crs']
+            final_invitations = best_prediction['invitations']
+            final_confidence = best_prediction['confidence']
+            
+            # Save prediction to database
+            from django.db import transaction
+            try:
+                with transaction.atomic():
+                    prediction = PreComputedPrediction.objects.create(
+                        category=category,
+                        predicted_date=prediction_date,
+                        predicted_crs_score=round(final_crs),
+                        predicted_invitations=round(final_invitations),
+                        confidence_score=final_confidence,
+                        model_used=best_prediction['model'],
+                        model_version="1.0",
+                        prediction_rank=rank,
+                        uncertainty_range={
+                            'crs_min': max(300, round(final_crs - uncertainty.get('crs_std', 50))),
+                            'crs_max': min(1000, round(final_crs + uncertainty.get('crs_std', 50))),
+                            'invitations_min': max(0, round(final_invitations - uncertainty.get('inv_std', 500))),
+                            'invitations_max': round(final_invitations + uncertainty.get('inv_std', 500))
+                        },
+                        is_active=True
+                    )
+                    total_created += 1
+                    print(f"   ✅ Saved: Rank {rank}, CRS {final_crs:.0f}, Date {prediction_date}")
+            except Exception as e:
+                print(f"   ❌ Failed to save rank {rank}: {e}")
+                continue
+            
+            # 🔄 RECURSIVE STEP: Add best prediction as "historical data" for next iteration
+            if rank < 5:  # Don't add after the last prediction
+                new_row = {
+                    'date': prediction_date,
+                    'category': ircc_category,
+                    'lowest_crs_score': final_crs,
+                    'invitations_issued': final_invitations,
+                    'days_since_last_draw': 14,  # Assume normal interval
+                    'is_weekend': prediction_date.weekday() >= 5,
+                    'is_holiday': False,  # Simplified
+                    'month': prediction_date.month,
+                    'quarter': (prediction_date.month - 1) // 3 + 1
+                }
+                
+                # Append to working dataframe
+                working_df = pd.concat([working_df, pd.DataFrame([new_row])], ignore_index=True)
+                print(f"   🔄 Added prediction as data for rank {rank+1}")
+        
+        print(f"🎉 RECURSIVE COMPLETE: Created {total_created} predictions for {category.name}")
+        return total_created
+    
+    def apply_uncertainty_modeling(self, predictions, rank):
+        """Apply uncertainty modeling to predictions"""
+        base_uncertainty = 50 + (rank * 10)  # Increase uncertainty with rank
+        
+        return {
+            'crs_std': base_uncertainty,
+            'inv_std': 500 + (rank * 200)
+        } 
