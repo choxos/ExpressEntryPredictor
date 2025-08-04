@@ -2327,9 +2327,31 @@ class Command(BaseCommand):
                             predicted_score = model.predict(sequence_data, steps=1)
                             predicted_score = predicted_score[0] if hasattr(predicted_score, '__len__') else predicted_score
                         else:
-                            # Standard single-step prediction
-                            predicted_score = model.predict()
-                            predicted_score = predicted_score[0] if isinstance(predicted_score, list) else predicted_score
+                            # Standard single-step prediction - ML models need feature data
+                            if model_name in ['Clean Linear Regression', 'Bayesian Hierarchical', 'Gaussian Process']:
+                                # These models need feature data (X) to make predictions
+                                if hasattr(model, 'prepare_clean_features'):
+                                    features_df = model.prepare_clean_features(working_df)
+                                else:
+                                    # Fallback for legacy models
+                                    features_df = model.prepare_features(working_df)
+                                
+                                exclude_cols = ['date', 'lowest_crs_score', 'invitations_issued', 'round_number', 'url', 'category']
+                                
+                                # For Bayesian Hierarchical models, exclude category dummy variables
+                                if hasattr(model, 'category_effects'):
+                                    feature_cols = [col for col in features_df.columns 
+                                                  if col not in exclude_cols and not col.startswith('category_')]
+                                else:
+                                    feature_cols = [col for col in features_df.columns if col not in exclude_cols]
+                                
+                                X = features_df[feature_cols].fillna(0).tail(1)  # Use last row for prediction
+                                predicted_score = model.predict(X)
+                                predicted_score = predicted_score[0] if hasattr(predicted_score, '__len__') else predicted_score
+                            else:
+                                # Time series models with parameterless predict()
+                                predicted_score = model.predict()
+                                predicted_score = predicted_score[0] if isinstance(predicted_score, list) else predicted_score
                     else:
                         predicted_score = working_df['lowest_crs_score'].mean()
                     
