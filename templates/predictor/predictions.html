@@ -498,11 +498,19 @@ async function createCategoryContent(categoryData) {
         const drawsData = await drawsResponse.json();
         const allDraws = Array.isArray(drawsData) ? drawsData : drawsData.results || [];
         
-        // Filter draws for this category and get the 5 most recent
+        // Map IRCC category names to database category names (matches server-side mapping)
+        const categoryMapping = getCategoryMapping();
+        const relatedCategoryNames = categoryMapping[categoryName] || [categoryName];
+        
+        // Filter draws for this category and related versions, get 5 most recent
         recentDraws = allDraws
-            .filter(draw => draw.category_name === categoryName)
+            .filter(draw => relatedCategoryNames.some(name => 
+                draw.category_name.includes(name) || name.includes(draw.category_name)
+            ))
             .sort((a, b) => new Date(b.date) - new Date(a.date))
             .slice(0, 5);
+            
+        console.log(`Found ${recentDraws.length} recent draws for ${categoryName}:`, relatedCategoryNames);
     } catch (error) {
         console.error('Error fetching recent draws:', error);
         recentDraws = categoryData.recent_draws || []; // Fallback to category data
@@ -1182,6 +1190,50 @@ function calculateAverageInvitations(predictions) {
         
         // Return formatted date with confidence interval
         return `${mainDate} <br><small class="text-muted">(${lowerFormatted}–${upperFormatted} ${year}, 95% CI)</small>`;
+    }
+
+    function getCategoryMapping() {
+        /**
+         * 🎯 CLIENT-SIDE CATEGORY MAPPING
+         * Maps IRCC pooled category names to database category names.
+         * This mirrors the server-side DrawCategory.get_ircc_category_mapping() logic.
+         */
+        return {
+            'French-language proficiency': [
+                'French language proficiency (Version 1)',
+                'French-language proficiency'
+            ],
+            'Healthcare and social services occupations': [
+                'Healthcare occupations (Version 1)',
+                'Healthcare and social services occupations (Version 2)',
+                'Healthcare and social services occupations'
+            ],
+            'STEM occupations': [
+                'STEM occupations (Version 1)',
+                'STEM occupations'
+            ],
+            'Trade occupations': [
+                'Trade occupations (Version 1)',
+                'Trade occupations'
+            ],
+            'Agriculture and agri-food occupations': [
+                'Agriculture and agri-food occupations (Version 1)',
+                'Agriculture and agri-food occupations'
+            ],
+            'Education occupations': [
+                'Education occupations (Version 1)',
+                'Education occupations'
+            ],
+            'Transport occupations': [
+                'Transport occupations (Version 1)',
+                'Transport occupations'
+            ],
+            'Canadian Experience Class': ['Canadian Experience Class'],
+            'Provincial Nominee Program': ['Provincial Nominee Program'],
+            'Federal Skilled Worker': ['Federal Skilled Worker'],
+            'Federal Skilled Trades': ['Federal Skilled Trades'],
+            'General': ['General', 'No Program Specified']
+        };
     }
 
 function formatCRSWithCI(score, uncertaintyRange) {
