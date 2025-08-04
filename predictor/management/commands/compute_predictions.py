@@ -202,9 +202,9 @@ class Command(BaseCommand):
                 assigned_dates = category_schedules.get(ircc_category, [])
                 
                 # 🎯 SWITCH TO RECURSIVE FORECASTING: Scientifically sound approach
-                # Each category gets exactly 5 predictions (1 primary + 4 secondary)
+                # Each category gets policy-based predictions based on 2025 government priorities
                 predictions_created = self.compute_recursive_predictions(
-                    representative_category, force_recompute, assigned_dates
+                    representative_category, force_recompute, assigned_dates, adjusted_count
                 )
                 
                 if predictions_created > 0:
@@ -243,8 +243,8 @@ class Command(BaseCommand):
         # Summary
         self.stdout.write(f'\n🎯 RECURSIVE FORECASTING SUMMARY')
         self.stdout.write(f'✅ Successful categories: {successful_predictions}/{total_groups}')
-        self.stdout.write(f'🔄 Method: Recursive forecasting (5 predictions per category)')
-        self.stdout.write(f'📊 Focus: PRIMARY next draw + 4 secondary predictions')
+        self.stdout.write(f'🔄 Method: Recursive forecasting (policy-based predictions per category)')
+        self.stdout.write(f'📊 Focus: PRIMARY next draw + additional secondary predictions')
         if local_failed_categories:
             self.stdout.write(f'❌ Failed categories: {", ".join([f"{cat}: {err}" for cat, err in local_failed_categories])}')
         
@@ -1927,7 +1927,7 @@ class Command(BaseCommand):
             
             # Start assignment from week 1
             current_week = 0
-            predictions_needed = 5  # EXACTLY 5 predictions per category as requested
+            predictions_needed = adjusted_count  # Policy-based prediction count per 2025 government priorities
             
             while len(dates) < predictions_needed and current_week < len(draw_calendar):
                 week_info = draw_calendar[current_week]
@@ -2190,17 +2190,17 @@ class Command(BaseCommand):
         
         return logger
     
-    def compute_recursive_predictions(self, category, force_recompute, assigned_dates=None):
+    def compute_recursive_predictions(self, category, force_recompute, assigned_dates=None, num_predictions=5):
         """
         🎯 RECURSIVE FORECASTING: Scientifically sound approach
         
         Strategy:
         1. Predict NEXT draw (rank 1) using all models → select BEST prediction
         2. Add best prediction as "historical data" → predict rank 2
-        3. Continue recursive chain up to rank 5
+        3. Continue recursive chain based on government policy priorities
         
         This mirrors real-world draw scheduling where each draw affects the next.
-        Focus: PRIMARY prediction for next draw + 4 secondary predictions.
+        Focus: PRIMARY prediction for next draw + additional secondary predictions based on 2025 policy.
         """
         
         # Setup detailed logging for debugging
@@ -2214,7 +2214,7 @@ class Command(BaseCommand):
                 created_at__gte=timezone.now() - timedelta(days=1)
             ).count()
             
-            if existing_predictions >= 5:  # Fixed 5 predictions per category
+            if existing_predictions >= num_predictions:  # Policy-based prediction count
                 return 0  # Already have recent predictions
         
         # Get pooled data from related category versions
@@ -2281,8 +2281,8 @@ class Command(BaseCommand):
         working_df = df.copy()
         total_created = 0
         
-        # 🔄 RECURSIVE LOOP: 5 predictions with dependency chain
-        for rank in range(1, 6):  # Ranks 1-5
+        # 🔄 RECURSIVE LOOP: Policy-based predictions with dependency chain
+        for rank in range(1, num_predictions + 1):  # Based on government policy
             print(f"\n🎯 RECURSIVE RANK {rank}:")
             
             # Evaluate models for current data state
@@ -2471,8 +2471,11 @@ class Command(BaseCommand):
             total_created += models_saved
             print(f"   ✅ Saved: Rank {rank}, {models_saved}/{len(rank_predictions)} models, Date {prediction_date}")
             
+            # ⚡ UPDATE BASE DATE: Next prediction builds on this one (critical for date ordering!)
+            current_date = prediction_date
+            
             # 🔄 RECURSIVE STEP: Add best prediction as "historical data" for next iteration
-            if rank < 5:  # Don't add after the last prediction
+            if rank < num_predictions:  # Don't add after the last prediction
                 # Calculate realistic interval for this category (handle date type conversion)
                 if len(working_df) > 0:
                     last_date = working_df['date'].iloc[-1]
