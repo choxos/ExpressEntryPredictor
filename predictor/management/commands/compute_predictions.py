@@ -1799,18 +1799,20 @@ class Command(BaseCommand):
         draw_calendar = {}
         current_date = start_date
         
-        # Category priorities for date assignment (OFFICIAL 2025 GOVERNMENT POLICY)
+        # Category priorities: Historical frequency + 2025 Government policy
+        # 📊 HISTORICAL DATA (2022+): PNP #1 (45 draws), French #3 (20 draws), CEC #4 (17 draws)
+        # 🏛️ GOVERNMENT POLICY: CEC primary focus, Healthcare/French priorities
         priority_categories = {
-            'HIGHEST': ['Canadian Experience Class'],  # Primary 2025 focus (bi-weekly)
-            'HIGH': ['Healthcare and social services occupations', 'French-language proficiency'],  # Official priorities (monthly)
-            'MEDIUM': ['Trade occupations', 'Education occupations', 'Provincial Nominee Program'],  # Regular draws
-            'LOW': ['STEM occupations', 'Agriculture and agri-food occupations'],  # Minimal priority
+            'HIGHEST': ['Provincial Nominee Program'],  # #1 historical frequency (29.4 days, 45 draws)
+            'HIGH': ['Canadian Experience Class', 'French-language proficiency'],  # Gov priority + historical data
+            'MEDIUM': ['Healthcare and social services occupations', 'Education occupations'],  # Gov priority but quarterly frequency
+            'LOW': ['Agriculture and agri-food occupations', 'STEM occupations', 'Trade occupations'],  # Infrequent (70-149 days)
             'ELIMINATED': ['Transport occupations', 'General', 'No Program Specified']  # No longer conducted
         }
         
-        # Flatten priorities with order
+        # Flatten priorities with order (HIGHEST gets first priority for date assignment)
         category_priority_order = []
-        for priority_level in ['HIGH', 'MEDIUM', 'LOW']:
+        for priority_level in ['HIGHEST', 'HIGH', 'MEDIUM', 'LOW']:
             category_priority_order.extend(priority_categories[priority_level])
         
         # Generate weekly slots for draws (max 2 per week)
@@ -1839,35 +1841,53 @@ class Command(BaseCommand):
     
     def assign_category_dates(self, ircc_groups, draw_calendar, category_priority_order, num_predictions):
         """
-        Assign realistic dates to categories based on priority and frequency patterns.
+        Assign realistic dates to categories based on HISTORICAL DATA + 2025 GOVERNMENT PRIORITIES.
+        
+        Uses actual historical intervals (2022+) combined with official policy priorities.
         
         Returns: category_schedules = {category_name: [date1, date2, ...]}
         """
         category_schedules = {}
         
-        # Calculate prediction frequency based on OFFICIAL 2025 GOVERNMENT POLICY
+        # 📊 HISTORICAL INTERVAL DATA (2022+) - REAL PATTERNS  
+        historical_intervals = {
+            'Provincial Nominee Program': {'avg': 29.4, 'min': 6, 'max': 224, 'std': 49.0},
+            'Canadian Experience Class': {'avg': 25.2, 'min': 6, 'max': 97, 'std': 22.8},  # NOT bi-weekly!
+            'French-language proficiency': {'avg': 32.8, 'min': 5, 'max': 78, 'std': 20.4},
+            'Healthcare and social services occupations': {'avg': 94.4, 'min': 8, 'max': 163, 'std': 57.1},
+            'Trade occupations': {'avg': 149.0, 'min': 111, 'max': 198, 'std': 44.5},
+            'STEM occupations': {'avg': 140.5, 'min': 125, 'max': 156, 'std': 21.9},
+            'Agriculture and agri-food occupations': {'avg': 70.5, 'min': 57, 'max': 84, 'std': 19.1},
+            'Transport occupations': {'avg': 87.5, 'min': 84, 'max': 91, 'std': 4.9},  # ELIMINATED 2025
+            'General': {'avg': 17.3, 'min': 6, 'max': 57, 'std': 12.3},  # ELIMINATED 2025
+            'Education occupations': {'avg': 60.0, 'min': 30, 'max': 90, 'std': 20.0}  # NEW 2025 - estimated
+        }
+        
+        # Calculate prediction frequency based on HISTORICAL DATA + 2025 POLICY
         for ircc_category in ircc_groups.keys():
             adjusted_count = self.get_adjusted_prediction_count(ircc_category, num_predictions)
             priority = self.get_category_priority_2025(ircc_category)
             
-            # GOVERNMENT POLICY-BASED FREQUENCIES (Official 2025 priorities)
-            if priority == 'HIGHEST':
-                # Canadian Experience Class: PRIMARY 2025 FOCUS
-                frequency = 2  # Bi-weekly draws (most frequent)
-            elif priority == 'HIGH':
-                # Healthcare + French: Official category-based priorities
-                frequency = 4  # Monthly draws per government policy
-            elif priority == 'MEDIUM':
-                # Trades, Education, PNP: Regular but less frequent
-                frequency = 8  # Every 2 months
-            elif priority == 'LOW':
-                # STEM, Agriculture: Minimal priority
-                frequency = 16  # Quarterly draws
-            elif priority == 'ELIMINATED':
-                # Transport, General: No longer conducted
-                continue  # Skip eliminated categories entirely
+            # Skip eliminated categories
+            if priority == 'ELIMINATED':
+                continue
+            
+            # Get historical interval data for this category
+            interval_data = historical_intervals.get(ircc_category, {'avg': 60.0, 'std': 20.0})
+            avg_interval = interval_data['avg']
+            
+            # Convert average days to week frequency (for calendar assignment)
+            # frequency = how many weeks between draws
+            if avg_interval <= 18:        # ~2.5 weeks
+                frequency = 2  # Every 2 weeks
+            elif avg_interval <= 35:      # ~5 weeks  
+                frequency = 4  # Every 4 weeks (monthly)
+            elif avg_interval <= 70:      # ~10 weeks
+                frequency = 8  # Every 8 weeks (bi-monthly)
+            elif avg_interval <= 120:     # ~17 weeks
+                frequency = 12  # Every 12 weeks (quarterly)
             else:
-                frequency = 12  # Default quarterly
+                frequency = 20  # Every 20 weeks (5+ months)
             
             # Generate date schedule for this category
             dates = []
@@ -1883,21 +1903,10 @@ class Command(BaseCommand):
                 # Determine if this category should draw this week based on frequency
                 if current_week % frequency == 0:  # Respects frequency pattern
                     
-                    # Assign dates based on OFFICIAL GOVERNMENT PRIORITY and HISTORICAL DAY PREFERENCES
-                    if priority == 'HIGHEST':  # Canadian Experience Class - PRIMARY FOCUS
-                        # 🎯 CEC LOVES THURSDAYS: 57.8% historical preference
-                        if week_info['assigned_secondary'] is None:  # Thursday preferred for CEC
-                            dates.append(week_info['secondary'])  # Thursday
-                            draw_calendar[current_week]['assigned_secondary'] = ircc_category
-                            weeks_assigned.append(current_week)
-                        elif week_info['assigned_primary'] is None:  # Fallback to Wednesday
-                            dates.append(week_info['primary'])  # Wednesday
-                            draw_calendar[current_week]['assigned_primary'] = ircc_category
-                            weeks_assigned.append(current_week)
-                    
-                    elif priority == 'HIGH':  # Healthcare + French - OFFICIAL PRIORITIES
-                        # 🎯 GENERAL PREFERENCE: Wednesday (57.5% of all draws)
-                        if week_info['assigned_primary'] is None:  # Wednesday preferred for most categories
+                    # Assign dates based on HISTORICAL FREQUENCY + GOVERNMENT PRIORITY  
+                    if priority == 'HIGHEST':  # Provincial Nominee Program - #1 HISTORICAL FREQUENCY
+                        # 🎯 PNP PREFERS WEDNESDAY: 63.1% historical preference (top priority gets first choice)
+                        if week_info['assigned_primary'] is None:  # Wednesday preferred for PNP
                             dates.append(week_info['primary'])  # Wednesday
                             draw_calendar[current_week]['assigned_primary'] = ircc_category
                             weeks_assigned.append(current_week)
@@ -1906,28 +1915,38 @@ class Command(BaseCommand):
                             draw_calendar[current_week]['assigned_secondary'] = ircc_category
                             weeks_assigned.append(current_week)
                     
-                    else:  # MEDIUM/LOW - Gets remaining slots
-                        # 🎯 PNP PREFERS WEDNESDAY: 63.1% historical preference
-                        if 'Provincial Nominee Program' in ircc_category:
-                            # PNP gets Wednesday preference
-                            if week_info['assigned_primary'] is None:
+                    elif priority == 'HIGH':  # CEC + French - GOVERNMENT PRIORITY
+                        if 'Canadian Experience Class' in ircc_category:
+                            # 🎯 CEC LOVES THURSDAYS: 57.8% historical preference
+                            if week_info['assigned_secondary'] is None:  # Thursday preferred for CEC
+                                dates.append(week_info['secondary'])  # Thursday
+                                draw_calendar[current_week]['assigned_secondary'] = ircc_category
+                                weeks_assigned.append(current_week)
+                            elif week_info['assigned_primary'] is None:  # Fallback to Wednesday
                                 dates.append(week_info['primary'])  # Wednesday
                                 draw_calendar[current_week]['assigned_primary'] = ircc_category
                                 weeks_assigned.append(current_week)
-                            elif week_info['assigned_secondary'] is None:
-                                dates.append(week_info['secondary'])  # Thursday fallback
-                                draw_calendar[current_week]['assigned_secondary'] = ircc_category
-                                weeks_assigned.append(current_week)
                         else:
-                            # Other categories take whatever is available
-                            if week_info['assigned_primary'] is None:
-                                dates.append(week_info['primary'])
+                            # 🎯 French: Wednesday preference (general pattern)
+                            if week_info['assigned_primary'] is None:  # Wednesday preferred
+                                dates.append(week_info['primary'])  # Wednesday
                                 draw_calendar[current_week]['assigned_primary'] = ircc_category
                                 weeks_assigned.append(current_week)
-                            elif week_info['assigned_secondary'] is None:
-                                dates.append(week_info['secondary']) 
+                            elif week_info['assigned_secondary'] is None:  # Fallback to Thursday
+                                dates.append(week_info['secondary'])  # Thursday
                                 draw_calendar[current_week]['assigned_secondary'] = ircc_category
                                 weeks_assigned.append(current_week)
+                    
+                    else:  # MEDIUM/LOW - Gets remaining slots
+                        # Other categories take whatever is available
+                        if week_info['assigned_primary'] is None:
+                            dates.append(week_info['primary'])  # Wednesday
+                            draw_calendar[current_week]['assigned_primary'] = ircc_category
+                            weeks_assigned.append(current_week)
+                        elif week_info['assigned_secondary'] is None:
+                            dates.append(week_info['secondary'])  # Thursday fallback
+                            draw_calendar[current_week]['assigned_secondary'] = ircc_category
+                            weeks_assigned.append(current_week)
                 
                 current_week += 1
             
@@ -1958,17 +1977,40 @@ class Command(BaseCommand):
         print(f"   📅 Training date prediction models for rank {rank}...")
         
         if len(working_df) < 3:
-            # Fallback for insufficient data
-            fallback_days = 35 if 'Canadian Experience' in ircc_category else 60
-            predicted_date = base_date + timedelta(days=fallback_days)
-            return predicted_date, predicted_date - timedelta(days=7), predicted_date + timedelta(days=7)
+            # Fallback using HISTORICAL AVERAGES instead of arbitrary values
+            historical_intervals = {
+                'Provincial Nominee Program': 29.4,
+                'Canadian Experience Class': 25.2,  # NOT 35 days!
+                'French-language proficiency': 32.8,
+                'Healthcare and social services occupations': 94.4,
+                'Trade occupations': 149.0,
+                'STEM occupations': 140.5,
+                'Agriculture and agri-food occupations': 70.5,
+                'Education occupations': 60.0  # NEW 2025 category
+            }
+            fallback_days = historical_intervals.get(ircc_category, 60.0)
+            predicted_date = base_date + timedelta(days=int(fallback_days))
+            ci_width = int(fallback_days * 0.3)  # ±30% confidence interval
+            return predicted_date, predicted_date - timedelta(days=ci_width), predicted_date + timedelta(days=ci_width)
         
         # Prepare data for date prediction (predict days_since_last_draw)
         date_features = working_df[['days_since_last_draw']].dropna()
         if len(date_features) < 3:
-            fallback_days = 35 if 'Canadian Experience' in ircc_category else 60
-            predicted_date = base_date + timedelta(days=fallback_days)
-            return predicted_date, predicted_date - timedelta(days=7), predicted_date + timedelta(days=7)
+            # Use same historical intervals for consistency
+            historical_intervals = {
+                'Provincial Nominee Program': 29.4,
+                'Canadian Experience Class': 25.2,  # NOT 35 days!
+                'French-language proficiency': 32.8,
+                'Healthcare and social services occupations': 94.4,
+                'Trade occupations': 149.0,
+                'STEM occupations': 140.5,
+                'Agriculture and agri-food occupations': 70.5,
+                'Education occupations': 60.0  # NEW 2025 category
+            }
+            fallback_days = historical_intervals.get(ircc_category, 60.0)
+            predicted_date = base_date + timedelta(days=int(fallback_days))
+            ci_width = int(fallback_days * 0.3)  # ±30% confidence interval
+            return predicted_date, predicted_date - timedelta(days=ci_width), predicted_date + timedelta(days=ci_width)
         
         # Train multiple models to predict days_since_last_draw
         date_predictions = []
