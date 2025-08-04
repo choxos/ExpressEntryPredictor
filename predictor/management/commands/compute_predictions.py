@@ -1815,7 +1815,6 @@ class Command(BaseCommand):
         - Strategic spacing to manage processing workload
         - Priority categories get preferred dates
         """
-        from datetime import datetime, timedelta
         
         draw_calendar = {}
         current_date = start_date
@@ -2345,7 +2344,6 @@ class Command(BaseCommand):
                     
                     # Calculate confidence with domain intelligence
                     # Use simple date calculation for confidence (just for internal calculation)
-                    from datetime import timedelta
                     simple_date = current_date + timedelta(days=30 * rank)  # Simple progressive dates
                     confidence = self._calculate_model_confidence(
                         result={'cv_score': -30, 'r2_score': 0.3, 'mae': 25}, 
