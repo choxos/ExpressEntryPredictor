@@ -167,12 +167,33 @@ class Command(BaseCommand):
         successful_predictions = 0
         local_failed_categories = []
         
-        for i, (ircc_category, group_info) in enumerate(ircc_groups.items(), 1):
+        # 🎯 PROCESS CATEGORIES IN PRIORITY ORDER (most frequent/prioritized first)
+        priority_order = ['HIGHEST', 'HIGH', 'MEDIUM', 'LOW']
+        ordered_categories = []
+        
+        for priority_level in priority_order:
+            # Get categories for this priority level
+            level_categories = [
+                (ircc_cat, group_info) for ircc_cat, group_info in ircc_groups.items()
+                if group_info['priority_level'] == priority_level
+            ]
+            # Sort by total draws (frequency) within same priority level
+            level_categories.sort(key=lambda x: x[1]['total_draws'], reverse=True)
+            ordered_categories.extend(level_categories)
+        
+        self.stdout.write(f'\n🏆 PROCESSING ORDER (Priority + Frequency):')
+        for i, (ircc_cat, group_info) in enumerate(ordered_categories, 1):
+            priority_emoji = {'HIGHEST': '🏆', 'HIGH': '🥇', 'MEDIUM': '🥈', 'LOW': '🥉'}.get(group_info['priority_level'], '📋')
+            self.stdout.write(f'   {i}. {priority_emoji} {ircc_cat} ({group_info["total_draws"]} draws, {group_info["priority_level"]})')
+        
+        total_ordered = len(ordered_categories)
+        
+        for i, (ircc_category, group_info) in enumerate(ordered_categories, 1):
             representative_category = group_info['representative_category']
             adjusted_count = group_info['adjusted_predictions']
             priority_level = group_info['priority_level']
             
-            self.stdout.write(f'\n[{i}/{total_groups}] Processing IRCC Category: {ircc_category}')
+            self.stdout.write(f'\n[{i}/{total_ordered}] Processing IRCC Category: {ircc_category}')
             self.stdout.write(f'   📂 Using representative: {representative_category.name}')
             self.stdout.write(f'   🎯 2025 Priority: {priority_level} → {adjusted_count} predictions')
             
@@ -1863,8 +1884,21 @@ class Command(BaseCommand):
             'Education occupations': {'avg': 60.0, 'min': 30, 'max': 90, 'std': 20.0}  # NEW 2025 - estimated
         }
         
+        # 🎯 SEQUENTIAL PROCESSING: Most frequent/prioritized first, then reserve dates
+        # Process in priority order to ensure proper date reservation
+        priority_order = ['HIGHEST', 'HIGH', 'MEDIUM', 'LOW']
+        processing_order = []
+        
+        for priority_level in priority_order:
+            # Get categories for this priority level
+            level_categories = [
+                ircc_cat for ircc_cat, group_info in ircc_groups.items()
+                if group_info['priority_level'] == priority_level
+            ]
+            processing_order.extend(level_categories)
+        
         # Calculate prediction frequency based on HISTORICAL DATA + 2025 POLICY
-        for ircc_category in ircc_groups.keys():
+        for ircc_category in processing_order:
             adjusted_count = self.get_adjusted_prediction_count(ircc_category, num_predictions)
             priority = self.get_category_priority_2025(ircc_category)
             
@@ -1895,7 +1929,7 @@ class Command(BaseCommand):
             
             # Start assignment from week 1
             current_week = 0
-            predictions_needed = min(adjusted_count, 26)  # Cap at 6 months for realism
+            predictions_needed = 5  # EXACTLY 5 predictions per category as requested
             
             while len(dates) < predictions_needed and current_week < len(draw_calendar):
                 week_info = draw_calendar[current_week]
@@ -1920,12 +1954,12 @@ class Command(BaseCommand):
                             # 🎯 CEC LOVES THURSDAYS: 57.8% historical preference
                             if week_info['assigned_secondary'] is None:  # Thursday preferred for CEC
                                 dates.append(week_info['secondary'])  # Thursday
-                                draw_calendar[current_week]['assigned_secondary'] = ircc_category
-                                weeks_assigned.append(current_week)
+                            draw_calendar[current_week]['assigned_secondary'] = ircc_category
+                            weeks_assigned.append(current_week)
                             elif week_info['assigned_primary'] is None:  # Fallback to Wednesday
                                 dates.append(week_info['primary'])  # Wednesday
-                                draw_calendar[current_week]['assigned_primary'] = ircc_category
-                                weeks_assigned.append(current_week)
+                            draw_calendar[current_week]['assigned_primary'] = ircc_category
+                            weeks_assigned.append(current_week)
                         else:
                             # 🎯 French: Wednesday preference (general pattern)
                             if week_info['assigned_primary'] is None:  # Wednesday preferred
@@ -1952,15 +1986,28 @@ class Command(BaseCommand):
             
             category_schedules[ircc_category] = dates
             
-            # Show priority and frequency based on official government policy
+            # Show detailed reservation results
             priority_emojis = {
                 'HIGHEST': '🏆', 'HIGH': '🥇', 'MEDIUM': '🥈', 'LOW': '🥉', 'ELIMINATED': '❌'
             }
-            freq_desc = {2: 'bi-weekly', 4: 'monthly', 8: 'bi-monthly', 12: 'quarterly', 16: 'quarterly+'}
+            hist_interval = interval_data['avg']
             priority_emoji = priority_emojis.get(priority, '❓')
-            print(f"📅 {priority_emoji} {ircc_category} ({priority}, {freq_desc.get(frequency, f'{frequency}w')}): {len(dates)} draws")
+            
+            print(f"📅 {priority_emoji} {ircc_category} ({priority}): {len(dates)} dates reserved")
+            print(f"   Historical avg: {hist_interval:.1f} days, Frequency: every {frequency} weeks")
             if dates:
-                print(f"   First: {dates[0]}, Last: {dates[-1] if dates else 'None'}")
+                print(f"   Reserved dates: {dates[0]} to {dates[-1] if len(dates) > 1 else dates[0]}")
+                # Show day preferences met
+                day_counts = {'Wed': 0, 'Thu': 0, 'Other': 0}
+                for date in dates:
+                    if date.weekday() == 2:  # Wednesday
+                        day_counts['Wed'] += 1
+                    elif date.weekday() == 3:  # Thursday
+                        day_counts['Thu'] += 1
+                    else:
+                        day_counts['Other'] += 1
+                print(f"   Day breakdown: {day_counts['Wed']} Wed, {day_counts['Thu']} Thu, {day_counts['Other']} Other")
+            print()
         
         return category_schedules
     
@@ -2144,7 +2191,7 @@ class Command(BaseCommand):
         logger.addHandler(handler)
         
         return logger
-
+    
     def compute_recursive_predictions(self, category, force_recompute, assigned_dates=None):
         """
         🎯 RECURSIVE FORECASTING: Scientifically sound approach
@@ -2297,13 +2344,14 @@ class Command(BaseCommand):
                         print(f"   🛡️ BOUND ENFORCEMENT: {model_name} prediction was unrealistic, reset to historical mean {historical_mean:.0f}")
                     
                     # Calculate confidence with domain intelligence
-                    # Use realistic prediction date for confidence calculation
-                    realistic_date = self.calculate_realistic_prediction_date(ircc_category, current_date, rank)
+                    # Use simple date calculation for confidence (just for internal calculation)
+                    from datetime import timedelta
+                    simple_date = current_date + timedelta(days=30 * rank)  # Simple progressive dates
                     confidence = self._calculate_model_confidence(
                         result={'cv_score': -30, 'r2_score': 0.3, 'mae': 25}, 
                         data_size=len(working_df),
                         predicted_crs=predicted_score,
-                        prediction_date=realistic_date,
+                        prediction_date=simple_date,
                         df=working_df
                     )
                     
@@ -2372,17 +2420,17 @@ class Command(BaseCommand):
                     # 🎯 Determine interval type based on model
                     interval_type = self.get_interval_type(pred['model'])
                     
-                    with transaction.atomic():
-                        prediction = PreComputedPrediction.objects.create(
-                            category=category,
-                            predicted_date=prediction_date,
+                with transaction.atomic():
+                    prediction = PreComputedPrediction.objects.create(
+                        category=category,
+                        predicted_date=prediction_date,
                             predicted_crs_score=round(pred['crs']),
                             predicted_invitations=round(pred['invitations']),
                             confidence_score=pred['confidence'],
                             model_used=pred['model'],
-                            model_version="1.0",
-                            prediction_rank=rank,
-                            uncertainty_range={
+                        model_version="1.0",
+                        prediction_rank=rank,
+                        uncertainty_range={
                                 'crs_min': max(300, round(pred['crs'] - uncertainty.get('crs_std', 50))),
                                 'crs_max': min(1000, round(pred['crs'] + uncertainty.get('crs_std', 50))),
                                 'invitations_min': max(0, round(pred['invitations'] - uncertainty.get('inv_std', 500))),
@@ -2392,14 +2440,14 @@ class Command(BaseCommand):
                             predicted_date_lower=date_ci_lower.date() if hasattr(date_ci_lower, 'date') else date_ci_lower,
                             predicted_date_upper=date_ci_upper.date() if hasattr(date_ci_upper, 'date') else date_ci_upper,
                             interval_type=interval_type,  # 🆕 CI for frequentist, CrI for Bayesian
-                            is_active=True
-                        )
+                        is_active=True
+                    )
                         models_saved += 1
                         logger.info(f"Rank {rank} - Saved {pred['model']}: CRS {pred['crs']:.0f}, Confidence {pred['confidence']:.3f}")
                         
-                except Exception as e:
+            except Exception as e:
                     print(f"   ❌ Failed to save {pred['model']} for rank {rank}: {e}")
-                    continue
+                continue
             
             total_created += models_saved
             print(f"   ✅ Saved: Rank {rank}, {models_saved}/{len(rank_predictions)} models, Date {prediction_date}")
