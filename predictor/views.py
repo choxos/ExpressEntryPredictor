@@ -148,36 +148,37 @@ class DrawPredictionViewSet(viewsets.ModelViewSet):
 class PredictionAPIView(APIView):
     """Fast prediction API using pre-computed predictions with IRCC category grouping"""
     
-    def _group_predictions_by_date(self, predictions):
-        """Group predictions by date and show all models for each date"""
-        grouped = {}
+    def _format_recursive_predictions(self, predictions):
+        """
+        🎯 Format predictions for RECURSIVE FORECASTING approach
+        
+        New structure:
+        - Rank 1: PRIMARY prediction (next draw)
+        - Ranks 2-5: SECONDARY predictions (recursive forecasting)
+        - One prediction per rank (best model selected)
+        """
+        result = []
         
         for pred in predictions:
-            date_key = pred.predicted_date.isoformat()
+            is_primary = pred.prediction_rank == 1
             
-            if date_key not in grouped:
-                grouped[date_key] = {
-                    'predicted_date': date_key,
-                    'rank': pred.prediction_rank,
-                    'models': []
-                }
-            
-            # Add this model's prediction to the date group
-            grouped[date_key]['models'].append({
+            prediction_data = {
+                'predicted_date': pred.predicted_date.isoformat(),
+                'rank': pred.prediction_rank,
+                'is_primary': is_primary,
+                'prediction_type': 'PRIMARY' if is_primary else 'SECONDARY',
                 'model_name': pred.model_used,
                 'predicted_crs_score': pred.predicted_crs_score,
                 'predicted_invitations': pred.predicted_invitations,
                 'confidence_score': round(pred.confidence_score * 100, 1),
-                'uncertainty_range': pred.uncertainty_range
-            })
+                'uncertainty_range': pred.uncertainty_range,
+                'methodology': 'Next Draw Prediction' if is_primary else f'Recursive Forecast (builds on rank {pred.prediction_rank - 1})'
+            }
+            
+            result.append(prediction_data)
         
-        # Sort models within each date by confidence (highest first)
-        for date_group in grouped.values():
-            date_group['models'].sort(key=lambda x: x['confidence_score'], reverse=True)
-        
-        # Convert to list and sort by date
-        result = list(grouped.values())
-        result.sort(key=lambda x: x['predicted_date'])
+        # Sort by rank (1 = primary, 2-5 = secondary)
+        result.sort(key=lambda x: x['rank'])
         
         return result
     
@@ -270,7 +271,7 @@ class PredictionAPIView(APIView):
                         'crs_score': draw.lowest_crs_score,
                         'invitations': draw.invitations_issued
                     } for draw in recent_draws],
-                    'predictions': self._group_predictions_by_date(predictions)
+                    'predictions': self._format_recursive_predictions(predictions)
                 }
                 
                 results.append(category_data)

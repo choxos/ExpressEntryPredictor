@@ -482,150 +482,149 @@ async function createCategoryContent(categoryData) {
         `;
     }
     
-    // Predictions are already grouped by date from the API
-    // Sort by date for consistent display
+    // 🎯 RECURSIVE FORECASTING: Handle new prediction structure
+    // Sort by rank (1 = PRIMARY, 2-5 = SECONDARY)
     const sortedPredictions = predictions.sort((a, b) => {
-        return new Date(a.predicted_date) - new Date(b.predicted_date);
+        return (a.rank || 0) - (b.rank || 0);
     });
+    
+    // Separate PRIMARY and SECONDARY predictions
+    const primaryPrediction = sortedPredictions.find(p => p.is_primary === true || p.rank === 1);
+    const secondaryPredictions = sortedPredictions.filter(p => p.is_primary !== true && p.rank > 1);
     
     content += `
         <div class="row mb-4">
             <div class="col-12">
-                <h5><i class="fas fa-crystal-ball me-2"></i>All Predictions by Date (${predictions.length} total from ${sortedPredictions.length} time periods)</h5>
-                <p class="text-muted mb-3">Each card shows predictions from ALL AI models for the same time period</p>
+                <h5><i class="fas fa-brain me-2"></i>🎯 Recursive Forecasting Predictions (${predictions.length} total)</h5>
+                <p class="text-muted mb-3">PRIMARY prediction for next draw + SECONDARY recursive forecasts</p>
             </div>
         </div>
-        <div class="row">
     `;
     
-    sortedPredictions.forEach((predictionGroup, dateIndex) => {
-        const models = predictionGroup.models || [];
-        const displayDate = formatDate(predictionGroup.predicted_date);
-        
-        // Calculate average metrics across all models for this date
-        const avgCRS = models.reduce((sum, m) => sum + (m.predicted_crs_score || 0), 0) / models.length;
-        const avgInvitations = models.reduce((sum, m) => sum + (m.predicted_invitations || 0), 0) / models.length;
-        const avgConfidence = models.reduce((sum, m) => sum + (m.confidence_score || 0), 0) / models.length;
+    // Show PRIMARY prediction first (highlighted)
+    if (primaryPrediction) {
+        const displayDate = formatDate(primaryPrediction.predicted_date);
+        const confidence = primaryPrediction.confidence_score || 0;
         
         content += `
-            <div class="col-lg-6 mb-4">
-                <div class="card prediction-card h-100 shadow-sm border">
-                    <div class="card-header bg-white border-bottom">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h6 class="mb-0 text-dark">
-                                    <i class="fas fa-calendar me-2 text-primary"></i>
-                                    ${displayDate}
-                                </h6>
-                                <small class="text-muted">${models.length} Models Predicting</small>
-                            </div>
-                            <div class="text-end">
-                                <span class="badge bg-primary text-white fs-6">
-                                    ${Math.round(avgConfidence)}%
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card prediction-card shadow border-primary border-3" style="background: linear-gradient(135deg, #f8f9ff 0%, #e3f2fd 100%);">
+                        <div class="card-header bg-primary text-white border-bottom">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h5 class="mb-0">
+                                        <i class="fas fa-star me-2"></i>
+                                        🎯 PRIMARY PREDICTION - Next Draw
+                                    </h5>
+                                    <small class="opacity-75">${primaryPrediction.methodology || 'Next Draw Prediction'}</small>
+                                </div>
+                                <span class="badge bg-light text-primary fs-6 fw-bold">
+                                    ${Math.round(confidence)}% Confidence
                                 </span>
-                                <div class="small text-muted">Avg. Confidence</div>
                             </div>
                         </div>
-                    </div>
-                    <div class="card-body">
-                        <!-- Date summary -->
-                        <div class="row mb-4 text-center bg-light rounded-3 p-3 mx-1">
-                            <div class="col-4">
-                                <div class="p-2">
-                                    <h5 class="mb-1 text-warning fw-bold">${Math.round(avgCRS)}</h5>
-                                    <small class="text-muted">Avg. CRS Score</small>
-                                </div>
-                            </div>
-                            <div class="col-4 border-start border-end">
-                                <div class="p-2">
-                                    <h5 class="mb-1 text-success fw-bold">${Math.round(avgInvitations).toLocaleString()}</h5>
-                                    <small class="text-muted">Avg. Invitations</small>
-                                </div>
-                            </div>
-                            <div class="col-4">
-                                <div class="p-2">
-                                    <h5 class="mb-1 text-primary fw-bold">${models.length}</h5>
-                                    <small class="text-muted">AI Models</small>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- All model predictions for this date -->
-                        <h6 class="mb-3"><i class="fas fa-brain me-2"></i>Predictions by Model:</h6>
-                        <div class="model-predictions">
-                            ${models.map((model, modelIndex) => {
-                                const modelColor = getModelColor(model.model_name || 'Unknown');
-                                const confidence = model.confidence_score || 0;
-                                
-                                return `
-                                    <div class="model-prediction-item mb-3 p-3 border rounded shadow-sm bg-white" style="border-left: 4px solid ${modelColor} !important;">
-                                        <div class="d-flex justify-content-between align-items-start mb-3">
-                                            <div>
-                                                <h6 class="mb-1 text-dark">
-                                                    <i class="fas fa-brain me-2" style="color: ${modelColor};"></i>
-                                                    ${model.model_name || 'Unknown Model'}
-                                                </h6>
-                                                <small class="text-muted">AI Model Prediction</small>
-                                            </div>
-                                            <span class="badge rounded-pill text-white" style="background-color: ${modelColor}; font-size: 0.75rem;">
-                                                ${Math.round(confidence)}% Confidence
-                                            </span>
-                                        </div>
-                                        
-                                        <div class="row g-3">
-                                            <div class="col-6">
-                                                <div class="text-center p-2 bg-white rounded">
-                                                    <div class="crs-highlight">
-                                                        <i class="fas fa-trophy text-warning mb-1"></i>
-                                                        <div class="fw-bold text-dark fs-5">
-                                                            ${model.predicted_crs_score ? formatCRSWithCI(model.predicted_crs_score, model.uncertainty_range) : 'N/A'}
-                                                        </div>
-                                                        <div class="small text-muted">CRS Score</div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="col-6">
-                                                <div class="text-center p-2 bg-white rounded">
-                                                    <div class="invitation-highlight">
-                                                        <i class="fas fa-users text-success mb-1"></i>
-                                                        <div class="fw-bold text-dark fs-5">
-                                                            ${model.predicted_invitations ? formatInvitationsWithCI(model.predicted_invitations, model.uncertainty_range) : 'N/A'}
-                                                        </div>
-                                                        <div class="small text-muted">Invitations</div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        
-                                        <!-- Confidence bar for this model -->
-                                        <div class="mt-3">
-                                            <div class="d-flex justify-content-between align-items-center mb-1">
-                                                <small class="text-muted">Model Confidence</small>
-                                                <small class="fw-bold text-primary">${confidence}%</small>
-                                            </div>
-                                            <div class="progress" style="height: 6px; background-color: #f8f9fa;">
-                                                <div class="progress-bar" role="progressbar" style="width: ${confidence}%; background-color: #0d6efd;" aria-valuenow="${confidence}" aria-valuemin="0" aria-valuemax="100"></div>
-                                            </div>
-                                        </div>
-                                        
-                                        ${model.uncertainty_range && model.uncertainty_range.invitations_confidence ? `
-                                            <div class="mt-2 text-center">
-                                                <small class="text-muted">
-                                                    Invitations Confidence: <strong>${model.uncertainty_range.invitations_confidence}%</strong>
-                                                </small>
-                                            </div>
-                                        ` : ''}
+                        <div class="card-body">
+                            <div class="row text-center mb-3">
+                                <div class="col-md-3">
+                                    <div class="p-3 bg-white rounded shadow-sm">
+                                        <h4 class="mb-1 text-primary"><i class="fas fa-calendar"></i></h4>
+                                        <h5 class="mb-1 fw-bold">${displayDate}</h5>
+                                        <small class="text-muted">Draw Date</small>
                                     </div>
-                                `;
-                            }).join('')}
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="p-3 bg-white rounded shadow-sm">
+                                        <h4 class="mb-1 text-warning"><i class="fas fa-trophy"></i></h4>
+                                        <h5 class="mb-1 fw-bold">${formatCRSWithCI(primaryPrediction.predicted_crs_score, primaryPrediction.uncertainty_range)}</h5>
+                                        <small class="text-muted">CRS Score</small>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="p-3 bg-white rounded shadow-sm">
+                                        <h4 class="mb-1 text-success"><i class="fas fa-users"></i></h4>
+                                        <h5 class="mb-1 fw-bold">${(primaryPrediction.predicted_invitations || 0).toLocaleString()}</h5>
+                                        <small class="text-muted">Invitations</small>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="p-3 bg-white rounded shadow-sm">
+                                        <h4 class="mb-1 text-info"><i class="fas fa-brain"></i></h4>
+                                        <h5 class="mb-1 fw-bold">${primaryPrediction.model_name || 'AI Model'}</h5>
+                                        <small class="text-muted">Best Model</small>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         `;
-    });
+    }
     
-    content += `</div></div>`;
+    // Show SECONDARY predictions
+    if (secondaryPredictions.length > 0) {
+        content += `
+            <div class="row mb-4">
+                <div class="col-12">
+                    <h5><i class="fas fa-forward me-2"></i>🔄 SECONDARY PREDICTIONS - Recursive Forecasts</h5>
+                    <p class="text-muted mb-3">Each prediction builds on the previous one (recursive forecasting)</p>
+                </div>
+            </div>
+            <div class="row">
+        `;
+        
+        secondaryPredictions.forEach((prediction, index) => {
+            const displayDate = formatDate(prediction.predicted_date);
+            const confidence = prediction.confidence_score || 0;
+            const rankColor = ['', 'primary', 'info', 'success', 'warning', 'secondary'][prediction.rank] || 'secondary';
+            
+            content += `
+                <div class="col-lg-6 mb-4">
+                    <div class="card prediction-card h-100 shadow-sm border-${rankColor}">
+                        <div class="card-header bg-light border-bottom">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-0 text-dark">
+                                        <i class="fas fa-forward me-2 text-${rankColor}"></i>
+                                        Rank ${prediction.rank} - ${displayDate}
+                                    </h6>
+                                    <small class="text-muted">${prediction.methodology || 'Recursive Forecast'}</small>
+                                </div>
+                                <span class="badge bg-${rankColor} text-white">
+                                    ${Math.round(confidence)}%
+                                </span>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="row text-center">
+                                <div class="col-4">
+                                    <div class="p-2">
+                                        <h5 class="mb-1 text-warning fw-bold">${formatCRSWithCI(prediction.predicted_crs_score, prediction.uncertainty_range)}</h5>
+                                        <small class="text-muted">CRS Score</small>
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="p-2">
+                                        <h5 class="mb-1 text-success fw-bold">${(prediction.predicted_invitations || 0).toLocaleString()}</h5>
+                                        <small class="text-muted">Invitations</small>
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="p-2">
+                                        <h5 class="mb-1 text-${rankColor} fw-bold">${prediction.model_name || 'AI'}</h5>
+                                        <small class="text-muted">Model</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        content += `</div>`; // Close secondary predictions row
+    }
     
     return content;
 }

@@ -289,25 +289,37 @@ async function loadLatestPredictions() {
         }
         
         apiData.data.slice(0, 3).forEach(categoryData => {
-            // Handle new API format with grouped predictions
-            const firstPrediction = categoryData.predictions[0];
+            // 🎯 RECURSIVE FORECASTING: Find PRIMARY prediction (rank 1 = next draw)
+            const primaryPrediction = categoryData.predictions.find(pred => pred.is_primary === true || pred.rank === 1);
             let prediction, confidence;
             
-            if (firstPrediction && firstPrediction.models) {
-                // New format: predictions grouped by date with models array
-                const bestModel = firstPrediction.models[0]; // Get highest confidence model
+            if (primaryPrediction) {
+                // New recursive format: direct prediction data
                 prediction = {
-                    predicted_date: firstPrediction.predicted_date,
+                    predicted_date: primaryPrediction.predicted_date,
+                    predicted_crs_score: primaryPrediction.predicted_crs_score,
+                    predicted_invitations: primaryPrediction.predicted_invitations,
+                    uncertainty_range: primaryPrediction.uncertainty_range,
+                    model_used: primaryPrediction.model_name,
+                    rank: primaryPrediction.rank,
+                    prediction_type: primaryPrediction.prediction_type
+                };
+                confidence = primaryPrediction.confidence_score;
+            } else if (categoryData.predictions[0] && categoryData.predictions[0].models) {
+                // Legacy format fallback
+                const bestModel = categoryData.predictions[0].models[0];
+                prediction = {
+                    predicted_date: categoryData.predictions[0].predicted_date,
                     predicted_crs_score: bestModel.predicted_crs_score,
                     predicted_invitations: bestModel.predicted_invitations,
                     uncertainty_range: bestModel.uncertainty_range,
                     model_used: bestModel.model_name,
-                    rank: firstPrediction.rank
+                    rank: categoryData.predictions[0].rank
                 };
                 confidence = bestModel.confidence_score;
             } else {
-                // Old format fallback
-                prediction = firstPrediction;
+                // Oldest format fallback
+                prediction = categoryData.predictions[0];
                 confidence = prediction.confidence_score;
             }
             
@@ -317,19 +329,22 @@ async function loadLatestPredictions() {
             col.innerHTML = `
                 <div class="prediction-card h-100">
                     <div class="d-flex justify-content-between align-items-start mb-3">
-                        <h5 class="mb-0">${categoryData.category_name}</h5>
-                        <span class="confidence-badge bg-light text-dark">
+                        <div>
+                            <h5 class="mb-0">${categoryData.category_name}</h5>
+                            <small class="text-primary fw-bold">🎯 PRIMARY PREDICTION</small>
+                        </div>
+                        <span class="confidence-badge bg-primary text-white">
                             ${confidence}% confidence
                         </span>
                     </div>
                     
                     <div class="mb-3">
                         <div class="d-flex justify-content-between">
-                            <span>Next Draw Date:</span>
+                            <span><i class="fas fa-calendar text-primary me-1"></i>Next Draw:</span>
                             <strong>${formatDate(prediction.predicted_date)}</strong>
                         </div>
                         <div class="d-flex justify-content-between">
-                            <span>Predicted CRS:</span>
+                            <span><i class="fas fa-trophy text-warning me-1"></i>Predicted CRS:</span>
                             <strong id="crs-with-ci">${formatCRSWithCI(prediction.predicted_crs_score, prediction.uncertainty_range)}</strong>
                         </div>
                     </div>
@@ -400,22 +415,22 @@ async function loadAllPredictions() {
         row.className = 'row';
         
         apiData.data.forEach(categoryData => {
-            // Handle new API format with grouped predictions
-            const firstPrediction = categoryData.predictions[0];
+            // 🎯 RECURSIVE FORECASTING: Find PRIMARY prediction (rank 1 = next draw)
+            const primaryPrediction = categoryData.predictions.find(pred => pred.is_primary === true || pred.rank === 1);
             let prediction, confidence;
             
-            if (firstPrediction && firstPrediction.models) {
-                // New format: predictions grouped by date with models array
-                const bestModel = firstPrediction.models[0]; // Get highest confidence model
+            if (primaryPrediction) {
+                // New recursive format: direct prediction data
                 prediction = {
-                    predicted_date: firstPrediction.predicted_date,
-                    predicted_crs_score: bestModel.predicted_crs_score,
-                    predicted_invitations: bestModel.predicted_invitations,
-                    uncertainty_range: bestModel.uncertainty_range,
-                    model_used: bestModel.model_name,
-                    rank: firstPrediction.rank
+                    predicted_date: primaryPrediction.predicted_date,
+                    predicted_crs_score: primaryPrediction.predicted_crs_score,
+                    predicted_invitations: primaryPrediction.predicted_invitations,
+                    uncertainty_range: primaryPrediction.uncertainty_range,
+                    model_used: primaryPrediction.model_name,
+                    rank: primaryPrediction.rank,
+                    prediction_type: primaryPrediction.prediction_type
                 };
-                confidence = bestModel.confidence_score;
+                confidence = primaryPrediction.confidence_score;
             } else {
                 // Old format fallback
                 prediction = firstPrediction;
