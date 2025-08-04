@@ -199,7 +199,13 @@ class PredictionAPIView(APIView):
                 'uncertainty_range': best_pred.uncertainty_range,
                 'methodology': 'Next Draw Prediction' if is_primary else f'Recursive Forecast (builds on rank {rank - 1})',
                 'all_models': all_models,  # 🆕 ALL MODEL ALTERNATIVES
-                'model_count': len(all_models)
+                'model_count': len(all_models),
+                # 📅 NEW: Date confidence intervals (95% CI)
+                'date_confidence_interval': {
+                    'lower': best_pred.predicted_date_lower.isoformat() if best_pred.predicted_date_lower else None,
+                    'upper': best_pred.predicted_date_upper.isoformat() if best_pred.predicted_date_upper else None,
+                    'enabled': bool(best_pred.predicted_date_lower and best_pred.predicted_date_upper)
+                }
             }
             
             result.append(prediction_data)

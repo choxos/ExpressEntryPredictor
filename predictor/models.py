@@ -450,6 +450,10 @@ class PreComputedPrediction(models.Model):
     prediction_rank = models.IntegerField(default=1)  # 1st, 2nd, 3rd prediction etc.
     uncertainty_range = models.JSONField(default=dict, blank=True)  # {min: 450, max: 480}
     
+    # Date confidence intervals (95% CI)
+    predicted_date_lower = models.DateField(null=True, blank=True)  # Lower bound of date CI
+    predicted_date_upper = models.DateField(null=True, blank=True)  # Upper bound of date CI
+    
     class Meta:
         db_table = 'predictor_precomputed_prediction'
         ordering = ['category', 'prediction_rank', 'predicted_date']

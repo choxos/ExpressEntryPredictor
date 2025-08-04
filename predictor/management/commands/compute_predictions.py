@@ -1924,6 +1924,125 @@ class Command(BaseCommand):
         
         return category_schedules
     
+    def predict_next_draw_date(self, working_df, ircc_category, base_date, rank):
+        """
+        🎯 DYNAMIC DATE PREDICTION: Use ML models to predict actual draw dates
+        
+        Instead of fixed intervals, train models on historical 'days_since_last_draw' 
+        patterns to predict when the next draw will actually occur.
+        
+        Returns: (predicted_date, confidence_interval_lower, confidence_interval_upper)
+        """
+        
+        print(f"   📅 Training date prediction models for rank {rank}...")
+        
+        if len(working_df) < 3:
+            # Fallback for insufficient data
+            fallback_days = 35 if 'Canadian Experience' in ircc_category else 60
+            predicted_date = base_date + timedelta(days=fallback_days)
+            return predicted_date, predicted_date - timedelta(days=7), predicted_date + timedelta(days=7)
+        
+        # Prepare data for date prediction (predict days_since_last_draw)
+        date_features = working_df[['days_since_last_draw']].dropna()
+        if len(date_features) < 3:
+            fallback_days = 35 if 'Canadian Experience' in ircc_category else 60
+            predicted_date = base_date + timedelta(days=fallback_days)
+            return predicted_date, predicted_date - timedelta(days=7), predicted_date + timedelta(days=7)
+        
+        # Train multiple models to predict days_since_last_draw
+        date_predictions = []
+        
+        try:
+            # 1. ARIMA for time series patterns
+            from statsmodels.tsa.arima.model import ARIMA
+            arima_data = date_features['days_since_last_draw'].values
+            try:
+                arima_model = ARIMA(arima_data, order=(1, 0, 1))
+                arima_fit = arima_model.fit()
+                arima_pred = arima_fit.forecast(steps=1)[0]
+                date_predictions.append(max(7, min(365, arima_pred)))  # Bound between 7-365 days
+                print(f"      🔧 ARIMA date prediction: {arima_pred:.0f} days")
+            except:
+                pass
+            
+            # 2. Exponential smoothing for trend
+            from statsmodels.tsa.holtwinters import ExponentialSmoothing
+            try:
+                exp_model = ExponentialSmoothing(arima_data, trend='add')
+                exp_fit = exp_model.fit()
+                exp_pred = exp_fit.forecast(steps=1)[0]
+                date_predictions.append(max(7, min(365, exp_pred)))
+                print(f"      🔧 Exponential Smoothing date prediction: {exp_pred:.0f} days")
+            except:
+                pass
+                
+            # 3. Historical average with recent weighting
+            recent_avg = date_features['days_since_last_draw'].tail(5).mean()
+            overall_avg = date_features['days_since_last_draw'].mean()
+            weighted_avg = 0.7 * recent_avg + 0.3 * overall_avg
+            date_predictions.append(max(7, min(365, weighted_avg)))
+            print(f"      🔧 Weighted average date prediction: {weighted_avg:.0f} days")
+            
+            # 4. Category-specific seasonal patterns
+            if len(working_df) > 12:  # Need enough data for seasonal analysis
+                # Look at same month patterns from previous years
+                current_month = base_date.month
+                same_month_data = working_df[working_df['date'].dt.month == current_month]
+                if len(same_month_data) > 1:
+                    seasonal_avg = same_month_data['days_since_last_draw'].mean()
+                    date_predictions.append(max(7, min(365, seasonal_avg)))
+                    print(f"      🔧 Seasonal pattern prediction: {seasonal_avg:.0f} days")
+            
+        except Exception as e:
+            print(f"      ⚠️ Date prediction models failed: {e}")
+        
+        # If no models worked, use historical statistics
+        if not date_predictions:
+            category_avg = date_features['days_since_last_draw'].mean()
+            date_predictions.append(max(7, min(365, category_avg)))
+            print(f"      🔧 Fallback to category average: {category_avg:.0f} days")
+        
+        # Ensemble prediction: weighted average with outlier removal
+        if len(date_predictions) > 1:
+            # Remove outliers (predictions > 2 std devs from median)
+            pred_array = np.array(date_predictions)
+            median_pred = np.median(pred_array)
+            std_pred = np.std(pred_array)
+            
+            # Keep predictions within 2 standard deviations
+            valid_preds = pred_array[np.abs(pred_array - median_pred) <= 2 * std_pred]
+            
+            if len(valid_preds) > 0:
+                final_days_prediction = np.mean(valid_preds)
+            else:
+                final_days_prediction = median_pred
+        else:
+            final_days_prediction = date_predictions[0]
+        
+        # Add progressive uncertainty for future ranks
+        rank_uncertainty = (rank - 1) * 3  # 0, 3, 6, 9, 12 extra days uncertainty
+        final_days_prediction += rank_uncertainty
+        
+        # Calculate confidence intervals based on historical variance
+        days_std = date_features['days_since_last_draw'].std()
+        confidence_multiplier = 1.96  # 95% confidence interval
+        
+        # Adjust confidence based on data quality and rank
+        data_quality_factor = min(1.0, len(date_features) / 10)  # More data = tighter CI
+        rank_uncertainty_factor = 1 + (rank - 1) * 0.2  # Later ranks = wider CI
+        
+        ci_width = confidence_multiplier * days_std * rank_uncertainty_factor / data_quality_factor
+        ci_width = max(3, min(30, ci_width))  # Bound CI width between 3-30 days
+        
+        # Calculate final dates
+        predicted_date = base_date + timedelta(days=int(final_days_prediction))
+        ci_lower = predicted_date - timedelta(days=int(ci_width))
+        ci_upper = predicted_date + timedelta(days=int(ci_width))
+        
+        print(f"      ✅ Final prediction: {predicted_date.strftime('%b %d')} ({ci_lower.strftime('%b %d')}-{ci_upper.strftime('%b %d')}, 95% CI)")
+        
+        return predicted_date, ci_lower, ci_upper
+    
     def setup_prediction_logging(self, category_name):
         """Setup detailed logging for debugging prediction issues"""
         log_dir = 'prediction_logs'
@@ -2100,11 +2219,13 @@ class Command(BaseCommand):
                         print(f"   🛡️ BOUND ENFORCEMENT: {model_name} prediction was unrealistic, reset to historical mean {historical_mean:.0f}")
                     
                     # Calculate confidence with domain intelligence
+                    # Use realistic prediction date for confidence calculation
+                    realistic_date = self.calculate_realistic_prediction_date(ircc_category, current_date, rank)
                     confidence = self._calculate_model_confidence(
                         result={'cv_score': -30, 'r2_score': 0.3, 'mae': 25}, 
                         data_size=len(working_df),
                         predicted_crs=predicted_score,
-                        prediction_date=current_date + timedelta(days=14*rank),
+                        prediction_date=realistic_date,
                         df=working_df
                     )
                     
@@ -2142,8 +2263,8 @@ class Command(BaseCommand):
             best_prediction = max(rank_predictions, key=lambda x: x['confidence'])
             print(f"   🏆 BEST: {best_prediction['model']} - CRS {best_prediction['crs']:.0f} (confidence: {best_prediction['confidence']:.3f})")
             
-            # Calculate prediction date
-            prediction_date = current_date + timedelta(days=14*rank)
+            # 🎯 DYNAMIC DATE PREDICTION: Use ML models to predict actual draw dates
+            prediction_date, date_ci_lower, date_ci_upper = self.predict_next_draw_date(working_df, ircc_category, current_date, rank)
             
             # 💾 SAVE ALL MODEL PREDICTIONS (not just the best one)
             models_saved = 0
@@ -2172,6 +2293,9 @@ class Command(BaseCommand):
                                 'invitations_min': max(0, round(pred['invitations'] - uncertainty.get('inv_std', 500))),
                                 'invitations_max': round(pred['invitations'] + uncertainty.get('inv_std', 500))
                             },
+                            # 📅 NEW: Dynamic date prediction with confidence intervals
+                            predicted_date_lower=date_ci_lower.date() if hasattr(date_ci_lower, 'date') else date_ci_lower,
+                            predicted_date_upper=date_ci_upper.date() if hasattr(date_ci_upper, 'date') else date_ci_upper,
                             is_active=True
                         )
                         models_saved += 1
@@ -2186,12 +2310,21 @@ class Command(BaseCommand):
             
             # 🔄 RECURSIVE STEP: Add best prediction as "historical data" for next iteration
             if rank < 5:  # Don't add after the last prediction
+                # Calculate realistic interval for this category (handle date type conversion)
+                if len(working_df) > 0:
+                    last_date = working_df['date'].iloc[-1]
+                    if hasattr(last_date, 'date'):  # pandas Timestamp
+                        last_date = last_date.date()
+                    days_since_last = (prediction_date - last_date).days
+                else:
+                    days_since_last = 35
+                
                 new_row = {
                     'date': prediction_date,
                     'category': ircc_category,
                     'lowest_crs_score': final_crs,
                     'invitations_issued': final_invitations,
-                    'days_since_last_draw': 14,  # Assume normal interval
+                    'days_since_last_draw': days_since_last,  # Realistic interval
                     'is_weekend': prediction_date.weekday() >= 5,
                     'is_holiday': False,  # Simplified
                     'month': prediction_date.month,

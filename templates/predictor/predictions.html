@@ -744,7 +744,7 @@ async function createCategoryContent(categoryData) {
         `;
         
         secondaryPredictions.forEach((prediction, index) => {
-            const displayDate = formatDate(prediction.predicted_date);
+            const displayDate = formatDateWithConfidence(prediction.predicted_date, prediction.date_confidence_interval);
             const confidence = prediction.confidence_score || 0;
             const rankColor = ['', 'primary', 'info', 'success', 'warning', 'secondary'][prediction.rank] || 'secondary';
             
@@ -1150,14 +1150,39 @@ function calculateAverageInvitations(predictions) {
     return Math.round(average).toLocaleString();
 }
 
-function formatDate(dateString) {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-    });
-}
+    function formatDate(dateString) {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', { 
+            year: 'numeric', 
+            month: 'short', 
+            day: 'numeric' 
+        });
+    }
+    
+    function formatDateWithConfidence(dateString, dateCI) {
+        const mainDate = formatDate(dateString);
+        
+        // If no confidence interval, just return main date
+        if (!dateCI || !dateCI.enabled || !dateCI.lower || !dateCI.upper) {
+            return mainDate;
+        }
+        
+        const lowerDate = new Date(dateCI.lower);
+        const upperDate = new Date(dateCI.upper);
+        
+        // Format CI dates (shorter format for range)
+        const formatShort = (date) => date.toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric' 
+        });
+        
+        const lowerFormatted = formatShort(lowerDate);
+        const upperFormatted = formatShort(upperDate);
+        const year = new Date(dateString).getFullYear();
+        
+        // Return formatted date with confidence interval
+        return `${mainDate} <br><small class="text-muted">(${lowerFormatted}–${upperFormatted} ${year}, 95% CI)</small>`;
+    }
 
 function formatCRSWithCI(score, uncertaintyRange) {
     const minScore = uncertaintyRange?.crs_min || uncertaintyRange?.min;
