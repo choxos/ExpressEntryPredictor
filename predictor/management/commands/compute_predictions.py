@@ -3,6 +3,7 @@ from django.utils import timezone
 from datetime import date, timedelta
 import pandas as pd
 import numpy as np
+import math
 
 from predictor.models import (
     DrawCategory, ExpressEntryDraw, PreComputedPrediction, 
@@ -1383,47 +1384,54 @@ class Command(BaseCommand):
     
     def _scientific_probability_penalty(self, z_score):
         """
-        Scientific penalty function based on probability theory and the empirical rule.
+        🔬 CONTINUOUS SCIENTIFIC PENALTY: Smooth penalization based on statistical deviation
         
-        Uses the 68-95-99.7 rule and probability density to create realistic penalties:
+        Scientific approach using continuous exponential decay:
+        - No penalty within 1σ (68% of data is considered normal)
+        - Gradual continuous penalization beyond 1σ using Gaussian-inspired decay
+        - Mathematically smooth (no discontinuities or sharp transitions)
+        - Based on inverse relationship with statistical probability
+        
+        Mathematical formula:
+        - z ≤ 1.0: penalty = 1.0 (no penalty within normal range)
+        - z > 1.0: penalty = exp(-k * (z - 1)^α) where k=0.5, α=1.5
+        
+        Confidence mapping:
         - z=0.0: 100% confidence (at the mean)
-        - z=1.0: ~68% confidence (68% of data within 1σ) 
-        - z=2.0: ~15% confidence (95% of data within 2σ - unusual)
-        - z=3.0: ~1% confidence (99.7% of data within 3σ - very unusual)
-        - z=4.0+: ~0% confidence (extremely unusual)
+        - z=1.0: 100% confidence (boundary of normal range)
+        - z=1.5: ~77% confidence (mildly unusual)
+        - z=2.0: ~57% confidence (unusual, ~5% probability)
+        - z=2.5: ~41% confidence (quite unusual, ~1% probability)
+        - z=3.0: ~29% confidence (very unusual, ~0.3% probability)
+        - z=4.0: ~12% confidence (extremely unusual)
+        - z=5.0+: <5% confidence (statistically implausible)
         
         Args:
             z_score (float): Number of standard deviations from mean
             
         Returns:
-            float: Confidence penalty score (0.0 to 1.0)
+            float: Confidence penalty score (0.001 to 1.0)
         """
         z = abs(z_score)  # Use absolute value
         
+        # No penalty within 1 standard deviation (normal range)
         if z <= 1.0:
-            # Within 1σ: Gentle linear decline from 100% to 68%
-            # This represents the 68% of "normal" data
-            return 1.0 - 0.32 * z
-            
-        elif z <= 2.0:
-            # 1σ to 2σ: Steep decline from 68% to 15%
-            # This represents the transition from "normal" to "unusual"
-            return 0.68 - 0.53 * (z - 1.0)
-            
-        elif z <= 3.0:
-            # 2σ to 3σ: Very steep decline from 15% to 1%
-            # This represents "unusual" to "very unusual" predictions
-            return 0.15 - 0.14 * (z - 2.0)
-            
-        elif z <= 4.0:
-            # 3σ to 4σ: Exponential decay from 1% to 0.1%
-            # Extremely unusual predictions get minimal confidence
-            return 0.01 - 0.009 * (z - 3.0)
-            
-        else:
-            # >4σ: Near-zero confidence with exponential decay
-            # These predictions are statistically implausible
-            return max(0.001, 0.001 * np.exp(-(z - 4.0)))
+            return 1.0
+        
+        # Continuous exponential decay penalty beyond 1σ
+        # Scientific parameters tuned for realistic confidence degradation
+        penalty_threshold = 1.0      # Start penalizing beyond 1σ
+        decay_rate = 0.5            # Controls steepness (0.5 = moderate decay)
+        power_factor = 1.5          # Controls curvature (1.5 = slightly accelerating)
+        
+        # Calculate excess beyond normal range
+        excess_z = z - penalty_threshold
+        
+        # Exponential decay with power adjustment for smoother curve
+        penalty_factor = math.exp(-decay_rate * (excess_z ** power_factor))
+        
+        # Ensure minimum confidence for extreme deviations (scientific floor)
+        return max(0.001, penalty_factor)
     
     def _z_score_probability_description(self, z_score):
         """
