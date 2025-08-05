@@ -362,6 +362,9 @@ class Command(BaseCommand):
         
         elif priority == 'HIGH':
             # ⚡ VPS OPTIMIZATION: Reduced from 26 to prevent timeouts
+            # 🏥 HEALTHCARE SPECIAL CASE: Limited to prevent 2027 predictions
+            if 'Healthcare' in ircc_category:
+                return min(4, base_count)  # Max 4 predictions (1 year max)
             # Healthcare (55.8% great need) + French (government mandate)
             return min(10, base_count)  # ⚡ Reduced for VPS performance
         
@@ -2169,6 +2172,16 @@ class Command(BaseCommand):
         today = date.today()
         if ci_lower < today:
             ci_lower = today
+            
+        # 🚨 CRITICAL: Cap predictions to maximum 1 year from today (prevent 2027+ predictions)
+        max_date = today + timedelta(days=365)
+        if predicted_date > max_date:
+            print(f"      ⚠️ Capping prediction from {predicted_date.strftime('%b %d %Y')} to {max_date.strftime('%b %d %Y')} (1 year max)")
+            predicted_date = max_date
+            ci_lower = predicted_date - timedelta(days=int(ci_width))
+            ci_upper = predicted_date + timedelta(days=int(ci_width))
+            if ci_lower < today:
+                ci_lower = today
         
         print(f"      ✅ Final prediction: {predicted_date.strftime('%b %d')} ({ci_lower.strftime('%b %d')}-{ci_upper.strftime('%b %d')}, 95% CI)")
         
@@ -2442,6 +2455,13 @@ class Command(BaseCommand):
                 # Use pre-assigned date from conflict-free calendar system
                 prediction_date = assigned_dates[rank - 1]  # rank 1 = index 0
                 
+                # 🚨 CRITICAL: Cap assigned dates to maximum 1 year from today
+                today = date.today()
+                max_date = today + timedelta(days=365)
+                if prediction_date > max_date:
+                    print(f"      ⚠️ Assigned date {prediction_date.strftime('%b %d %Y')} too far, capping to {max_date.strftime('%b %d %Y')}")
+                    prediction_date = max_date
+                
                 # Calculate realistic confidence intervals for assigned dates
                 days_std = 7  # Conservative 1-week standard deviation for assigned dates
                 ci_width = days_std * (1 + (rank - 1) * 0.2)  # Slightly wider for later ranks
@@ -2449,7 +2469,6 @@ class Command(BaseCommand):
                 date_ci_upper = prediction_date + timedelta(days=int(ci_width))
                 
                 # 📅 CRITICAL: CI cannot be before current analysis date!
-                today = date.today()
                 if date_ci_lower < today:
                     date_ci_lower = today
                 
