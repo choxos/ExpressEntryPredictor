@@ -2036,7 +2036,15 @@ class Command(BaseCommand):
             fallback_days = historical_intervals.get(ircc_category, 60.0)
             predicted_date = base_date + timedelta(days=int(fallback_days))
             ci_width = int(fallback_days * 0.3)  # ±30% confidence interval
-            return predicted_date, predicted_date - timedelta(days=ci_width), predicted_date + timedelta(days=ci_width)
+            ci_lower = predicted_date - timedelta(days=ci_width)
+            ci_upper = predicted_date + timedelta(days=ci_width)
+            
+            # 📅 CRITICAL: CI cannot be before current analysis date!
+            today = date.today()
+            if ci_lower < today:
+                ci_lower = today
+            
+            return predicted_date, ci_lower, ci_upper
         
         # Prepare data for date prediction (predict days_since_last_draw)
         date_features = working_df[['days_since_last_draw']].dropna()
@@ -2055,7 +2063,15 @@ class Command(BaseCommand):
             fallback_days = historical_intervals.get(ircc_category, 60.0)
             predicted_date = base_date + timedelta(days=int(fallback_days))
             ci_width = int(fallback_days * 0.3)  # ±30% confidence interval
-            return predicted_date, predicted_date - timedelta(days=ci_width), predicted_date + timedelta(days=ci_width)
+            ci_lower = predicted_date - timedelta(days=ci_width)
+            ci_upper = predicted_date + timedelta(days=ci_width)
+            
+            # 📅 CRITICAL: CI cannot be before current analysis date!
+            today = date.today()
+            if ci_lower < today:
+                ci_lower = today
+            
+            return predicted_date, ci_lower, ci_upper
         
         # Train multiple models to predict days_since_last_draw
         date_predictions = []
@@ -2146,6 +2162,11 @@ class Command(BaseCommand):
         predicted_date = base_date + timedelta(days=int(final_days_prediction))
         ci_lower = predicted_date - timedelta(days=int(ci_width))
         ci_upper = predicted_date + timedelta(days=int(ci_width))
+        
+        # 📅 CRITICAL: CI cannot be before current analysis date!
+        today = date.today()
+        if ci_lower < today:
+            ci_lower = today
         
         print(f"      ✅ Final prediction: {predicted_date.strftime('%b %d')} ({ci_lower.strftime('%b %d')}-{ci_upper.strftime('%b %d')}, 95% CI)")
         
@@ -2418,6 +2439,11 @@ class Command(BaseCommand):
                 ci_width = days_std * (1 + (rank - 1) * 0.2)  # Slightly wider for later ranks
                 date_ci_lower = prediction_date - timedelta(days=int(ci_width))
                 date_ci_upper = prediction_date + timedelta(days=int(ci_width))
+                
+                # 📅 CRITICAL: CI cannot be before current analysis date!
+                today = date.today()
+                if date_ci_lower < today:
+                    date_ci_lower = today
                 
                 print(f"      ✅ Using ASSIGNED date: {prediction_date.strftime('%b %d')} (conflict-free calendar)")
             else:
