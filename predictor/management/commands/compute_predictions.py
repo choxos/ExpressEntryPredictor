@@ -20,7 +20,64 @@ from predictor.ml_models import (
 
 
 class Command(BaseCommand):
-    help = 'Pre-compute predictions for all categories to avoid real-time calculations'
+    help = """
+    🚀 Advanced Temporal-Priority Prediction System with Comprehensive Logging
+    
+    🎯 FEATURES:
+    - Temporal-priority recursive forecasting (most urgent categories first)
+    - 2025 government policy alignment (CEC primary focus)
+    - Advanced ensemble modeling (optimized for VPS performance)
+    - Scientific confidence scoring (domain-aware)
+    - Conflict-free date coordination
+    - Comprehensive logging and debugging
+    
+    📊 MODELS: ARIMA, Prophet, LSTM, Holt-Winters, Bayesian, Clean Linear Regression
+    🔄 Method: Temporal-priority recursive forecasting (urgency-based)
+    📊 Focus: Most urgent draws first, then recursive progression
+    📁 Logs: Detailed logs saved to logs/ directory
+    
+    Usage: python manage.py compute_predictions [--force] [--category="Category Name"]
+    """
+    
+    def setup_comprehensive_logging(self):
+        """
+        🗂️ COMPREHENSIVE LOGGING SETUP
+        
+        Creates detailed logs for:
+        - Temporal priority calculations
+        - Date coordination logic  
+        - Model training and predictions
+        - Errors and warnings
+        - Performance metrics
+        """
+        # Create logs directory if it doesn't exist
+        log_dir = 'logs'
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+        
+        # Setup main prediction logger
+        timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+        log_file = os.path.join(log_dir, f'prediction_computation_{timestamp}.log')
+        
+        # Configure detailed logging
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(log_file, encoding='utf-8'),
+                logging.StreamHandler()  # Also show in console
+            ],
+            force=True  # Override any existing configuration
+        )
+        
+        self.logger = logging.getLogger('prediction_system')
+        self.logger.info("="*80)
+        self.logger.info("🚀 TEMPORAL-PRIORITY PREDICTION SYSTEM STARTED")
+        self.logger.info(f"📁 Log file: {log_file}")
+        self.logger.info("="*80)
+        
+        print(f"📁 Detailed logs saved to: {log_file}")
+        return self.logger, log_file
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -46,10 +103,20 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        # Setup comprehensive logging first
+        self.logger, log_file = self.setup_comprehensive_logging()
+        
         category_filter = options.get('category')
         force_recompute = options.get('force')
         num_predictions = options.get('predictions')
         show_summary = options.get('summary')
+        
+        # Log configuration
+        self.logger.info(f"🎯 CONFIGURATION:")
+        self.logger.info(f"   - force_recompute: {force_recompute}")
+        self.logger.info(f"   - category_filter: {category_filter}")
+        self.logger.info(f"   - num_predictions: {num_predictions}")
+        self.logger.info(f"   - show_summary: {show_summary}")
         
         # Track successful and failed categories for summary
         successful_categories = []
@@ -229,6 +296,16 @@ class Command(BaseCommand):
                     ))
                 
             except Exception as e:
+                # Log detailed error information
+                self.logger.error(f"❌ CRITICAL ERROR processing {ircc_category}:")
+                self.logger.error(f"   Representative: {representative_category.name}")
+                self.logger.error(f"   Error type: {type(e).__name__}")
+                self.logger.error(f"   Error message: {str(e)}")
+                self.logger.error(f"   Priority level: {self.get_category_priority_2025(ircc_category)}")
+                
+                import traceback
+                self.logger.error(f"   Full traceback:\n{traceback.format_exc()}")
+                
                 local_failed_categories.append((ircc_category, str(e)))
                 failed_categories.append({
                     'name': ircc_category,
@@ -512,7 +589,10 @@ class Command(BaseCommand):
                 metrics = current_model.train(df)
                 print(f"  ✅ {model_name} trained successfully")
             except Exception as e:
-                print(f"  ❌ {model_name} training failed: {e}")
+                error_msg = f"  ❌ {model_name} training failed: {e}"
+                print(error_msg)
+                if hasattr(self, 'logger'):
+                    self.logger.warning(f"MODEL TRAINING FAILED: {model_name} - {str(e)}")
                 continue  # Skip this model and move to next
         
             # 🔄 PREDICTION CREATION LOOP for current model
