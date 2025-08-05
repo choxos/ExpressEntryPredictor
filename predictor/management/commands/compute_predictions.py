@@ -356,17 +356,19 @@ class Command(BaseCommand):
         priority = self.get_category_priority_2025(ircc_category)
         
         if priority == 'HIGHEST':
+            # ⚡ VPS OPTIMIZATION: Reduced from 52 to prevent timeouts
             # Canadian Experience Class: PRIMARY 2025 FOCUS
-            # Government quote: "focus will be to invite candidates with experience working in Canada"
-            return min(52, base_count * 4)  # Up to 1 year predictions (bi-weekly draws)
+            return min(15, base_count * 2)  # ⚡ Reduced for VPS performance
         
         elif priority == 'HIGH':
+            # ⚡ VPS OPTIMIZATION: Reduced from 26 to prevent timeouts
             # Healthcare (55.8% great need) + French (government mandate)
-            return min(26, base_count * 2)  # Up to 6 months (monthly draws)
+            return min(10, base_count)  # ⚡ Reduced for VPS performance
         
         elif priority == 'MEDIUM':
+            # ⚡ VPS OPTIMIZATION: Reduced from 12 to prevent timeouts
             # Trades (38.8% great need), Education (28.4% great need), PNP
-            return min(12, base_count)  # Up to 3 months (bi-monthly draws)
+            return min(8, base_count)  # ⚡ Reduced for VPS performance
         
         elif priority == 'LOW':
             # STEM, Agriculture: Minimal consultation support
@@ -947,31 +949,33 @@ class Command(BaseCommand):
             except ImportError:
                 pass
         
+        # ⚡ SKIP SLOW MODELS for VPS performance
         # Advanced time series models
-        if data_size >= 15:
-            try:
-                from predictor.ml_models import VARPredictor, DynamicLinearModelPredictor
-                models_to_test.extend([
-                    ('VAR', VARPredictor()),
-                    ('Dynamic Linear Model', DynamicLinearModelPredictor()),
-                ])
-            except ImportError:
-                pass
+        # if data_size >= 15:
+        #     try:
+        #         from predictor.ml_models import VARPredictor, DynamicLinearModelPredictor
+        #         models_to_test.extend([
+        #             ('VAR', VARPredictor()),
+        #             ('Dynamic Linear Model', DynamicLinearModelPredictor()),
+        #         ])
+        #     except ImportError:
+        #         pass
         
-        if data_size >= 20:
-            try:
-                from predictor.ml_models import SARIMAPredictor
-                models_to_test.append(('SARIMA', SARIMAPredictor()))
-            except ImportError:
-                pass
+        # if data_size >= 20:
+        #     try:
+        #         from predictor.ml_models import SARIMAPredictor
+        #         models_to_test.append(('SARIMA', SARIMAPredictor()))
+        #     except ImportError:
+        #         pass
         
+        # ⚡ SKIP ENSEMBLE for performance - too slow on VPS
         # Advanced ensemble (use when we have enough models)
-        if data_size >= 25:
-            try:
-                from predictor.ml_models import AdvancedEnsemblePredictor
-                models_to_test.append(('Advanced Ensemble', AdvancedEnsemblePredictor()))
-            except ImportError:
-                pass
+        # if data_size >= 25:
+        #     try:
+        #         from predictor.ml_models import AdvancedEnsemblePredictor
+        #         models_to_test.append(('Advanced Ensemble', AdvancedEnsemblePredictor()))
+        #     except ImportError:
+        #         pass
         
         # Clean ML models (no data leakage)
         if data_size >= 6:
@@ -988,12 +992,13 @@ class Command(BaseCommand):
             except ImportError:
                 pass
         
-        if data_size >= 10:
-            try:
-                from predictor.ml_models import GaussianProcessPredictor
-                models_to_test.append(('Gaussian Process', GaussianProcessPredictor()))
-            except ImportError:
-                pass
+        # ⚡ SKIP GAUSSIAN PROCESS - very slow on VPS
+        # if data_size >= 10:
+        #     try:
+        #         from predictor.ml_models import GaussianProcessPredictor
+        #         models_to_test.append(('Gaussian Process', GaussianProcessPredictor()))
+        #     except ImportError:
+        #         pass
         
         print(f"📊 Testing {len(models_to_test)} models: {[name for name, _ in models_to_test]}")
         
@@ -1075,31 +1080,33 @@ class Command(BaseCommand):
             except ImportError:
                 pass
         
+        # ⚡ SKIP SLOW MODELS for VPS performance
         # Advanced time series models
-        if data_size >= 15:
-            try:
-                from predictor.ml_models import VARPredictor, DynamicLinearModelPredictor
-                models_to_test.extend([
-                    ('VAR', VARPredictor()),
-                    ('Dynamic Linear Model', DynamicLinearModelPredictor()),
-                ])
-            except ImportError:
-                pass
+        # if data_size >= 15:
+        #     try:
+        #         from predictor.ml_models import VARPredictor, DynamicLinearModelPredictor
+        #         models_to_test.extend([
+        #             ('VAR', VARPredictor()),
+        #             ('Dynamic Linear Model', DynamicLinearModelPredictor()),
+        #         ])
+        #     except ImportError:
+        #         pass
         
-        if data_size >= 20:
-            try:
-                from predictor.ml_models import SARIMAPredictor
-                models_to_test.append(('SARIMA', SARIMAPredictor()))
-            except ImportError:
-                pass
+        # if data_size >= 20:
+        #     try:
+        #         from predictor.ml_models import SARIMAPredictor
+        #         models_to_test.append(('SARIMA', SARIMAPredictor()))
+        #     except ImportError:
+        #         pass
         
+        # ⚡ SKIP ENSEMBLE for performance - too slow on VPS
         # Advanced ensemble (use when we have enough models)
-        if data_size >= 25:
-            try:
-                from predictor.ml_models import AdvancedEnsemblePredictor
-                models_to_test.append(('Advanced Ensemble', AdvancedEnsemblePredictor()))
-            except ImportError:
-                pass
+        # if data_size >= 25:
+        #     try:
+        #         from predictor.ml_models import AdvancedEnsemblePredictor
+        #         models_to_test.append(('Advanced Ensemble', AdvancedEnsemblePredictor()))
+        #     except ImportError:
+        #         pass
         
         # Clean ML models (no data leakage)
         if data_size >= 6:
@@ -1116,12 +1123,13 @@ class Command(BaseCommand):
             except ImportError:
                 pass
         
-        if data_size >= 10:
-            try:
-                from predictor.ml_models import GaussianProcessPredictor
-                models_to_test.append(('Gaussian Process', GaussianProcessPredictor()))
-            except ImportError:
-                pass
+        # ⚡ SKIP GAUSSIAN PROCESS - very slow on VPS
+        # if data_size >= 10:
+        #     try:
+        #         from predictor.ml_models import GaussianProcessPredictor
+        #         models_to_test.append(('Gaussian Process', GaussianProcessPredictor()))
+        #     except ImportError:
+        #         pass
         
         print(f"📊 Testing {len(models_to_test)} models: {[name for name, _ in models_to_test]}")
         
@@ -2011,15 +2019,15 @@ class Command(BaseCommand):
     
     def predict_next_draw_date(self, working_df, ircc_category, base_date, rank):
         """
-        🎯 DYNAMIC DATE PREDICTION: Use ML models to predict actual draw dates
+        🎯 FAST DATE PREDICTION: Use statistical methods instead of slow ML models
         
-        Instead of fixed intervals, train models on historical 'days_since_last_draw' 
-        patterns to predict when the next draw will actually occur.
+        Optimized for VPS performance - uses historical averages and patterns
+        instead of training multiple ML models per rank.
         
         Returns: (predicted_date, confidence_interval_lower, confidence_interval_upper)
         """
         
-        print(f"   📅 Training date prediction models for rank {rank}...")
+        print(f"   📅 Fast date prediction for rank {rank} (optimized)...")
         
         if len(working_df) < 3:
             # Fallback using HISTORICAL AVERAGES instead of arbitrary values
@@ -2073,41 +2081,20 @@ class Command(BaseCommand):
             
             return predicted_date, ci_lower, ci_upper
         
-        # Train multiple models to predict days_since_last_draw
+        # ⚡ FAST STATISTICAL PREDICTION: Skip slow ML models
         date_predictions = []
         
         try:
-            # 1. ARIMA for time series patterns
-            from statsmodels.tsa.arima.model import ARIMA
-            arima_data = date_features['days_since_last_draw'].values
-            try:
-                arima_model = ARIMA(arima_data, order=(1, 0, 1))
-                arima_fit = arima_model.fit()
-                arima_pred = arima_fit.forecast(steps=1)[0]
-                date_predictions.append(max(7, min(365, arima_pred)))  # Bound between 7-365 days
-                print(f"      🔧 ARIMA date prediction: {arima_pred:.0f} days")
-            except:
-                pass
-            
-            # 2. Exponential smoothing for trend
-            from statsmodels.tsa.holtwinters import ExponentialSmoothing
-            try:
-                exp_model = ExponentialSmoothing(arima_data, trend='add')
-                exp_fit = exp_model.fit()
-                exp_pred = exp_fit.forecast(steps=1)[0]
-                date_predictions.append(max(7, min(365, exp_pred)))
-                print(f"      🔧 Exponential Smoothing date prediction: {exp_pred:.0f} days")
-            except:
-                pass
+            # Skip slow ARIMA and Exponential Smoothing - just use statistical methods
                 
-            # 3. Historical average with recent weighting
+            # 1. Historical average with recent weighting
             recent_avg = date_features['days_since_last_draw'].tail(5).mean()
             overall_avg = date_features['days_since_last_draw'].mean()
             weighted_avg = 0.7 * recent_avg + 0.3 * overall_avg
             date_predictions.append(max(7, min(365, weighted_avg)))
             print(f"      🔧 Weighted average date prediction: {weighted_avg:.0f} days")
             
-            # 4. Category-specific seasonal patterns
+            # 2. Category-specific seasonal patterns (fast)
             if len(working_df) > 12:  # Need enough data for seasonal analysis
                 # Look at same month patterns from previous years
                 current_month = base_date.month
@@ -2116,6 +2103,21 @@ class Command(BaseCommand):
                     seasonal_avg = same_month_data['days_since_last_draw'].mean()
                     date_predictions.append(max(7, min(365, seasonal_avg)))
                     print(f"      🔧 Seasonal pattern prediction: {seasonal_avg:.0f} days")
+            
+            # 3. Use historical intervals as additional predictor
+            historical_intervals = {
+                'Provincial Nominee Program': 29.4,
+                'Canadian Experience Class': 25.2,
+                'French-language proficiency': 32.8,
+                'Healthcare and social services occupations': 94.4,
+                'Trade occupations': 149.0,
+                'STEM occupations': 140.5,
+                'Agriculture and agri-food occupations': 70.5,
+                'Education occupations': 60.0
+            }
+            historical_avg = historical_intervals.get(ircc_category, 60.0)
+            date_predictions.append(historical_avg)
+            print(f"      🔧 Historical average: {historical_avg:.0f} days")
             
         except Exception as e:
             print(f"      ⚠️ Date prediction models failed: {e}")
@@ -2302,15 +2304,21 @@ class Command(BaseCommand):
         working_df = df.copy()
         total_created = 0
         
-        # 🔄 RECURSIVE LOOP: Policy-based predictions with dependency chain
+        # ⚡ PERFORMANCE OPTIMIZATION: Train models ONCE, then use for all ranks
+        print(f"\n🎯 TRAINING MODELS ONCE (for {num_predictions} predictions):")
+        base_models = self.select_best_model(working_df, category)
+        if not base_models:
+            print(f"   ❌ No models available")
+            return 0
+        
+        print(f"   ✅ Trained {len(base_models)} models once, will reuse for all ranks")
+        
+        # 🔄 FAST RECURSIVE LOOP: Reuse trained models, just update predictions
         for rank in range(1, num_predictions + 1):  # Based on government policy
-            print(f"\n🎯 RECURSIVE RANK {rank}:")
+            print(f"\n🎯 RECURSIVE RANK {rank} (using pre-trained models):")
             
-            # Evaluate models for current data state
-            all_models = self.select_best_model(working_df, category)
-            if not all_models:
-                print(f"   ❌ No models available for rank {rank}")
-                break
+            # Use pre-trained models instead of re-training
+            all_models = base_models
             
             # Generate predictions from all models for this rank
             rank_predictions = []
