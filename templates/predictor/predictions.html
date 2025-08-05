@@ -665,30 +665,30 @@ async function createCategoryContent(categoryData) {
                         <div class="card-body">
                             <div class="row text-center mb-3">
                                 <div class="col-md-3">
-                                    <div class="p-3 bg-white rounded shadow-sm">
+                                    <div class="p-3 bg-white rounded shadow-sm text-dark">
                                         <h4 class="mb-1 text-primary"><i class="fas fa-calendar"></i></h4>
-                                        <h5 class="mb-1 fw-bold">${displayDate}</h5>
+                                        <h5 class="mb-1 fw-bold text-dark">${displayDate}</h5>
                                         <small class="text-muted">Draw Date</small>
                                     </div>
                                 </div>
                                 <div class="col-md-3">
-                                    <div class="p-3 bg-white rounded shadow-sm">
+                                    <div class="p-3 bg-white rounded shadow-sm text-dark">
                                         <h4 class="mb-1 text-warning"><i class="fas fa-trophy"></i></h4>
-                                        <h5 class="mb-1 fw-bold">${formatCRSWithCI(primaryPrediction.predicted_crs_score, primaryPrediction.uncertainty_range)}</h5>
+                                        <h5 class="mb-1 fw-bold text-dark">${formatCRSWithCI(primaryPrediction.predicted_crs_score, primaryPrediction.uncertainty_range)}</h5>
                                         <small class="text-muted">CRS Score</small>
                                     </div>
                                 </div>
                                 <div class="col-md-3">
-                                    <div class="p-3 bg-white rounded shadow-sm">
+                                    <div class="p-3 bg-white rounded shadow-sm text-dark">
                                         <h4 class="mb-1 text-success"><i class="fas fa-users"></i></h4>
-                                        <h5 class="mb-1 fw-bold">${(primaryPrediction.predicted_invitations || 0).toLocaleString()}</h5>
+                                        <h5 class="mb-1 fw-bold text-dark">${(primaryPrediction.predicted_invitations || 0).toLocaleString()}</h5>
                                         <small class="text-muted">Invitations</small>
                                     </div>
                                 </div>
                                 <div class="col-md-3">
-                                    <div class="p-3 bg-white rounded shadow-sm">
+                                    <div class="p-3 bg-white rounded shadow-sm text-dark">
                                         <h4 class="mb-1 text-info"><i class="fas fa-brain"></i></h4>
-                                        <h5 class="mb-1 fw-bold">${primaryPrediction.model_name || 'AI Model'}</h5>
+                                        <h5 class="mb-1 fw-bold text-dark">${primaryPrediction.model_name || 'AI Model'}</h5>
                                         <small class="text-muted">Best Model</small>
                                     </div>
                                 </div>
