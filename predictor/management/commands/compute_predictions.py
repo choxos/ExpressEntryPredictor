@@ -1949,6 +1949,114 @@ class Command(BaseCommand):
         
         return draw_calendar, category_priority_order
     
+    def get_dynamic_intervals(self):
+        """Get cached dynamic intervals, calculate if not cached"""
+        if not hasattr(self, '_dynamic_intervals_cache') or self._dynamic_intervals_cache is None:
+            self._dynamic_intervals_cache = self.calculate_dynamic_intervals()
+        return self._dynamic_intervals_cache
+    
+    def calculate_dynamic_intervals(self, min_draws=2, recent_weight=0.7):
+        """
+        🔥 DYNAMIC INTERVAL CALCULATION FROM REAL DATABASE DATA
+        
+        Calculates actual draw intervals for each category from database instead of hardcoding.
+        Prioritizes recent patterns over historical averages to reflect changing immigration policy.
+        
+        Args:
+            min_draws: Minimum draws needed for reliable calculation (default: 2)
+            recent_weight: Weight for recent intervals vs all-time average (default: 0.7)
+            
+        Returns:
+            dict: {category_name: {'avg': float, 'min': int, 'max': int, 'std': float, 'recent_avg': float}}
+        """
+        from predictor.models import ExpressEntryDraw
+        from collections import defaultdict
+        import pandas as pd
+        
+        print("📊 CALCULATING DYNAMIC INTERVALS FROM DATABASE...")
+        
+        # Get draws from 2022+ for recent patterns
+        draws = ExpressEntryDraw.objects.filter(
+            date__gte='2022-01-01'
+        ).select_related('category').order_by('category__name', 'date')
+        
+        # Group by category
+        category_data = defaultdict(list)
+        for draw in draws:
+            category_data[draw.category.name].append(draw.date)
+        
+        intervals = {}
+        fallback_intervals = {
+            'high_priority': 25.0,    # For CEC, French, Healthcare 
+            'medium_priority': 35.0,  # For PNP, Education
+            'low_priority': 60.0,     # For STEM, Agriculture, Trade
+            'eliminated': 90.0        # For Transport, General (shouldn't be used)
+        }
+        
+        for category_name, dates in category_data.items():
+            if len(dates) < min_draws:
+                # Determine fallback based on category type
+                if any(term in category_name.lower() for term in ['canadian experience', 'french', 'healthcare']):
+                    fallback = fallback_intervals['high_priority']
+                elif any(term in category_name.lower() for term in ['provincial nominee', 'education']):
+                    fallback = fallback_intervals['medium_priority']
+                elif any(term in category_name.lower() for term in ['stem', 'agriculture', 'trade']):
+                    fallback = fallback_intervals['low_priority']
+                else:
+                    fallback = fallback_intervals['medium_priority']
+                
+                intervals[category_name] = {
+                    'avg': fallback,
+                    'min': int(fallback * 0.5),
+                    'max': int(fallback * 2.0),
+                    'std': fallback * 0.3,
+                    'recent_avg': fallback,
+                    'data_points': len(dates)
+                }
+                print(f"   📝 {category_name[:45]:45} | {len(dates)} draws → fallback {fallback:.0f} days")
+                continue
+            
+            # Sort dates and calculate intervals
+            dates.sort()
+            day_intervals = []
+            for i in range(1, len(dates)):
+                days_diff = (dates[i] - dates[i-1]).days
+                day_intervals.append(days_diff)
+            
+            if day_intervals:
+                avg_interval = sum(day_intervals) / len(day_intervals)
+                min_interval = min(day_intervals)
+                max_interval = max(day_intervals)
+                std_interval = pd.Series(day_intervals).std()
+                
+                # Calculate recent average (last 2-3 intervals)
+                recent_count = min(3, len(day_intervals))
+                recent_intervals = day_intervals[-recent_count:] if recent_count > 0 else day_intervals
+                recent_avg = sum(recent_intervals) / len(recent_intervals)
+                
+                # Weighted average: prioritize recent patterns
+                weighted_avg = (recent_weight * recent_avg) + ((1 - recent_weight) * avg_interval)
+                
+                # Cap extreme values for safety
+                weighted_avg = max(7, min(180, weighted_avg))  # 1 week to 6 months max
+                
+                intervals[category_name] = {
+                    'avg': weighted_avg,
+                    'min': min_interval,
+                    'max': max_interval,
+                    'std': std_interval,
+                    'recent_avg': recent_avg,
+                    'data_points': len(dates)
+                }
+                
+                print(f"   ✅ {category_name[:45]:45} | {len(dates)} draws → {weighted_avg:.1f} days (recent: {recent_avg:.1f})")
+        
+        print(f"   🎯 Calculated intervals for {len(intervals)} categories from real data")
+        if hasattr(self, 'logger'):
+            self.logger.info(f"📊 Dynamic intervals calculated for {len(intervals)} categories")
+            
+        return intervals
+    
     def assign_category_dates(self, ircc_groups, draw_calendar, category_priority_order, num_predictions):
         """
         Assign realistic dates to categories based on HISTORICAL DATA + 2025 GOVERNMENT PRIORITIES.
@@ -1959,19 +2067,8 @@ class Command(BaseCommand):
         """
         category_schedules = {}
         
-        # 📊 HISTORICAL INTERVAL DATA (2022+) - REAL PATTERNS  
-        historical_intervals = {
-            'Provincial Nominee Program': {'avg': 29.4, 'min': 6, 'max': 224, 'std': 49.0},
-            'Canadian Experience Class': {'avg': 25.2, 'min': 6, 'max': 97, 'std': 22.8},  # NOT bi-weekly!
-            'French-language proficiency': {'avg': 32.8, 'min': 5, 'max': 78, 'std': 20.4},
-            'Healthcare and social services occupations': {'avg': 35.0, 'min': 8, 'max': 60, 'std': 15.0},  # FIXED: Reduced from 94.4 to prevent 2026+ dates
-            'Trade occupations': {'avg': 149.0, 'min': 111, 'max': 198, 'std': 44.5},
-            'STEM occupations': {'avg': 140.5, 'min': 125, 'max': 156, 'std': 21.9},
-            'Agriculture and agri-food occupations': {'avg': 70.5, 'min': 57, 'max': 84, 'std': 19.1},
-            'Transport occupations': {'avg': 87.5, 'min': 84, 'max': 91, 'std': 4.9},  # ELIMINATED 2025
-            'General': {'avg': 17.3, 'min': 6, 'max': 57, 'std': 12.3},  # ELIMINATED 2025
-            'Education occupations': {'avg': 60.0, 'min': 30, 'max': 90, 'std': 20.0}  # NEW 2025 - estimated
-        }
+        # 📊 DYNAMIC INTERVAL CALCULATION FROM DATABASE
+        historical_intervals = self.get_dynamic_intervals()
         
         # 🎯 SEQUENTIAL PROCESSING: Most frequent/prioritized first, then reserve dates
         # Process in priority order to ensure proper date reservation
@@ -2113,18 +2210,10 @@ class Command(BaseCommand):
         print(f"   📅 Fast date prediction for rank {rank} (optimized)...")
         
         if len(working_df) < 3:
-            # Fallback using HISTORICAL AVERAGES instead of arbitrary values
-            historical_intervals = {
-                'Provincial Nominee Program': 29.4,
-                'Canadian Experience Class': 25.2,  # NOT 35 days!
-                'French-language proficiency': 32.8,
-                'Healthcare and social services occupations': 35.0,  # FIXED: Reduced from 94.4
-                'Trade occupations': 149.0,
-                'STEM occupations': 140.5,
-                'Agriculture and agri-food occupations': 70.5,
-                'Education occupations': 60.0  # NEW 2025 category
-            }
-            fallback_days = historical_intervals.get(ircc_category, 60.0)
+            # 📊 DYNAMIC: Get intervals from database instead of hardcoding
+            dynamic_intervals = self.get_dynamic_intervals()
+            category_info = dynamic_intervals.get(ircc_category, {})
+            fallback_days = category_info.get('avg', 35.0)  # Safe default
             predicted_date = base_date + timedelta(days=int(fallback_days))
             ci_width = int(fallback_days * 0.3)  # ±30% confidence interval
             ci_lower = predicted_date - timedelta(days=ci_width)
@@ -2140,18 +2229,10 @@ class Command(BaseCommand):
         # Prepare data for date prediction (predict days_since_last_draw)
         date_features = working_df[['days_since_last_draw']].dropna()
         if len(date_features) < 3:
-            # Use same historical intervals for consistency
-            historical_intervals = {
-                'Provincial Nominee Program': 29.4,
-                'Canadian Experience Class': 25.2,  # NOT 35 days!
-                'French-language proficiency': 32.8,
-                'Healthcare and social services occupations': 35.0,  # FIXED: Reduced from 94.4
-                'Trade occupations': 149.0,
-                'STEM occupations': 140.5,
-                'Agriculture and agri-food occupations': 70.5,
-                'Education occupations': 60.0  # NEW 2025 category
-            }
-            fallback_days = historical_intervals.get(ircc_category, 60.0)
+            # 📊 DYNAMIC: Use same calculated intervals for consistency
+            dynamic_intervals = self.calculate_dynamic_intervals()
+            category_info = dynamic_intervals.get(ircc_category, {})
+            fallback_days = category_info.get('avg', 35.0)  # Safe default
             predicted_date = base_date + timedelta(days=int(fallback_days))
             ci_width = int(fallback_days * 0.3)  # ±30% confidence interval
             ci_lower = predicted_date - timedelta(days=ci_width)
@@ -2187,18 +2268,10 @@ class Command(BaseCommand):
                     date_predictions.append(max(7, min(365, seasonal_avg)))
                     print(f"      🔧 Seasonal pattern prediction: {seasonal_avg:.0f} days")
             
-            # 3. Use historical intervals as additional predictor
-            historical_intervals = {
-                'Provincial Nominee Program': 29.4,
-                'Canadian Experience Class': 25.2,
-                'French-language proficiency': 32.8,
-                'Healthcare and social services occupations': 35.0,  # FIXED: Reduced from 94.4
-                'Trade occupations': 149.0,
-                'STEM occupations': 140.5,
-                'Agriculture and agri-food occupations': 70.5,
-                'Education occupations': 60.0
-            }
-            historical_avg = historical_intervals.get(ircc_category, 60.0)
+            # 3. 📊 DYNAMIC: Use calculated intervals as additional predictor
+            dynamic_intervals = self.get_dynamic_intervals()
+            category_info = dynamic_intervals.get(ircc_category, {})
+            historical_avg = category_info.get('avg', 35.0)  # Safe default
             date_predictions.append(historical_avg)
             print(f"      🔧 Historical average: {historical_avg:.0f} days")
             
