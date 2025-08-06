@@ -224,29 +224,42 @@ function displayCategories() {
         let predictedScore = 'N/A';
         let nextDrawDate = 'N/A';
         
-        if (categoryData.predictions && categoryData.predictions.length > 0) {
-            const firstPrediction = categoryData.predictions[0];
-            
-            if (firstPrediction.models && firstPrediction.models.length > 0) {
-                // New format: get best model prediction
-                const bestModel = firstPrediction.models[0]; // Highest confidence model
-                predictedScore = bestModel.predicted_crs_score || 'N/A';
-                nextDrawDate = firstPrediction.predicted_date;
-            } else {
-                // Old format fallback
-                predictedScore = firstPrediction.predicted_crs_score || 'N/A';
-                nextDrawDate = firstPrediction.predicted_date;
+        try {
+            if (categoryData.predictions && Array.isArray(categoryData.predictions) && categoryData.predictions.length > 0) {
+                const firstPrediction = categoryData.predictions[0];
+                
+                if (firstPrediction && firstPrediction.models && Array.isArray(firstPrediction.models) && firstPrediction.models.length > 0) {
+                    // New format: get best model prediction
+                    const bestModel = firstPrediction.models[0]; // Highest confidence model
+                    if (bestModel) {
+                        predictedScore = bestModel.predicted_crs_score || 'N/A';
+                        nextDrawDate = firstPrediction.predicted_date || 'N/A';
+                    }
+                } else if (firstPrediction) {
+                    // Old format fallback
+                    predictedScore = firstPrediction.predicted_crs_score || 'N/A';
+                    nextDrawDate = firstPrediction.predicted_date || 'N/A';
+                }
             }
+        } catch (error) {
+            console.error(`Error processing display data for category ${categoryData.category_name}:`, error);
+            // Keep using 'N/A' fallback values
         }
         
         // Calculate days to next predicted draw
         let daysToNextDraw = 'N/A';
-        if (nextDrawDate !== 'N/A') {
-            const drawDate = new Date(nextDrawDate);
-            const today = new Date();
-            const diffTime = drawDate - today;
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            daysToNextDraw = diffDays > 0 ? diffDays : 'Soon';
+        if (nextDrawDate !== 'N/A' && nextDrawDate) {
+            try {
+                const drawDate = new Date(nextDrawDate);
+                if (!isNaN(drawDate.getTime())) {
+                    const today = new Date();
+                    const diffTime = drawDate - today;
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    daysToNextDraw = diffDays > 0 ? diffDays : 'Soon';
+                }
+            } catch (error) {
+                console.error(`Error calculating days to next draw for ${nextDrawDate}:`, error);
+            }
         }
         
         col.innerHTML = `
@@ -319,7 +332,13 @@ async function calculateDrawTime() {
         if (window.trackCalculatorUse) {
             const categoryNames = selectedCategories.map(id => {
                 const checkbox = document.querySelector(`input[type="checkbox"][value="${id}"]`);
-                return checkbox ? checkbox.closest('label').textContent.trim() : 'Unknown';
+                if (checkbox) {
+                    const label = checkbox.closest('label');
+                    if (label) {
+                        return label.textContent.trim();
+                    }
+                }
+                return 'Unknown';
             }).join(', ');
             window.trackCalculatorUse(categoryNames, crsScore);
         }
@@ -339,7 +358,10 @@ function calculateEstimates(userScore, selectedCategories) {
     
     selectedCategories.forEach(categoryId => {
         const categoryData = currentPredictions[categoryId];
-        if (!categoryData) return;
+        if (!categoryData) {
+            console.warn(`No prediction data found for category ID: ${categoryId}`);
+            return;
+        }
         
         const recentDraws = categoryData.recent_draws;
         const predictions = categoryData.predictions;
@@ -349,24 +371,34 @@ function calculateEstimates(userScore, selectedCategories) {
         let nextDrawDate = null;
         let modelConfidence = 0;
         
-        if (predictions && predictions.length > 0) {
-            const firstPrediction = predictions[0];
-            
-            if (firstPrediction.models && firstPrediction.models.length > 0) {
-                // New format: get best model prediction
-                const bestModel = firstPrediction.models[0]; // Highest confidence model
-                currentPredictedScore = bestModel.predicted_crs_score || currentPredictedScore;
-                nextDrawDate = firstPrediction.predicted_date;
-                modelConfidence = bestModel.confidence_score || 0;
-            } else {
-                // Old format fallback
-                currentPredictedScore = firstPrediction.predicted_crs_score || currentPredictedScore;
-                nextDrawDate = firstPrediction.predicted_date;
-                modelConfidence = firstPrediction.confidence_score || 0;
+        try {
+            if (predictions && Array.isArray(predictions) && predictions.length > 0) {
+                const firstPrediction = predictions[0];
+                
+                if (firstPrediction && firstPrediction.models && Array.isArray(firstPrediction.models) && firstPrediction.models.length > 0) {
+                    // New format: get best model prediction
+                    const bestModel = firstPrediction.models[0]; // Highest confidence model
+                    if (bestModel) {
+                        currentPredictedScore = bestModel.predicted_crs_score || currentPredictedScore;
+                        nextDrawDate = firstPrediction.predicted_date || null;
+                        modelConfidence = bestModel.confidence_score || 0;
+                    }
+                } else if (firstPrediction) {
+                    // Old format fallback
+                    currentPredictedScore = firstPrediction.predicted_crs_score || currentPredictedScore;
+                    nextDrawDate = firstPrediction.predicted_date || null;
+                    modelConfidence = firstPrediction.confidence_score || 0;
+                }
+            } else if (recentDraws && Array.isArray(recentDraws) && recentDraws.length > 0) {
+                // Fallback to historical average if no predictions
+                const validDraws = recentDraws.filter(draw => draw && typeof draw.crs_score === 'number');
+                if (validDraws.length > 0) {
+                    currentPredictedScore = validDraws.reduce((sum, draw) => sum + draw.crs_score, 0) / validDraws.length;
+                }
             }
-        } else if (recentDraws && recentDraws.length > 0) {
-            // Fallback to historical average if no predictions
-            currentPredictedScore = recentDraws.reduce((sum, draw) => sum + draw.crs_score, 0) / recentDraws.length;
+        } catch (error) {
+            console.error(`Error processing prediction data for category ${categoryData.category_name}:`, error);
+            // Keep using default fallback values
         }
         
         // Calculate score difference
