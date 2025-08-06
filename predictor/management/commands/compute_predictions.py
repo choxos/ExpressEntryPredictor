@@ -1964,7 +1964,7 @@ class Command(BaseCommand):
             'Provincial Nominee Program': {'avg': 29.4, 'min': 6, 'max': 224, 'std': 49.0},
             'Canadian Experience Class': {'avg': 25.2, 'min': 6, 'max': 97, 'std': 22.8},  # NOT bi-weekly!
             'French-language proficiency': {'avg': 32.8, 'min': 5, 'max': 78, 'std': 20.4},
-            'Healthcare and social services occupations': {'avg': 94.4, 'min': 8, 'max': 163, 'std': 57.1},
+            'Healthcare and social services occupations': {'avg': 35.0, 'min': 8, 'max': 60, 'std': 15.0},  # FIXED: Reduced from 94.4 to prevent 2026+ dates
             'Trade occupations': {'avg': 149.0, 'min': 111, 'max': 198, 'std': 44.5},
             'STEM occupations': {'avg': 140.5, 'min': 125, 'max': 156, 'std': 21.9},
             'Agriculture and agri-food occupations': {'avg': 70.5, 'min': 57, 'max': 84, 'std': 19.1},
@@ -2047,18 +2047,18 @@ class Command(BaseCommand):
                                 weeks_assigned.append(current_week)
                             elif week_info['assigned_secondary'] is None:  # Fallback to Thursday
                                 dates.append(week_info['secondary'])  # Thursday
-                                draw_calendar[current_week]['assigned_secondary'] = ircc_category
-                                weeks_assigned.append(current_week)
+                            draw_calendar[current_week]['assigned_secondary'] = ircc_category
+                            weeks_assigned.append(current_week)
                         else:
                             # 🎯 French: Thursday preference (after CEC gets primary Thursday choice)
                             if week_info['assigned_secondary'] is None:  # Thursday preferred
                                 dates.append(week_info['secondary'])  # Thursday
-                                draw_calendar[current_week]['assigned_secondary'] = ircc_category
-                                weeks_assigned.append(current_week)
+                            draw_calendar[current_week]['assigned_secondary'] = ircc_category
+                            weeks_assigned.append(current_week)
                             elif week_info['assigned_primary'] is None:  # Fallback to Wednesday
                                 dates.append(week_info['primary'])  # Wednesday
-                                draw_calendar[current_week]['assigned_primary'] = ircc_category
-                                weeks_assigned.append(current_week)
+                            draw_calendar[current_week]['assigned_primary'] = ircc_category
+                            weeks_assigned.append(current_week)
                     
                     else:  # MEDIUM/LOW - Gets remaining slots
                         # Other categories take whatever is available
@@ -2118,7 +2118,7 @@ class Command(BaseCommand):
                 'Provincial Nominee Program': 29.4,
                 'Canadian Experience Class': 25.2,  # NOT 35 days!
                 'French-language proficiency': 32.8,
-                'Healthcare and social services occupations': 94.4,
+                'Healthcare and social services occupations': 35.0,  # FIXED: Reduced from 94.4
                 'Trade occupations': 149.0,
                 'STEM occupations': 140.5,
                 'Agriculture and agri-food occupations': 70.5,
@@ -2145,7 +2145,7 @@ class Command(BaseCommand):
                 'Provincial Nominee Program': 29.4,
                 'Canadian Experience Class': 25.2,  # NOT 35 days!
                 'French-language proficiency': 32.8,
-                'Healthcare and social services occupations': 94.4,
+                'Healthcare and social services occupations': 35.0,  # FIXED: Reduced from 94.4
                 'Trade occupations': 149.0,
                 'STEM occupations': 140.5,
                 'Agriculture and agri-food occupations': 70.5,
@@ -2192,7 +2192,7 @@ class Command(BaseCommand):
                 'Provincial Nominee Program': 29.4,
                 'Canadian Experience Class': 25.2,
                 'French-language proficiency': 32.8,
-                'Healthcare and social services occupations': 94.4,
+                'Healthcare and social services occupations': 35.0,  # FIXED: Reduced from 94.4
                 'Trade occupations': 149.0,
                 'STEM occupations': 140.5,
                 'Agriculture and agri-food occupations': 70.5,
@@ -2471,8 +2471,8 @@ class Command(BaseCommand):
                                 predicted_score = predicted_score[0] if hasattr(predicted_score, '__len__') else predicted_score
                             else:
                                 # Time series models with parameterless predict()
-                                predicted_score = model.predict()
-                                predicted_score = predicted_score[0] if isinstance(predicted_score, list) else predicted_score
+                            predicted_score = model.predict()
+                            predicted_score = predicted_score[0] if isinstance(predicted_score, list) else predicted_score
                     else:
                         predicted_score = working_df['lowest_crs_score'].mean()
                     
@@ -2553,10 +2553,14 @@ class Command(BaseCommand):
                     date_ci_lower = today
                 
                 print(f"      ✅ Using ASSIGNED date: {prediction_date.strftime('%b %d')} (conflict-free calendar)")
+                if hasattr(self, 'logger'):
+                    self.logger.info(f"📅 Rank {rank} DATE ASSIGNMENT: {prediction_date.strftime('%Y-%m-%d')} (CI: {date_ci_lower.strftime('%Y-%m-%d')} to {date_ci_upper.strftime('%Y-%m-%d')})")
             else:
                 # Fallback to ML-based date prediction when no assigned dates
                 prediction_date, date_ci_lower, date_ci_upper = self.predict_next_draw_date(working_df, ircc_category, current_date, rank)
                 print(f"      🔧 Using ML-predicted date: {prediction_date.strftime('%b %d')} (model-based)")
+                if hasattr(self, 'logger'):
+                    self.logger.info(f"📅 Rank {rank} ML DATE PREDICTION: {prediction_date.strftime('%Y-%m-%d')} (CI: {date_ci_lower.strftime('%Y-%m-%d')} to {date_ci_upper.strftime('%Y-%m-%d')})")
             
             # 💾 SAVE ALL MODEL PREDICTIONS (not just the best one)
             models_saved = 0
@@ -2572,17 +2576,17 @@ class Command(BaseCommand):
                     # 🎯 Determine interval type based on model
                     interval_type = self.get_interval_type(pred['model'])
                     
-                    with transaction.atomic():
-                        prediction = PreComputedPrediction.objects.create(
-                            category=category,
-                            predicted_date=prediction_date,
+                with transaction.atomic():
+                    prediction = PreComputedPrediction.objects.create(
+                        category=category,
+                        predicted_date=prediction_date,
                             predicted_crs_score=round(pred['crs']),
                             predicted_invitations=round(pred['invitations']),
                             confidence_score=pred['confidence'],
                             model_used=pred['model'],
-                            model_version="1.0",
-                            prediction_rank=rank,
-                            uncertainty_range={
+                        model_version="1.0",
+                        prediction_rank=rank,
+                        uncertainty_range={
                                 'crs_min': max(300, round(pred['crs'] - uncertainty.get('crs_std', 50))),
                                 'crs_max': min(1000, round(pred['crs'] + uncertainty.get('crs_std', 50))),
                                 'invitations_min': max(0, round(pred['invitations'] - uncertainty.get('inv_std', 500))),
@@ -2592,14 +2596,16 @@ class Command(BaseCommand):
                             predicted_date_lower=date_ci_lower.date() if hasattr(date_ci_lower, 'date') else date_ci_lower,
                             predicted_date_upper=date_ci_upper.date() if hasattr(date_ci_upper, 'date') else date_ci_upper,
                             interval_type=interval_type,  # 🆕 CI for frequentist, CrI for Bayesian
-                            is_active=True
-                        )
-                    models_saved += 1
-                    logger.info(f"Rank {rank} - Saved {pred['model']}: CRS {pred['crs']:.0f}, Confidence {pred['confidence']:.3f}")
+                        is_active=True
+                    )
+                        models_saved += 1
+                        logger.info(f"Rank {rank} - Saved {pred['model']}: CRS {pred['crs']:.0f}, Confidence {pred['confidence']:.3f}")
+                        if hasattr(self, 'logger'):
+                            self.logger.info(f"💾 DATABASE SAVE: Rank {rank} | Date: {prediction_date} | CRS: {pred['crs']:.0f} | Model: {pred['model']}")
                         
-                except Exception as e:
+            except Exception as e:
                     print(f"   ❌ Failed to save {pred['model']} for rank {rank}: {e}")
-                    continue
+                continue
             
             total_created += models_saved
             print(f"   ✅ Saved: Rank {rank}, {models_saved}/{len(rank_predictions)} models, Date {prediction_date}")
