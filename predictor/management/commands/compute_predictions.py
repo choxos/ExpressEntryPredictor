@@ -1949,11 +1949,64 @@ class Command(BaseCommand):
         
         return draw_calendar, category_priority_order
     
+    def get_unified_category_name(self, category_name):
+        """Map any category name to its unified version"""
+        category_mapping = self.get_category_mapping()
+        return category_mapping.get(category_name, category_name)
+    
     def get_dynamic_intervals(self):
         """Get cached dynamic intervals, calculate if not cached"""
         if not hasattr(self, '_dynamic_intervals_cache') or self._dynamic_intervals_cache is None:
             self._dynamic_intervals_cache = self.calculate_dynamic_intervals()
         return self._dynamic_intervals_cache
+    
+    def get_category_mapping(self):
+        """
+        🔄 CATEGORY POOLING: Map related category versions to unified names
+        
+        This pools data from different versions of the same category type
+        (e.g., Healthcare V1 + Healthcare V2 = unified Healthcare predictions)
+        
+        Returns:
+            dict: {database_category_name: unified_category_name}
+        """
+        return {
+            # Healthcare - Pool all healthcare versions
+            'Healthcare occupations (Version 1)': 'Healthcare',
+            'Healthcare and social services occupations (Version 1)': 'Healthcare', 
+            'Healthcare and social services occupations (Version 2)': 'Healthcare',
+            
+            # French - Pool all French versions
+            'French language proficiency (Version 1)': 'French',
+            'French-language proficiency': 'French',
+            
+            # Trade - Pool all trade versions  
+            'Trade occupations (Version 1)': 'Trade',
+            'Skilled trades occupations': 'Trade',
+            
+            # STEM - Pool all STEM versions
+            'STEM occupations (Version 1)': 'STEM',
+            'Science, technology, engineering and mathematics (STEM) occupations': 'STEM',
+            
+            # Agriculture - Pool all agriculture versions
+            'Agriculture and agri-food occupations (Version 1)': 'Agriculture',
+            'Agriculture and agri-food occupations': 'Agriculture',
+            
+            # Transport - Pool all transport versions (ELIMINATED 2025)
+            'Transport occupations (Version 1)': 'Transport',
+            'Transport occupations': 'Transport',
+            
+            # Education - New 2025 category
+            'Education occupations (Version 1)': 'Education',
+            'Education occupations': 'Education',
+            
+            # Core categories - keep as-is
+            'Canadian Experience Class': 'Canadian Experience Class',
+            'Provincial Nominee Program': 'Provincial Nominee Program', 
+            'Federal Skilled Worker': 'Federal Skilled Worker',
+            'General': 'General',  # ELIMINATED 2025
+            'No Program Specified': 'General',  # Pool with General
+        }
     
     def calculate_dynamic_intervals(self, min_draws=2, recent_weight=0.7):
         """
@@ -1980,10 +2033,16 @@ class Command(BaseCommand):
             date__gte='2022-01-01'
         ).select_related('category').order_by('category__name', 'date')
         
-        # Group by category
+        # 🔄 CATEGORY POOLING: Group by unified category names
+        category_mapping = self.get_category_mapping()
         category_data = defaultdict(list)
+        
         for draw in draws:
-            category_data[draw.category.name].append(draw.date)
+            # Map to unified category name
+            unified_name = category_mapping.get(draw.category.name, draw.category.name)
+            category_data[unified_name].append(draw.date)
+        
+        print(f"   🔄 Pooled {draws.count()} draws into {len(category_data)} unified categories")
         
         intervals = {}
         fallback_intervals = {
@@ -1995,12 +2054,12 @@ class Command(BaseCommand):
         
         for category_name, dates in category_data.items():
             if len(dates) < min_draws:
-                # Determine fallback based on category type
-                if any(term in category_name.lower() for term in ['canadian experience', 'french', 'healthcare']):
+                # Determine fallback based on unified category type
+                if category_name in ['Canadian Experience Class', 'French', 'Healthcare']:
                     fallback = fallback_intervals['high_priority']
-                elif any(term in category_name.lower() for term in ['provincial nominee', 'education']):
+                elif category_name in ['Provincial Nominee Program', 'Education']:
                     fallback = fallback_intervals['medium_priority']
-                elif any(term in category_name.lower() for term in ['stem', 'agriculture', 'trade']):
+                elif category_name in ['STEM', 'Agriculture', 'Trade']:
                     fallback = fallback_intervals['low_priority']
                 else:
                     fallback = fallback_intervals['medium_priority']
@@ -2210,10 +2269,12 @@ class Command(BaseCommand):
         print(f"   📅 Fast date prediction for rank {rank} (optimized)...")
         
         if len(working_df) < 3:
-            # 📊 DYNAMIC: Get intervals from database instead of hardcoding
+            # 📊 DYNAMIC: Get intervals from database using unified category name
             dynamic_intervals = self.get_dynamic_intervals()
-            category_info = dynamic_intervals.get(ircc_category, {})
+            unified_name = self.get_unified_category_name(ircc_category)
+            category_info = dynamic_intervals.get(unified_name, {})
             fallback_days = category_info.get('avg', 35.0)  # Safe default
+            print(f"      🔄 Using unified category '{unified_name}' (from '{ircc_category}')")
             predicted_date = base_date + timedelta(days=int(fallback_days))
             ci_width = int(fallback_days * 0.3)  # ±30% confidence interval
             ci_lower = predicted_date - timedelta(days=ci_width)
@@ -2230,8 +2291,9 @@ class Command(BaseCommand):
         date_features = working_df[['days_since_last_draw']].dropna()
         if len(date_features) < 3:
             # 📊 DYNAMIC: Use same calculated intervals for consistency
-            dynamic_intervals = self.calculate_dynamic_intervals()
-            category_info = dynamic_intervals.get(ircc_category, {})
+            dynamic_intervals = self.get_dynamic_intervals()
+            unified_name = self.get_unified_category_name(ircc_category)
+            category_info = dynamic_intervals.get(unified_name, {})
             fallback_days = category_info.get('avg', 35.0)  # Safe default
             predicted_date = base_date + timedelta(days=int(fallback_days))
             ci_width = int(fallback_days * 0.3)  # ±30% confidence interval
@@ -2270,7 +2332,8 @@ class Command(BaseCommand):
             
             # 3. 📊 DYNAMIC: Use calculated intervals as additional predictor
             dynamic_intervals = self.get_dynamic_intervals()
-            category_info = dynamic_intervals.get(ircc_category, {})
+            unified_name = self.get_unified_category_name(ircc_category)
+            category_info = dynamic_intervals.get(unified_name, {})
             historical_avg = category_info.get('avg', 35.0)  # Safe default
             date_predictions.append(historical_avg)
             print(f"      🔧 Historical average: {historical_avg:.0f} days")
